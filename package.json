@@ -8,11 +8,13 @@
     "start": "next start",
     "lint": "next lint",
     "db:seed": "tsx scripts/seed.ts",
-    "db:migrate": "tsx scripts/migrate.ts"
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:import": "tsx scripts/import.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
     "clsx": "^2.1.1",
+    "csv-parse": "^7.0.2",
     "date-fns": "^3.6.0",
     "drizzle-orm": "^0.33.0",
     "jose": "^6.2.12",

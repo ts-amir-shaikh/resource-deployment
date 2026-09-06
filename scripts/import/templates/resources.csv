@@ -1,0 +1,3 @@
+name,email,mobile,designation,currentCtc,revisedCtc,revisedEffectiveFrom,primarySkill,secondarySkill,otherSkills
+Aditi Rao,aditi.rao@example.com,+91 90000 00001,Senior Java Developer,1800000,,,Java / Spring Boot,Kafka,PostgreSQL;Kubernetes
+Rohan Mehta,rohan.mehta@example.com,+91 90000 00002,Frontend Engineer,1400000,1550000,2026-04-01,React,TypeScript,Next.js;Tailwind

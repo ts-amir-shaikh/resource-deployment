@@ -1,0 +1,3 @@
+name,email,mobile,currentDesignation,experienceYears,primarySkill,secondarySkill,otherSkills,currentCtc,expectedCtc,noticePeriodDays,location,source,sourceName,resourceEmail
+Meera Iyer,meera.iyer@example.com,+91 90000 55555,Full Stack Developer,5,Angular,Java / Spring Boot,REST;Docker,1600000,2000000,30,Pune,partner,Orion Talent Partners,
+Aditi Rao,,+91 90000 00001,,,,,,,,,,in_house,,aditi.rao@example.com

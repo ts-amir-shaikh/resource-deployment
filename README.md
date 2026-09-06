@@ -156,7 +156,54 @@ middleware.ts           auth gate; exempts /share/*
 scripts/
   migrate.ts            applies the schema (idempotent)
   seed.ts               demo dataset (destructive — clears tables first)
+  import.ts             bulk-import CLI (see below)
+  import/
+    lib.ts              shared CSV parsing, validation, reporting
+    resources.ts        importer per entity
+    clients.ts
+    projects.ts
+    candidates.ts
+    templates/*.csv      starter files with the expected columns
 ```
+
+## Bulk importing real data
+
+```bash
+npm run db:import -- resources my-resources.csv          # dry run — validates, writes nothing
+npm run db:import -- resources my-resources.csv --commit  # actually writes
+npm run db:import -- clients my-clients.csv --commit --update  # update existing rows too
+```
+
+Covers **resources, clients, projects, candidates** — the master data other
+records reference. Templates with the expected columns are in
+`scripts/import/templates/`.
+
+- **Dry run by default.** Every row is validated and a report is printed —
+  what would be created, updated, or left alone, and exactly which rows failed
+  and why — before anything touches the database. Add `--commit` once the
+  report looks right.
+- **Same validation as the app.** Each importer runs rows through the identical
+  Zod schema the API uses (`lib/validations.ts`), so a row the import accepts
+  is one the UI would also have accepted — CTC/date cross-field rules, source
+  attribution rules, and all.
+- **Duplicates are keyed like the app would key them** — email for resources,
+  company name for clients, (client, project name) for projects. A row
+  matching an existing record is skipped unless `--update` is passed; a row
+  duplicated *within the same file* is flagged and only the first copy is
+  imported.
+- **Cross-references resolve by name/email, not ID.** `projects.csv` takes a
+  `clientName` column and looks up the client; `candidates.csv` takes an
+  optional `resourceEmail` to link an in-house candidate to an existing bench
+  resource. An unresolvable reference fails that one row with a clear message
+  rather than creating an orphaned record — import clients before projects,
+  and resources before candidates that reference them.
+- **List columns** (`otherSkills`) are semicolon-separated within the cell:
+  `PostgreSQL;Kubernetes`.
+- **Not covered:** deployments, agreements, invoices, opportunities. They carry
+  rules that depend on the rest of the data at write time — the 100%
+  allocation cap, the agreement renewal chain, the forward-only invoice
+  lifecycle — and are safer created through the app or a follow-up script
+  written once the master data is in.
 
 ## Notes
 
