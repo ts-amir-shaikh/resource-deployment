@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search, FolderKanban } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINRCompact } from '@/lib/utils';
+import { formatINRCompact, LIST_PAGE_SIZE } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -13,6 +13,7 @@ import {
   TableShell,
   FormSection,
   Badge,
+  Pagination,
 } from '@/components/ui';
 
 type Row = {
@@ -49,6 +50,8 @@ export default function ProjectsClient({
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState('');
+  const [deployedFilter, setDeployedFilter] = useState<'all' | 'deployed' | 'none'>('all');
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState(BLANK);
@@ -60,6 +63,8 @@ export default function ProjectsClient({
     const q = search.trim().toLowerCase();
     return initial.filter((p) => {
       if (clientFilter && p.clientId !== Number(clientFilter)) return false;
+      if (deployedFilter === 'deployed' && p.headcount === 0) return false;
+      if (deployedFilter === 'none' && p.headcount > 0) return false;
       if (!q) return true;
       return (
         p.projectName.toLowerCase().includes(q) ||
@@ -67,7 +72,14 @@ export default function ProjectsClient({
         (p.managerName ?? '').toLowerCase().includes(q)
       );
     });
-  }, [initial, search, clientFilter]);
+  }, [initial, search, clientFilter, deployedFilter]);
+
+  useEffect(() => setPage(1), [search, clientFilter, deployedFilter]);
+
+  const pageItems = useMemo(
+    () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [filtered, page],
+  );
 
   function openCreate() {
     setEditing(null);
@@ -157,6 +169,19 @@ export default function ProjectsClient({
             </option>
           ))}
         </select>
+        <div className="flex rounded-md border border-line bg-surface p-0.5">
+          {(['all', 'deployed', 'none'] as const).map((d) => (
+            <button
+              key={d}
+              onClick={() => setDeployedFilter(d)}
+              className={`rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                deployedFilter === d ? 'bg-brand text-white' : 'text-ink2 hover:text-ink'
+              }`}
+            >
+              {d === 'all' ? 'All' : d === 'deployed' ? 'Deployed' : 'No Deployments'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="px-6">
@@ -168,7 +193,7 @@ export default function ProjectsClient({
               description={
                 clients.length
                   ? initial.length
-                    ? 'Try a different search or clear the client filter.'
+                    ? 'Try a different search, or clear the client and deployment filters.'
                     : 'Create a project to start deploying resources against it.'
                   : 'Add a client first — every project belongs to one.'
               }
@@ -194,7 +219,7 @@ export default function ProjectsClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((p) => (
+                {pageItems.map((p) => (
                   <tr key={p.id} className="hover:bg-surface2/50">
                     <td className="td">
                       <div className="font-medium text-ink">{p.projectName}</div>
@@ -247,6 +272,14 @@ export default function ProjectsClient({
                 ))}
               </tbody>
             </TableShell>
+          )}
+          {filtered.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={LIST_PAGE_SIZE}
+              total={filtered.length}
+              onPageChange={setPage}
+            />
           )}
         </div>
       </div>

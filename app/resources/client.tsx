@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search, Users, X } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINR, formatDate, parseSkills } from '@/lib/utils';
+import { formatINR, formatDate, parseSkills, LIST_PAGE_SIZE } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -14,6 +14,7 @@ import {
   TableShell,
   AllocationBar,
   FormSection,
+  Pagination,
 } from '@/components/ui';
 
 type Row = {
@@ -50,6 +51,10 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [skillFilter, setSkillFilter] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<'all' | 'available' | 'partial' | 'full'>(
+    'all',
+  );
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState(BLANK);
@@ -70,6 +75,9 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
     const q = search.trim().toLowerCase();
     return initial.filter((r) => {
       if (skillFilter && r.primarySkill !== skillFilter) return false;
+      if (availability === 'available' && r.allocated !== 0) return false;
+      if (availability === 'full' && r.allocated < 100) return false;
+      if (availability === 'partial' && (r.allocated === 0 || r.allocated >= 100)) return false;
       if (!q) return true;
       return (
         r.name.toLowerCase().includes(q) ||
@@ -78,7 +86,16 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
         (r.primarySkill ?? '').toLowerCase().includes(q)
       );
     });
-  }, [initial, search, skillFilter]);
+  }, [initial, search, skillFilter, availability]);
+
+  // Any filter change should land the user back on page 1 rather than a now
+  // out-of-range page.
+  useEffect(() => setPage(1), [search, skillFilter, availability]);
+
+  const pageItems = useMemo(
+    () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [filtered, page],
+  );
 
   function openCreate() {
     setEditing(null);
@@ -173,6 +190,19 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <div className="flex rounded-md border border-line bg-surface p-0.5">
+          {(['all', 'available', 'partial', 'full'] as const).map((a) => (
+            <button
+              key={a}
+              onClick={() => setAvailability(a)}
+              className={`rounded px-2.5 py-1.5 text-xs font-medium capitalize transition-colors ${
+                availability === a ? 'bg-brand text-white' : 'text-ink2 hover:text-ink'
+              }`}
+            >
+              {a}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {skills.map((s) => (
             <button
@@ -206,7 +236,7 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
               title={initial.length ? 'No matching resources' : 'No resources yet'}
               description={
                 initial.length
-                  ? 'Try a different search term or clear the skill filter.'
+                  ? 'Try a different search term, or clear the skill and availability filters.'
                   : 'Add your first consultant to start tracking deployments.'
               }
               action={
@@ -229,7 +259,7 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((r) => (
+                {pageItems.map((r) => (
                   <tr key={r.id} className="hover:bg-surface2/50">
                     <td className="td">
                       <div className="font-medium text-ink">{r.name}</div>
@@ -287,6 +317,14 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
                 ))}
               </tbody>
             </TableShell>
+          )}
+          {filtered.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={LIST_PAGE_SIZE}
+              total={filtered.length}
+              onPageChange={setPage}
+            />
           )}
         </div>
       </div>

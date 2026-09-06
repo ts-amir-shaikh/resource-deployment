@@ -32,16 +32,22 @@ const STATUS_TONE = {
 } as const;
 
 export default async function DashboardPage() {
+  // The sync write must finish before anything reads agreement status; the
+  // eight reads below don't depend on each other, so they run concurrently
+  // rather than as eight sequential round trips to the database.
   await syncExpiredAgreements();
 
-  const s = await getDashboardSummary();
-  const inv = await getInvoiceSummary();
-  const utilisation = await getResourceUtilisation();
-  const billingByClient = await getBillingByClient();
-  const endingSoon = await getEndingSoon(30);
-  const expiring = await getExpiringAgreements(30);
-  const pipeline = await getPipelineSummary();
-  const dueFollowUps = await getDueFollowUps();
+  const [s, inv, utilisation, billingByClient, endingSoon, expiring, pipeline, dueFollowUps] =
+    await Promise.all([
+      getDashboardSummary(),
+      getInvoiceSummary(),
+      getResourceUtilisation(),
+      getBillingByClient(),
+      getEndingSoon(30),
+      getExpiringAgreements(30),
+      getPipelineSummary(),
+      getDueFollowUps(),
+    ]);
 
   const maxBilling = Math.max(...billingByClient.map((b) => b.billing), 1);
   const deployedPct = s.totalResources

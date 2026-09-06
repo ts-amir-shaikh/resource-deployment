@@ -14,6 +14,37 @@ import AgreementsClient from './client';
 export const dynamic = 'force-dynamic';
 
 export default async function AgreementsPage() {
+  // `rows` reads agreement status, so it must wait for the sync write to
+  // finish — but the other three queries never touch the agreements table,
+  // so they're kicked off immediately rather than waiting behind the sync.
+  // (Promise.all starts everything concurrently; it does not sequence them,
+  // so `rows` cannot share an array with the sync it depends on.)
+  const countsPromise = db
+    .select({
+      agreementId: agreementResources.agreementId,
+      c: sql<number>`count(*)`,
+    })
+    .from(agreementResources)
+    .groupBy(agreementResources.agreementId)
+    .all();
+
+  const projectOptionsPromise = db
+    .select({
+      id: projects.id,
+      projectName: projects.projectName,
+      clientName: clients.companyName,
+    })
+    .from(projects)
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .orderBy(clients.companyName, projects.projectName)
+    .all();
+
+  const resourceOptionsPromise = db
+    .select({ id: resources.id, name: resources.name, designation: resources.designation })
+    .from(resources)
+    .orderBy(resources.name)
+    .all();
+
   await syncExpiredAgreements();
 
   const rows = await db
@@ -39,37 +70,17 @@ export default async function AgreementsPage() {
     .orderBy(desc(agreements.id))
     .all();
 
-  const counts = await db
-    .select({
-      agreementId: agreementResources.agreementId,
-      c: sql<number>`count(*)`,
-    })
-    .from(agreementResources)
-    .groupBy(agreementResources.agreementId)
-    .all();
+  const [counts, projectOptions, resourceOptions] = await Promise.all([
+    countsPromise,
+    projectOptionsPromise,
+    resourceOptionsPromise,
+  ]);
 
   const initial = rows.map((a) => ({
     ...a,
     resourceCount: counts.find((c) => c.agreementId === a.id)?.c ?? 0,
     daysToExpiry: a.status === 'active' ? daysUntil(a.endDate) : null,
   }));
-
-  const projectOptions = await db
-    .select({
-      id: projects.id,
-      projectName: projects.projectName,
-      clientName: clients.companyName,
-    })
-    .from(projects)
-    .innerJoin(clients, eq(projects.clientId, clients.id))
-    .orderBy(clients.companyName, projects.projectName)
-    .all();
-
-  const resourceOptions = await db
-    .select({ id: resources.id, name: resources.name, designation: resources.designation })
-    .from(resources)
-    .orderBy(resources.name)
-    .all();
 
   return (
     <AgreementsClient

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -15,7 +15,7 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINR, formatINRCompact, formatDate, today } from '@/lib/utils';
+import { formatINR, formatINRCompact, formatDate, today, LIST_PAGE_SIZE } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -24,6 +24,7 @@ import {
   TableShell,
   FormSection,
   Badge,
+  Pagination,
   type Tone,
 } from '@/components/ui';
 
@@ -99,6 +100,8 @@ export default function AgreementsClient({
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired' | 'renewed'>('active');
+  const [expiringSoonOnly, setExpiringSoonOnly] = useState(false);
+  const [page, setPage] = useState(1);
 
   const [open, setOpen] = useState(false);
   /** null = creating new; a Row = renewing that version */
@@ -118,6 +121,11 @@ export default function AgreementsClient({
     const q = search.trim().toLowerCase();
     return initial.filter((a) => {
       if (statusFilter !== 'all' && a.status !== statusFilter) return false;
+      if (
+        expiringSoonOnly &&
+        (a.status !== 'active' || a.daysToExpiry === null || a.daysToExpiry > 30)
+      )
+        return false;
       if (!q) return true;
       return (
         a.title.toLowerCase().includes(q) ||
@@ -126,7 +134,14 @@ export default function AgreementsClient({
         a.projectName.toLowerCase().includes(q)
       );
     });
-  }, [initial, search, statusFilter]);
+  }, [initial, search, statusFilter, expiringSoonOnly]);
+
+  useEffect(() => setPage(1), [search, statusFilter, expiringSoonOnly]);
+
+  const pageItems = useMemo(
+    () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [filtered, page],
+  );
 
   const linesTotal = lines.reduce((s, l) => s + (Number(l.billingAmount) || 0), 0);
 
@@ -258,6 +273,16 @@ export default function AgreementsClient({
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setExpiringSoonOnly(!expiringSoonOnly)}
+          className={`chip border transition-colors ${
+            expiringSoonOnly
+              ? 'border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+              : 'border-line bg-surface text-ink2 hover:bg-surface2'
+          }`}
+        >
+          Expiring within 30 days
+        </button>
       </div>
 
       <div className="px-6">
@@ -288,7 +313,7 @@ export default function AgreementsClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((a) => {
+                {pageItems.map((a) => {
                   const expiringSoon =
                     a.status === 'active' &&
                     a.daysToExpiry !== null &&
@@ -378,6 +403,14 @@ export default function AgreementsClient({
                 })}
               </tbody>
             </TableShell>
+          )}
+          {filtered.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={LIST_PAGE_SIZE}
+              total={filtered.length}
+              onPageChange={setPage}
+            />
           )}
         </div>
       </div>

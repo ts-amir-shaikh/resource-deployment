@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search, Building2, Mail, Phone } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINRCompact } from '@/lib/utils';
+import { formatINRCompact, LIST_PAGE_SIZE } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -13,6 +13,7 @@ import {
   TableShell,
   FormSection,
   Badge,
+  Pagination,
 } from '@/components/ui';
 
 type Row = {
@@ -53,6 +54,8 @@ type Tab = 'spoc' | 'account' | 'alt';
 export default function ClientsClient({ initial }: { initial: Row[] }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
+  const [hasProjects, setHasProjects] = useState<'all' | 'with' | 'without'>('all');
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState(BLANK);
@@ -63,13 +66,23 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return initial;
-    return initial.filter(
-      (c) =>
+    return initial.filter((c) => {
+      if (hasProjects === 'with' && c.projectCount === 0) return false;
+      if (hasProjects === 'without' && c.projectCount > 0) return false;
+      if (!q) return true;
+      return (
         c.companyName.toLowerCase().includes(q) ||
-        (c.spocName ?? '').toLowerCase().includes(q),
-    );
-  }, [initial, search]);
+        (c.spocName ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [initial, search, hasProjects]);
+
+  useEffect(() => setPage(1), [search, hasProjects]);
+
+  const pageItems = useMemo(
+    () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [filtered, page],
+  );
 
   function openCreate() {
     setEditing(null);
@@ -157,8 +170,8 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
         }
       />
 
-      <div className="px-6 py-4">
-        <div className="relative max-w-xs">
+      <div className="flex flex-wrap items-center gap-2 px-6 py-4">
+        <div className="relative min-w-56 flex-1 max-w-xs">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink3" />
           <input
             className="input pl-8"
@@ -166,6 +179,19 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+        </div>
+        <div className="flex rounded-md border border-line bg-surface p-0.5">
+          {(['all', 'with', 'without'] as const).map((h) => (
+            <button
+              key={h}
+              onClick={() => setHasProjects(h)}
+              className={`rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                hasProjects === h ? 'bg-brand text-white' : 'text-ink2 hover:text-ink'
+              }`}
+            >
+              {h === 'all' ? 'All' : h === 'with' ? 'Has Projects' : 'No Projects'}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -177,7 +203,7 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
               title={initial.length ? 'No matching clients' : 'No clients yet'}
               description={
                 initial.length
-                  ? 'Try a different search term.'
+                  ? 'Try a different search term or filter.'
                   : 'Add a client to start creating projects and agreements.'
               }
               action={
@@ -201,7 +227,7 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((c) => (
+                {pageItems.map((c) => (
                   <tr key={c.id} className="hover:bg-surface2/50">
                     <td className="td">
                       <div className="font-medium text-ink">{c.companyName}</div>
@@ -277,6 +303,14 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
                 ))}
               </tbody>
             </TableShell>
+          )}
+          {filtered.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={LIST_PAGE_SIZE}
+              total={filtered.length}
+              onPageChange={setPage}
+            />
           )}
         </div>
       </div>

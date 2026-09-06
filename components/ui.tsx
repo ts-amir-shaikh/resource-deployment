@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /* ── Page header ───────────────────────────────────────────── */
@@ -137,10 +137,20 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
+  // Callers pass `onClose={() => setOpen(false)}` inline, so its identity
+  // changes on every parent re-render — including every keystroke in a form
+  // field inside this modal. Reading it through a ref (rather than the
+  // dependency array) means the effect below only re-runs when `open` itself
+  // changes, so it no longer steals focus back to the modal on every keypress.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -149,7 +159,7 @@ export function Modal({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -279,6 +289,91 @@ export function Stat({
         {value}
       </div>
       {sub && <div className="mt-0.5 text-xs text-ink2">{sub}</div>}
+    </div>
+  );
+}
+
+/* ── Pagination ────────────────────────────────────────────── */
+
+/** first, …, current-1..current+1, …, last — collapses long runs to ellipses. */
+function pageWindow(current: number, total: number): (number | '…')[] {
+  const delta = 1;
+  const left = Math.max(2, current - delta);
+  const right = Math.min(total - 1, current + delta);
+  const out: (number | '…')[] = [1];
+  if (left > 2) out.push('…');
+  for (let i = left; i <= right; i++) out.push(i);
+  if (right < total - 1) out.push('…');
+  if (total > 1) out.push(total);
+  return out;
+}
+
+/**
+ * A table-footer pagination control. Renders the "Showing X–Y of Z" count
+ * even for a single page (confirms the total at a glance); page-number
+ * buttons only appear once there is more than one page.
+ */
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+      <span className="tnum text-xs text-ink3">
+        {total === 0 ? 'No results' : `Showing ${from}–${to} of ${total}`}
+      </span>
+      {totalPages > 1 && (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onPageChange(page - 1)}
+            disabled={page <= 1}
+            className="rounded-md p-1.5 text-ink2 hover:bg-surface2 hover:text-ink disabled:pointer-events-none disabled:opacity-30"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+          {pageWindow(page, totalPages).map((p, i) =>
+            p === '…' ? (
+              <span key={`ellipsis-${i}`} className="px-1 text-xs text-ink3">
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => onPageChange(p)}
+                aria-current={p === page ? 'page' : undefined}
+                className={cn(
+                  'tnum min-w-[26px] rounded-md px-1.5 py-1 text-xs font-medium',
+                  p === page
+                    ? 'bg-brand text-white'
+                    : 'text-ink2 hover:bg-surface2 hover:text-ink',
+                )}
+              >
+                {p}
+              </button>
+            ),
+          )}
+          <button
+            onClick={() => onPageChange(page + 1)}
+            disabled={page >= totalPages}
+            className="rounded-md p-1.5 text-ink2 hover:bg-surface2 hover:text-ink disabled:pointer-events-none disabled:opacity-30"
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -23,6 +23,7 @@ import {
   ACTIVE_STAGES,
   WORK_MODE_LABELS,
   ENGAGEMENT_LABELS,
+  LIST_PAGE_SIZE,
 } from '@/lib/utils';
 import {
   PageHeader,
@@ -32,6 +33,7 @@ import {
   TableShell,
   FormSection,
   Badge,
+  Pagination,
   type Tone,
 } from '@/components/ui';
 
@@ -121,6 +123,10 @@ export default function PipelineClient({
   const [view, setView] = useState<'board' | 'list'>('board');
   const [search, setSearch] = useState('');
   const [showClosed, setShowClosed] = useState(false);
+  // The board already groups by stage via its columns, so this filter only
+  // applies to the list view, where there is no equivalent structure.
+  const [stageFilter, setStageFilter] = useState('all');
+  const [page, setPage] = useState(1);
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(BLANK);
@@ -141,6 +147,18 @@ export default function PipelineClient({
       );
     });
   }, [initial, search, showClosed]);
+
+  const listFiltered = useMemo(
+    () => (stageFilter === 'all' ? filtered : filtered.filter((o) => o.stage === stageFilter)),
+    [filtered, stageFilter],
+  );
+
+  useEffect(() => setPage(1), [search, showClosed, stageFilter]);
+
+  const pageItems = useMemo(
+    () => listFiltered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [listFiltered, page],
+  );
 
   const stats = useMemo(() => {
     const open = initial.filter((o) => (ACTIVE_STAGES as readonly string[]).includes(o.stage));
@@ -260,6 +278,22 @@ export default function PipelineClient({
           Show won / lost
         </label>
 
+        {view === 'list' && (
+          <select
+            className="input max-w-48"
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            aria-label="Filter by stage"
+          >
+            <option value="all">All stages</option>
+            {[...ACTIVE_STAGES, 'won', 'lost', 'hold'].map((s) => (
+              <option key={s} value={s}>
+                {STAGE_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        )}
+
         <div className="ml-auto flex rounded-md border border-line bg-surface p-0.5">
           <button
             onClick={() => setView('board')}
@@ -279,14 +313,14 @@ export default function PipelineClient({
       </div>
 
       <div className="px-6">
-        {filtered.length === 0 ? (
+        {(view === 'list' ? listFiltered.length === 0 : filtered.length === 0) ? (
           <div className="card">
             <EmptyState
               icon={Target}
               title={initial.length ? 'No matching opportunities' : 'No opportunities yet'}
               description={
                 initial.length
-                  ? 'Try a different search term, or show won and lost deals.'
+                  ? 'Try a different search term or stage filter, or show won and lost deals.'
                   : 'Add your first requirement to start tracking it through the pipeline.'
               }
               action={
@@ -420,7 +454,7 @@ export default function PipelineClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((o) => (
+                {pageItems.map((o) => (
                   <tr
                     key={o.id}
                     className={
@@ -494,6 +528,14 @@ export default function PipelineClient({
                 ))}
               </tbody>
             </TableShell>
+            {listFiltered.length > 0 && (
+              <Pagination
+                page={page}
+                pageSize={LIST_PAGE_SIZE}
+                total={listFiltered.length}
+                onPageChange={setPage}
+              />
+            )}
           </div>
         )}
       </div>

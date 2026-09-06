@@ -7,6 +7,9 @@ export function cn(...inputs: ClassValue[]) {
 
 export const GST_RATE = 0.18;
 
+/** Rows per page on every listing table. */
+export const LIST_PAGE_SIZE = 20;
+
 /** Indian numbering format, no decimals. */
 export function formatINR(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';

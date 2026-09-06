@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search, UserSearch, X, Link2 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINR, parseSkills, SOURCE_LABELS } from '@/lib/utils';
+import { formatINR, parseSkills, SOURCE_LABELS, LIST_PAGE_SIZE } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -13,6 +13,7 @@ import {
   TableShell,
   FormSection,
   Badge,
+  Pagination,
   type Tone,
 } from '@/components/ui';
 
@@ -84,6 +85,8 @@ export default function CandidatesClient({
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | Row['source']>('all');
+  const [skillFilter, setSkillFilter] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState(BLANK);
@@ -92,10 +95,19 @@ export default function CandidatesClient({
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const skills = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of initial) {
+      if (c.primarySkill) set.add(c.primarySkill);
+    }
+    return [...set].sort();
+  }, [initial]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initial.filter((c) => {
       if (sourceFilter !== 'all' && c.source !== sourceFilter) return false;
+      if (skillFilter && c.primarySkill !== skillFilter) return false;
       if (!q) return true;
       return (
         c.name.toLowerCase().includes(q) ||
@@ -104,7 +116,14 @@ export default function CandidatesClient({
         (c.sourceName ?? '').toLowerCase().includes(q)
       );
     });
-  }, [initial, search, sourceFilter]);
+  }, [initial, search, sourceFilter, skillFilter]);
+
+  useEffect(() => setPage(1), [search, sourceFilter, skillFilter]);
+
+  const pageItems = useMemo(
+    () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [filtered, page],
+  );
 
   const counts = useMemo(
     () => ({
@@ -257,6 +276,29 @@ export default function CandidatesClient({
             </button>
           ))}
         </div>
+        <div className="flex flex-wrap gap-1.5">
+          {skills.map((s) => (
+            <button
+              key={s}
+              onClick={() => setSkillFilter(skillFilter === s ? null : s)}
+              className={`chip border transition-colors ${
+                skillFilter === s
+                  ? 'border-brand bg-brandbg text-brand'
+                  : 'border-line bg-surface text-ink2 hover:bg-surface2'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+          {skillFilter && (
+            <button
+              onClick={() => setSkillFilter(null)}
+              className="chip border border-line bg-surface text-ink3 hover:text-ink"
+            >
+              <X className="h-3 w-3" /> Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="px-6">
@@ -292,7 +334,7 @@ export default function CandidatesClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((c) => (
+                {pageItems.map((c) => (
                   <tr key={c.id} className="hover:bg-surface2/50">
                     <td className="td">
                       <div className="flex items-center gap-1.5">
@@ -374,6 +416,14 @@ export default function CandidatesClient({
                 ))}
               </tbody>
             </TableShell>
+          )}
+          {filtered.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={LIST_PAGE_SIZE}
+              total={filtered.length}
+              onPageChange={setPage}
+            />
           )}
         </div>
       </div>

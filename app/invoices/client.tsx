@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -23,6 +23,7 @@ import {
   INVOICE_STATUS_LABELS,
   INVOICE_STATUS_ORDER,
   nextInvoiceStatus,
+  LIST_PAGE_SIZE,
 } from '@/lib/utils';
 import {
   PageHeader,
@@ -32,6 +33,7 @@ import {
   TableShell,
   FormSection,
   Badge,
+  Pagination,
   type Tone,
 } from '@/components/ui';
 
@@ -108,6 +110,8 @@ export default function InvoicesClient({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | Status>('all');
   const [onlyOverdue, setOnlyOverdue] = useState(false);
+  const [clientFilter, setClientFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const [open, setOpen] = useState(false);
@@ -118,11 +122,17 @@ export default function InvoicesClient({
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const clientOptions = useMemo(() => {
+    const set = new Set(initial.map((i) => i.clientName));
+    return [...set].sort();
+  }, [initial]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initial.filter((i) => {
       if (statusFilter !== 'all' && i.status !== statusFilter) return false;
       if (onlyOverdue && !i.overdue) return false;
+      if (clientFilter && i.clientName !== clientFilter) return false;
       if (!q) return true;
       return (
         (i.invoiceNumber ?? '').toLowerCase().includes(q) ||
@@ -130,7 +140,18 @@ export default function InvoicesClient({
         i.projectName.toLowerCase().includes(q)
       );
     });
-  }, [initial, search, statusFilter, onlyOverdue]);
+  }, [initial, search, statusFilter, onlyOverdue, clientFilter]);
+
+  useEffect(
+    () => setPage(1),
+    [search, statusFilter, onlyOverdue, clientFilter],
+  );
+
+  // Only the list view is paginated — the board view is columns, not rows.
+  const pageItems = useMemo(
+    () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [filtered, page],
+  );
 
   const totals = useMemo(() => {
     const by: Record<string, { count: number; total: number }> = {};
@@ -320,6 +341,20 @@ export default function InvoicesClient({
           </button>
         )}
 
+        <select
+          className="input max-w-56"
+          value={clientFilter}
+          onChange={(e) => setClientFilter(e.target.value)}
+          aria-label="Filter by client"
+        >
+          <option value="">All clients</option>
+          {clientOptions.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+
         <div className="ml-auto flex rounded-md border border-line bg-surface p-0.5">
           <button
             onClick={() => setView('list')}
@@ -469,7 +504,7 @@ export default function InvoicesClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((i) => (
+                {pageItems.map((i) => (
                   <tr
                     key={i.id}
                     className={
@@ -570,6 +605,14 @@ export default function InvoicesClient({
                 ))}
               </tbody>
             </TableShell>
+            {filtered.length > 0 && (
+              <Pagination
+                page={page}
+                pageSize={LIST_PAGE_SIZE}
+                total={filtered.length}
+                onPageChange={setPage}
+              />
+            )}
           </div>
         )}
       </div>

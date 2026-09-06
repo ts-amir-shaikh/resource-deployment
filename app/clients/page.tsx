@@ -6,24 +6,27 @@ import ClientsClient from './client';
 export const dynamic = 'force-dynamic';
 
 export default async function ClientsPage() {
-  const rows = await db.select().from(clients).orderBy(desc(clients.id)).all();
-
-  const counts = await db
-    .select({ clientId: projects.clientId, count: sql<number>`count(*)` })
-    .from(projects)
-    .groupBy(projects.clientId)
-    .all();
-
-  const billing = await db
-    .select({
-      clientId: projects.clientId,
-      total: sql<number>`coalesce(sum(${deployments.billingAmount}), 0)`,
-    })
-    .from(deployments)
-    .innerJoin(projects, eq(deployments.projectId, projects.id))
-    .where(and(eq(deployments.status, 'active'), eq(deployments.deploymentType, 'billable')))
-    .groupBy(projects.clientId)
-    .all();
+  // Independent of each other — run concurrently.
+  const [rows, counts, billing] = await Promise.all([
+    db.select().from(clients).orderBy(desc(clients.id)).all(),
+    db
+      .select({ clientId: projects.clientId, count: sql<number>`count(*)` })
+      .from(projects)
+      .groupBy(projects.clientId)
+      .all(),
+    db
+      .select({
+        clientId: projects.clientId,
+        total: sql<number>`coalesce(sum(${deployments.billingAmount}), 0)`,
+      })
+      .from(deployments)
+      .innerJoin(projects, eq(deployments.projectId, projects.id))
+      .where(
+        and(eq(deployments.status, 'active'), eq(deployments.deploymentType, 'billable')),
+      )
+      .groupBy(projects.clientId)
+      .all(),
+  ]);
 
   const initial = rows.map((c) => ({
     ...c,

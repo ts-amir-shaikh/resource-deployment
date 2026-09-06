@@ -6,18 +6,21 @@ import ResourcesClient from './client';
 export const dynamic = 'force-dynamic';
 
 export default async function ResourcesPage() {
-  const rows = await db.select().from(resources).orderBy(desc(resources.id)).all();
-
-  const alloc = await db
-    .select({
-      resourceId: deployments.resourceId,
-      type: deployments.deploymentType,
-      allocated: sql<number>`sum(${deployments.allocationPercentage})`,
-    })
-    .from(deployments)
-    .where(eq(deployments.status, 'active'))
-    .groupBy(deployments.resourceId, deployments.deploymentType)
-    .all();
+  // Independent of each other — run concurrently rather than as two
+  // sequential round trips to the database.
+  const [rows, alloc] = await Promise.all([
+    db.select().from(resources).orderBy(desc(resources.id)).all(),
+    db
+      .select({
+        resourceId: deployments.resourceId,
+        type: deployments.deploymentType,
+        allocated: sql<number>`sum(${deployments.allocationPercentage})`,
+      })
+      .from(deployments)
+      .where(eq(deployments.status, 'active'))
+      .groupBy(deployments.resourceId, deployments.deploymentType)
+      .all(),
+  ]);
 
   const initial = rows.map((r) => {
     const billable =

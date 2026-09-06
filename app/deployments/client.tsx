@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Search, Network, CircleStop, AlertTriangle } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINR, formatDate, today, GST_RATE } from '@/lib/utils';
+import { formatINR, formatDate, today, GST_RATE, LIST_PAGE_SIZE } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -14,6 +14,7 @@ import {
   FormSection,
   Badge,
   AllocationBar,
+  Pagination,
 } from '@/components/ui';
 
 type Row = {
@@ -70,7 +71,9 @@ export default function DeploymentsClient({
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'ended'>('active');
   const [typeFilter, setTypeFilter] = useState<'all' | 'billable' | 'shadow'>('all');
+  const [clientFilter, setClientFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -83,11 +86,17 @@ export default function DeploymentsClient({
   const [endDate, setEndDate] = useState(today());
   const [endError, setEndError] = useState<string | null>(null);
 
+  const clientOptions = useMemo(() => {
+    const set = new Set(initial.map((d) => d.clientName));
+    return [...set].sort();
+  }, [initial]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initial.filter((d) => {
       if (statusFilter !== 'all' && d.status !== statusFilter) return false;
       if (typeFilter !== 'all' && d.deploymentType !== typeFilter) return false;
+      if (clientFilter && d.clientName !== clientFilter) return false;
       if (!q) return true;
       return (
         d.resourceName.toLowerCase().includes(q) ||
@@ -95,7 +104,14 @@ export default function DeploymentsClient({
         d.clientName.toLowerCase().includes(q)
       );
     });
-  }, [initial, statusFilter, typeFilter, search]);
+  }, [initial, statusFilter, typeFilter, clientFilter, search]);
+
+  useEffect(() => setPage(1), [search, statusFilter, typeFilter, clientFilter]);
+
+  const pageItems = useMemo(
+    () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [filtered, page],
+  );
 
   // Live headroom for the resource selected in the form. When editing an
   // active record, its own allocation is added back so it isn't double-counted.
@@ -250,6 +266,20 @@ export default function DeploymentsClient({
             </button>
           ))}
         </div>
+
+        <select
+          className="input max-w-56"
+          value={clientFilter}
+          onChange={(e) => setClientFilter(e.target.value)}
+          aria-label="Filter by client"
+        >
+          <option value="">All clients</option>
+          {clientOptions.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="px-6">
@@ -279,7 +309,7 @@ export default function DeploymentsClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {filtered.map((d) => (
+                {pageItems.map((d) => (
                   <tr
                     key={d.id}
                     className={`hover:bg-surface2/50 ${d.status === 'ended' ? 'opacity-60' : ''}`}
@@ -353,6 +383,14 @@ export default function DeploymentsClient({
                 ))}
               </tbody>
             </TableShell>
+          )}
+          {filtered.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={LIST_PAGE_SIZE}
+              total={filtered.length}
+              onPageChange={setPage}
+            />
           )}
         </div>
       </div>
