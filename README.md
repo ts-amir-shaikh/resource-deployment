@@ -114,6 +114,21 @@ and for every candidate marked *joined* a bench resource plus a billable
 deployment. Deployments respect the same 100% allocation cap; anyone without
 headroom is reported back as skipped rather than silently dropped.
 
+**Deployments can link to an agreement/PO** via nullable `deployments.agreementId`.
+When one is picked, the resource dropdown narrows to that agreement's
+registered resources (`agreement_resources`) and the billing amount pre-fills
+from that resource's rate — still editable afterward. No agreement selected
+falls back to the full bench, unchanged. Deleting an agreement is blocked
+while any deployment still references it.
+
+**Invoices pull price and resource details from the agreement**, once one is
+selected: the "Resources Covered" picker becomes a checklist of that
+agreement's registered resources with their rates, and `amount` is the live
+sum of whichever are checked — not retyped by hand, and still editable after.
+Raising an invoice for a subset of an agreement's resources is the normal
+case, not an exception: nothing requires including everyone on the PO. No
+agreement selected keeps the original manual entry + full-bench picker.
+
 **Sharing is by unguessable token, with no authentication.** `/share/[token]`
 exposes the requirement and JD only — never budget, client contacts, candidate
 names, or internal stage. Anyone holding the link can read that page, which is
@@ -154,8 +169,9 @@ components/
   sidebar.tsx
 middleware.ts           auth gate; exempts /share/*
 scripts/
-  migrate.ts            applies the schema (idempotent)
+  migrate.ts            applies the schema + column migrations (idempotent)
   seed.ts               demo dataset (destructive — clears tables first)
+  clean.ts              wipes all rows for a real-data cutover (see below)
   import.ts             bulk-import CLI (see below)
   import/
     lib.ts              shared CSV parsing, validation, reporting
@@ -163,7 +179,33 @@ scripts/
     clients.ts
     projects.ts
     candidates.ts
+    deployments.ts       mappings — re-implements the allocation cap
     templates/*.csv      starter files with the expected columns
+```
+
+## Cutting over to real data
+
+```bash
+npm run db:clean                # dry run — counts rows, deletes nothing
+npm run db:clean -- --commit    # deletes every row; schema stays intact
+```
+
+`clean.ts` empties every table (does **not** drop them, so no `db:migrate`
+is needed afterward) — built for retiring the demo dataset before importing
+real clients, projects, resources, and mappings. Dry run by default; on the
+local file database `--commit` runs immediately, but against Turso it demands
+typing `DELETE ALL DATA` verbatim first. **There is no undo** — this is a
+genuine, irreversible production wipe when pointed at Turso, not a soft
+delete. Set `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` to target it; unset,
+it targets the local file.
+
+Recommended order once clean:
+
+```bash
+npm run db:import -- clients real-clients.csv --commit
+npm run db:import -- projects real-projects.csv --commit
+npm run db:import -- resources real-resources.csv --commit
+npm run db:import -- deployments real-mappings.csv --commit
 ```
 
 ## Bulk importing real data
@@ -174,9 +216,9 @@ npm run db:import -- resources my-resources.csv --commit  # actually writes
 npm run db:import -- clients my-clients.csv --commit --update  # update existing rows too
 ```
 
-Covers **resources, clients, projects, candidates** — the master data other
-records reference. Templates with the expected columns are in
-`scripts/import/templates/`.
+Covers **resources, clients, projects, candidates, and deployments
+(mappings)** — everything that isn't better created through the app. Templates
+with the expected columns are in `scripts/import/templates/`.
 
 - **Dry run by default.** Every row is validated and a report is printed —
   what would be created, updated, or left alone, and exactly which rows failed
@@ -187,23 +229,33 @@ records reference. Templates with the expected columns are in
   is one the UI would also have accepted — CTC/date cross-field rules, source
   attribution rules, and all.
 - **Duplicates are keyed like the app would key them** — email for resources,
-  company name for clients, (client, project name) for projects. A row
-  matching an existing record is skipped unless `--update` is passed; a row
-  duplicated *within the same file* is flagged and only the first copy is
-  imported.
+  company name for clients, (client, project name) for projects, (resource,
+  project, start date) for deployments. A row matching an existing record is
+  skipped unless `--update` is passed; a row duplicated *within the same
+  file* is flagged and only the first copy is imported.
 - **Cross-references resolve by name/email, not ID.** `projects.csv` takes a
-  `clientName` column and looks up the client; `candidates.csv` takes an
-  optional `resourceEmail` to link an in-house candidate to an existing bench
-  resource. An unresolvable reference fails that one row with a clear message
-  rather than creating an orphaned record — import clients before projects,
-  and resources before candidates that reference them.
+  `clientName` column and looks up the client; `candidates.csv` and
+  `deployments.csv` take a `resourceEmail`; `deployments.csv` also takes
+  `clientName` + `projectName` and an optional `agreementNumber`. An
+  unresolvable reference fails that one row with a clear message rather than
+  creating an orphaned record — import clients before projects, and
+  resources before candidates or deployments that reference them.
+- **Deployments enforce the 100% allocation cap**, in file order, against
+  both existing active deployments and earlier rows in the same file — a row
+  that would push a resource over 100% is rejected with the exact headroom
+  available at that point, not silently written. This re-implements the same
+  rule the API enforces (it can't import `lib/queries.ts` directly — that
+  module is marked server-only for Next.js). An `agreementNumber` must belong
+  to an *active* agreement on the matched project, matching what the
+  deployment form itself offers.
 - **List columns** (`otherSkills`) are semicolon-separated within the cell:
-  `PostgreSQL;Kubernetes`.
-- **Not covered:** deployments, agreements, invoices, opportunities. They carry
-  rules that depend on the rest of the data at write time — the 100%
-  allocation cap, the agreement renewal chain, the forward-only invoice
-  lifecycle — and are safer created through the app or a follow-up script
-  written once the master data is in.
+  `PostgreSQL;Kubernetes`. Boolean columns (`gstApplicable`) accept
+  `true`/`yes`/`1` as true and anything else — including the literal text
+  `false` — as false; a plain `Boolean("false")` in JS would get this wrong.
+- **Not covered:** agreements, invoices, opportunities. They carry rules that
+  depend on the rest of the data at write time — the agreement renewal chain,
+  the forward-only invoice lifecycle — and are safer created through the app
+  or a follow-up script written once the master data is in.
 
 ## Notes
 

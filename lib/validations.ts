@@ -87,6 +87,13 @@ export const deploymentSchema = z
   .object({
     resourceId: z.coerce.number().int().positive('Select a resource'),
     projectId: z.coerce.number().int().positive('Select a project'),
+    /** Nullable — an agreement/PO backing this deployment is optional. */
+    agreementId: z
+      .union([z.coerce.number().int().positive(), z.literal(''), z.null()])
+      .optional()
+      .transform((v) =>
+        v === '' || v === null || v === undefined ? undefined : Number(v),
+      ),
     deploymentType: z.enum(['billable', 'shadow']),
     allocationPercentage: z.coerce
       .number()

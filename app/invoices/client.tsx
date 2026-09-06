@@ -72,6 +72,9 @@ type AgreementOption = {
 };
 type ResourceOption = { id: number; name: string };
 
+/** One row of an agreement's registered rate card, from /api/agreements/[id]. */
+type AgreementResource = { resourceId: number; resourceName: string; billingAmount: number };
+
 const STATUS_TONE: Record<Status, Tone> = {
   not_raised: 'neutral',
   raised: 'amber',
@@ -121,6 +124,11 @@ export default function InvoicesClient({
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // The selected agreement's registered rate card (resource + billing rate),
+  // so the invoice can be raised for a subset of it without retyping prices.
+  const [agreementResources, setAgreementResources] = useState<AgreementResource[]>([]);
+  const [loadingRateCard, setLoadingRateCard] = useState(false);
 
   const clientOptions = useMemo(() => {
     const set = new Set(initial.map((i) => i.clientName));
@@ -178,6 +186,48 @@ export default function InvoicesClient({
     (a) => a.projectId === Number(form.projectId),
   );
 
+  // Load the chosen agreement's registered resources + rates. Cleared when
+  // no agreement is selected, in which case the resource picker and amount
+  // fall back to the original fully-manual behaviour.
+  useEffect(() => {
+    if (!form.agreementId) {
+      setAgreementResources([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingRateCard(true);
+    api<{ resources: { resourceId: number; resourceName: string; billingAmount: number }[] }>(
+      `/api/agreements/${form.agreementId}`,
+    )
+      .then((detail) => {
+        if (!cancelled) setAgreementResources(detail.resources);
+      })
+      .catch(() => {
+        if (!cancelled) setAgreementResources([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRateCard(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.agreementId]);
+
+  // With an agreement selected, the amount is the sum of whichever of its
+  // registered resources are checked — not typed by hand. Recomputes live as
+  // the selection changes; still a plain field the user can override after.
+  useEffect(() => {
+    if (!agreementResources.length) return;
+    const sum = form.resourceIds.reduce((total, id) => {
+      const rate = agreementResources.find((r) => r.resourceId === id);
+      return total + (rate?.billingAmount ?? 0);
+    }, 0);
+    setForm((f) => (f.amount === String(sum) ? f : { ...f, amount: String(sum) }));
+    // Only resourceIds/agreementResources should retrigger this — form.amount
+    // itself is written by this effect, so it must stay out of the deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.resourceIds, agreementResources]);
+
   function openCreate() {
     setEditing(null);
     setForm(BLANK);
@@ -186,7 +236,7 @@ export default function InvoicesClient({
     setOpen(true);
   }
 
-  function openEdit(i: Row) {
+  async function openEdit(i: Row) {
     setEditing(i);
     setForm({
       projectId: String(i.projectId),
@@ -200,11 +250,23 @@ export default function InvoicesClient({
       invoiceDate: i.invoiceDate ?? '',
       dueDate: i.dueDate ?? '',
       notes: i.notes ?? '',
+      // The list row doesn't carry which resources are tagged — fetched below.
       resourceIds: [],
     });
     setErrors({});
     setBanner(null);
     setOpen(true);
+
+    // Load the resources actually saved on this invoice, so re-saving
+    // without touching the picker doesn't silently clear them.
+    try {
+      const detail = await api<{ resources: { resourceId: number }[] }>(
+        `/api/invoices/${i.id}`,
+      );
+      setForm((f) => ({ ...f, resourceIds: detail.resources.map((r) => r.resourceId) }));
+    } catch {
+      // Leave resourceIds empty; the user can re-pick if this fails.
+    }
   }
 
   async function save() {
@@ -661,7 +723,9 @@ export default function InvoicesClient({
                 <select
                   className="input"
                   value={form.agreementId}
-                  onChange={(e) => setForm({ ...form, agreementId: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, agreementId: e.target.value, resourceIds: [] })
+                  }
                   disabled={!form.projectId}
                 >
                   <option value="">No PO</option>
@@ -725,7 +789,16 @@ export default function InvoicesClient({
 
           <FormSection title="Amounts">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Amount (pre-GST) ₹" required error={errors.amount}>
+              <Field
+                label="Amount (pre-GST) ₹"
+                required
+                error={errors.amount}
+                hint={
+                  agreementResources.length
+                    ? 'Sum of the selected resources’ rates below — still editable'
+                    : undefined
+                }
+              >
                 <input
                   className="input"
                   type="number"
@@ -809,35 +882,104 @@ export default function InvoicesClient({
             </div>
           </FormSection>
 
-          {resources.length > 0 && (
+          {agreementResources.length > 0 ? (
             <FormSection title="Resources Covered">
-              <div className="flex flex-wrap gap-1.5">
-                {resources.map((r) => {
-                  const on = form.resourceIds.includes(r.id);
+              <p className="mb-3 text-2xs text-ink3">
+                Pulled from the agreement&apos;s rate card. Check the resources this
+                invoice covers this period — not all of them need to be included.
+              </p>
+              <div className="space-y-1.5">
+                {agreementResources.map((r) => {
+                  const on = form.resourceIds.includes(r.resourceId);
                   return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() =>
-                        setForm({
-                          ...form,
-                          resourceIds: on
-                            ? form.resourceIds.filter((x) => x !== r.id)
-                            : [...form.resourceIds, r.id],
-                        })
-                      }
-                      className={`chip border transition-colors ${
+                    <label
+                      key={r.resourceId}
+                      className={`flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors ${
                         on
-                          ? 'border-brand bg-brandbg text-brand'
-                          : 'border-line bg-surface text-ink2 hover:bg-surface2'
+                          ? 'border-brand bg-brandbg'
+                          : 'border-line bg-surface hover:bg-surface2'
                       }`}
                     >
-                      {r.name}
-                    </button>
+                      <span className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() =>
+                            setForm({
+                              ...form,
+                              resourceIds: on
+                                ? form.resourceIds.filter((x) => x !== r.resourceId)
+                                : [...form.resourceIds, r.resourceId],
+                            })
+                          }
+                          className="h-4 w-4 rounded border-line accent-[rgb(var(--accent))]"
+                        />
+                        <span className="text-sm text-ink">{r.resourceName}</span>
+                      </span>
+                      <span className="tnum text-xs text-ink2">
+                        {formatINR(r.billingAmount)}/mo
+                      </span>
+                    </label>
                   );
                 })}
               </div>
+              <div className="tnum mt-2 flex items-baseline justify-between text-xs text-ink2">
+                <span>
+                  {form.resourceIds.length} of {agreementResources.length} selected
+                </span>
+                <span className="font-medium text-ink">
+                  {formatINR(
+                    agreementResources
+                      .filter((r) => form.resourceIds.includes(r.resourceId))
+                      .reduce((s, r) => s + r.billingAmount, 0),
+                  )}
+                  /mo
+                </span>
+              </div>
             </FormSection>
+          ) : (
+            resources.length > 0 && (
+              <FormSection title="Resources Covered">
+                {loadingRateCard ? (
+                  <p className="text-sm text-ink3">Loading rate card…</p>
+                ) : (
+                  <>
+                    {form.agreementId && (
+                      <p className="mb-2 text-2xs text-ink3">
+                        This agreement has no registered resources yet — pick from the
+                        full list instead.
+                      </p>
+                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {resources.map((r) => {
+                        const on = form.resourceIds.includes(r.id);
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() =>
+                              setForm({
+                                ...form,
+                                resourceIds: on
+                                  ? form.resourceIds.filter((x) => x !== r.id)
+                                  : [...form.resourceIds, r.id],
+                              })
+                            }
+                            className={`chip border transition-colors ${
+                              on
+                                ? 'border-brand bg-brandbg text-brand'
+                                : 'border-line bg-surface text-ink2 hover:bg-surface2'
+                            }`}
+                          >
+                            {r.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </FormSection>
+            )
           )}
         </div>
 

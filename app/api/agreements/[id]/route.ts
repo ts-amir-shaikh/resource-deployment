@@ -1,6 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { agreements, agreementResources, projects, clients, invoices } from '@/lib/schema';
+import {
+  agreements,
+  agreementResources,
+  projects,
+  clients,
+  invoices,
+  deployments,
+} from '@/lib/schema';
 import { agreementEditSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
 import { getAgreementChain, getAgreementResources } from '@/lib/queries';
@@ -114,6 +121,18 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       .get();
     if (linkedInvoice) {
       return fail('This agreement has invoices raised against it and cannot be deleted.', 409);
+    }
+
+    const linkedDeployment = await db
+      .select({ id: deployments.id })
+      .from(deployments)
+      .where(eq(deployments.agreementId, id))
+      .get();
+    if (linkedDeployment) {
+      return fail(
+        'This agreement has deployments mapped to it and cannot be deleted. Unmap or end them first.',
+        409,
+      );
     }
 
     await db.transaction(async (tx) => {

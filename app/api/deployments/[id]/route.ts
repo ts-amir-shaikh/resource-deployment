@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { deployments, resources, projects, clients } from '@/lib/schema';
+import { deployments, resources, projects, clients, agreements } from '@/lib/schema';
 import { deploymentSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
 import {
@@ -23,10 +23,13 @@ export async function GET(_req: Request, { params }: Ctx) {
         id: deployments.id,
         resourceId: deployments.resourceId,
         projectId: deployments.projectId,
+        agreementId: deployments.agreementId,
         resourceName: resources.name,
         designation: resources.designation,
         projectName: projects.projectName,
         clientName: clients.companyName,
+        agreementNumber: agreements.agreementNumber,
+        agreementTitle: agreements.title,
         deploymentType: deployments.deploymentType,
         allocationPercentage: deployments.allocationPercentage,
         startDate: deployments.startDate,
@@ -40,6 +43,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       .innerJoin(resources, eq(deployments.resourceId, resources.id))
       .innerJoin(projects, eq(deployments.projectId, projects.id))
       .innerJoin(clients, eq(projects.clientId, clients.id))
+      .leftJoin(agreements, eq(deployments.agreementId, agreements.id))
       .where(eq(deployments.id, id))
       .get();
 
@@ -64,6 +68,20 @@ export async function PUT(req: Request, { params }: Ctx) {
     const { data, error } = await parseBody(req, deploymentSchema);
     if (error) return error;
 
+    if (data.agreementId) {
+      const agreement = await db
+        .select({ id: agreements.id, projectId: agreements.projectId })
+        .from(agreements)
+        .where(eq(agreements.id, data.agreementId))
+        .get();
+      if (!agreement) return fail('Selected agreement no longer exists', 422);
+      if (agreement.projectId !== data.projectId) {
+        return fail('That agreement belongs to a different project', 422, {
+          fields: { agreementId: 'Pick an agreement raised against the selected project' },
+        });
+      }
+    }
+
     // Re-check headroom excluding this record, so its own allocation does not
     // count against itself.
     if (existing.status === 'active') {
@@ -75,6 +93,7 @@ export async function PUT(req: Request, { params }: Ctx) {
       .set({
         resourceId: data.resourceId,
         projectId: data.projectId,
+        agreementId: data.agreementId ?? null,
         deploymentType: data.deploymentType,
         allocationPercentage: data.allocationPercentage,
         startDate: data.startDate,

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS deployments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   resource_id INTEGER NOT NULL REFERENCES resources(id),
   project_id INTEGER NOT NULL REFERENCES projects(id),
+  agreement_id INTEGER REFERENCES agreements(id),
   deployment_type TEXT NOT NULL DEFAULT 'billable',
   allocation_percentage INTEGER NOT NULL DEFAULT 100,
   start_date TEXT NOT NULL,
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS deployments (
 CREATE INDEX IF NOT EXISTS depl_resource_idx ON deployments(resource_id);
 CREATE INDEX IF NOT EXISTS depl_project_idx ON deployments(project_id);
 CREATE INDEX IF NOT EXISTS depl_status_idx ON deployments(status);
+CREATE INDEX IF NOT EXISTS depl_agreement_idx ON deployments(agreement_id);
 
 CREATE TABLE IF NOT EXISTS agreements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

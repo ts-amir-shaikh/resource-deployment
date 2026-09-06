@@ -21,10 +21,13 @@ type Row = {
   id: number;
   resourceId: number;
   projectId: number;
+  agreementId: number | null;
   resourceName: string;
   designation: string | null;
   projectName: string;
   clientName: string;
+  agreementNumber: string | null;
+  agreementTitle: string | null;
   deploymentType: 'billable' | 'shadow';
   allocationPercentage: number;
   startDate: string;
@@ -47,9 +50,21 @@ type ResourceOption = {
 
 type ProjectOption = { id: number; projectName: string; clientName: string };
 
+type AgreementOption = {
+  id: number;
+  projectId: number;
+  title: string;
+  agreementNumber: string | null;
+  renewalVersion: number;
+};
+
+/** One row of an agreement's registered rate card, from /api/agreements/[id]. */
+type AgreementResource = { resourceId: number; resourceName: string; billingAmount: number };
+
 const BLANK = {
   resourceId: '',
   projectId: '',
+  agreementId: '',
   deploymentType: 'billable' as 'billable' | 'shadow',
   allocationPercentage: '100',
   startDate: today(),
@@ -63,10 +78,12 @@ export default function DeploymentsClient({
   initial,
   resources,
   projects,
+  agreements,
 }: {
   initial: Row[];
   resources: ResourceOption[];
   projects: ProjectOption[];
+  agreements: AgreementOption[];
 }) {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'ended'>('active');
@@ -85,6 +102,11 @@ export default function DeploymentsClient({
   const [endingRow, setEndingRow] = useState<Row | null>(null);
   const [endDate, setEndDate] = useState(today());
   const [endError, setEndError] = useState<string | null>(null);
+
+  // The selected agreement's registered rate card (resource + billing rate).
+  // Drives the resource picker and billing auto-fill below.
+  const [agreementResources, setAgreementResources] = useState<AgreementResource[]>([]);
+  const [loadingRateCard, setLoadingRateCard] = useState(false);
 
   const clientOptions = useMemo(() => {
     const set = new Set(initial.map((d) => d.clientName));
@@ -112,6 +134,68 @@ export default function DeploymentsClient({
     () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
     [filtered, page],
   );
+
+  const agreementsForProject = useMemo(
+    () => agreements.filter((a) => a.projectId === Number(form.projectId)),
+    [agreements, form.projectId],
+  );
+
+  // Load the chosen agreement's registered resources + rates, so the
+  // resource picker and billing amount are drawn from the PO instead of
+  // typed by hand. Cleared when no agreement is selected.
+  useEffect(() => {
+    if (!form.agreementId) {
+      setAgreementResources([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingRateCard(true);
+    api<{ resources: { resourceId: number; resourceName: string; billingAmount: number }[] }>(
+      `/api/agreements/${form.agreementId}`,
+    )
+      .then((detail) => {
+        if (!cancelled) setAgreementResources(detail.resources);
+      })
+      .catch(() => {
+        if (!cancelled) setAgreementResources([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRateCard(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.agreementId]);
+
+  // Changing the project invalidates an agreement that belonged to the old
+  // one — clear it rather than silently keep a mismatched selection.
+  function handleProjectChange(projectId: string) {
+    const stillValid = agreements.some(
+      (a) => String(a.id) === form.agreementId && a.projectId === Number(projectId),
+    );
+    setForm({ ...form, projectId, agreementId: stillValid ? form.agreementId : '' });
+  }
+
+  // Once a rate card is loaded, the resource picker narrows to only the
+  // people registered on that agreement — falls back to the full bench when
+  // no agreement is selected or its rate card is empty.
+  const resourceOptionsForForm = useMemo(() => {
+    if (!agreementResources.length) return resources;
+    const ids = new Set(agreementResources.map((r) => r.resourceId));
+    const narrowed = resources.filter((r) => ids.has(r.id));
+    return narrowed.length ? narrowed : resources;
+  }, [resources, agreementResources]);
+
+  function handleResourceChange(resourceId: string) {
+    const rate = agreementResources.find((r) => String(r.resourceId) === resourceId);
+    setForm({
+      ...form,
+      resourceId,
+      // Only overwrite billing when the pick came off the agreement's own
+      // rate card — an unrelated resource shouldn't inherit someone else's rate.
+      billingAmount: rate ? String(rate.billingAmount) : form.billingAmount,
+    });
+  }
 
   // Live headroom for the resource selected in the form. When editing an
   // active record, its own allocation is added back so it isn't double-counted.
@@ -158,6 +242,7 @@ export default function DeploymentsClient({
     setForm({
       resourceId: String(d.resourceId),
       projectId: String(d.projectId),
+      agreementId: d.agreementId ? String(d.agreementId) : '',
       deploymentType: d.deploymentType,
       allocationPercentage: String(d.allocationPercentage),
       startDate: d.startDate,
@@ -321,6 +406,11 @@ export default function DeploymentsClient({
                     <td className="td">
                       <div className="text-ink">{d.projectName}</div>
                       <div className="text-2xs text-ink3">{d.clientName}</div>
+                      {d.agreementNumber && (
+                        <div className="mt-0.5 font-mono text-2xs text-ink3">
+                          PO: {d.agreementNumber}
+                        </div>
+                      )}
                     </td>
                     <td className="td">
                       <div className="flex flex-col items-start gap-1">
@@ -411,26 +501,12 @@ export default function DeploymentsClient({
 
         <div className="space-y-5">
           <FormSection title="Assignment">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Resource" required error={errors.resourceId}>
-                <select
-                  className="input"
-                  value={form.resourceId}
-                  onChange={(e) => setForm({ ...form, resourceId: e.target.value })}
-                >
-                  <option value="">Select a resource…</option>
-                  {resources.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name} — {r.free}% free
-                    </option>
-                  ))}
-                </select>
-              </Field>
+            <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Project" required error={errors.projectId}>
                 <select
                   className="input"
                   value={form.projectId}
-                  onChange={(e) => setForm({ ...form, projectId: e.target.value })}
+                  onChange={(e) => handleProjectChange(e.target.value)}
                 >
                   <option value="">Select a project…</option>
                   {projects.map((p) => (
@@ -438,6 +514,61 @@ export default function DeploymentsClient({
                       {p.clientName} — {p.projectName}
                     </option>
                   ))}
+                </select>
+              </Field>
+
+              <Field
+                label="Agreement / PO"
+                error={errors.agreementId}
+                hint={
+                  form.projectId && !agreementsForProject.length
+                    ? 'No active agreements on this project'
+                    : 'Optional — narrows the resource list to its rate card'
+                }
+              >
+                <select
+                  className="input"
+                  value={form.agreementId}
+                  onChange={(e) => setForm({ ...form, agreementId: e.target.value })}
+                  disabled={!form.projectId}
+                >
+                  <option value="">No agreement</option>
+                  {agreementsForProject.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.agreementNumber ?? a.title}
+                      {a.renewalVersion > 1 ? ` (v${a.renewalVersion})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field
+                label="Resource"
+                required
+                error={errors.resourceId}
+                hint={
+                  loadingRateCard
+                    ? 'Loading rate card…'
+                    : agreementResources.length
+                      ? 'Showing only resources registered on this agreement'
+                      : undefined
+                }
+              >
+                <select
+                  className="input"
+                  value={form.resourceId}
+                  onChange={(e) => handleResourceChange(e.target.value)}
+                >
+                  <option value="">Select a resource…</option>
+                  {resourceOptionsForForm.map((r) => {
+                    const rate = agreementResources.find((ar) => ar.resourceId === r.id);
+                    return (
+                      <option key={r.id} value={r.id}>
+                        {r.name} — {r.free}% free
+                        {rate ? ` · ${formatINR(rate.billingAmount)}/mo` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </Field>
             </div>
@@ -549,6 +680,13 @@ export default function DeploymentsClient({
                   label="Billing Amount (₹/month)"
                   required
                   error={errors.billingAmount}
+                  hint={
+                    agreementResources.some(
+                      (r) => String(r.resourceId) === form.resourceId,
+                    )
+                      ? 'Pre-filled from the agreement rate card — still editable'
+                      : undefined
+                  }
                 >
                   <input
                     className="input"

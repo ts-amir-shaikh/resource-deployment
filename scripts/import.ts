@@ -1,7 +1,7 @@
 /**
- * Bulk-import real data from CSV into resources, clients, projects, or
- * candidates. Dry-run by default — validates every row and reports exactly
- * what would happen, without writing anything.
+ * Bulk-import real data from CSV into resources, clients, projects,
+ * candidates, or deployments (mappings). Dry-run by default — validates
+ * every row and reports exactly what would happen, without writing anything.
  *
  *   npm run db:import -- <entity> <file.csv> [--commit] [--update]
  *
@@ -11,23 +11,30 @@
  *
  * Column templates live in scripts/import/templates/.
  *
- * Deployments, agreements, invoices, and opportunities are intentionally not
- * covered here — they carry cross-row rules (the 100% allocation cap, the
- * agreement renewal chain, the forward-only invoice lifecycle) that are safer
- * created through the app, which enforces those rules per write. This script
- * covers the master data that other records reference.
+ * Agreements, invoices, and opportunities are intentionally not covered
+ * here — they carry cross-row rules (the agreement renewal chain, the
+ * forward-only invoice lifecycle) that are safer created through the app,
+ * which enforces those rules per write. Deployments ARE covered: the 100%
+ * allocation cap is re-implemented in scripts/import/deployments.ts so a
+ * bulk mapping import can't silently over-allocate a resource.
+ *
+ * Import order: clients → projects → resources → deployments (mappings).
+ * Deployments can optionally reference an agreementNumber, but that's not
+ * required — leave it blank for a deployment with no PO yet.
  */
 import { getClient, targetLabel } from './import/lib';
 import { importResources } from './import/resources';
 import { importClients } from './import/clients';
 import { importProjects } from './import/projects';
 import { importCandidates } from './import/candidates';
+import { importDeployments } from './import/deployments';
 
 const IMPORTERS = {
   resources: importResources,
   clients: importClients,
   projects: importProjects,
   candidates: importCandidates,
+  deployments: importDeployments,
 } as const;
 
 type Entity = keyof typeof IMPORTERS;
@@ -49,9 +56,10 @@ Examples:
   npm run db:import -- resources my-resources.csv
   npm run db:import -- resources my-resources.csv --commit
   npm run db:import -- clients my-clients.csv --commit --update
+  npm run db:import -- deployments my-mappings.csv --commit
 
-Import order matters: clients before projects, and resources before
-candidates if candidates.csv links to bench resources by email.
+Import order matters: clients before projects, resources before candidates
+or deployments that link to them by email, and projects before deployments.
 `);
   process.exit(1);
 }

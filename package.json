@@ -9,7 +9,8 @@
     "lint": "next lint",
     "db:seed": "tsx scripts/seed.ts",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:import": "tsx scripts/import.ts"
+    "db:import": "tsx scripts/import.ts",
+    "db:clean": "tsx scripts/clean.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

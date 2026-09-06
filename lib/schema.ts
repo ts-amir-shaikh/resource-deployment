@@ -88,6 +88,14 @@ export const deployments = sqliteTable(
     projectId: integer('project_id')
       .notNull()
       .references(() => projects.id),
+    /**
+     * The commercial agreement/PO this deployment bills under. Nullable —
+     * older deployments and simple engagements with no formal PO predate
+     * this link. When set, the resource picker and billing amount in the
+     * deployment form are drawn from this agreement's registered resources
+     * (agreement_resources) rather than typed by hand.
+     */
+    agreementId: integer('agreement_id').references(() => agreements.id),
 
     deploymentType: text('deployment_type', { enum: DEPLOYMENT_TYPES })
       .notNull()
@@ -114,6 +122,7 @@ export const deployments = sqliteTable(
     resourceIdx: index('depl_resource_idx').on(t.resourceId),
     projectIdx: index('depl_project_idx').on(t.projectId),
     statusIdx: index('depl_status_idx').on(t.status),
+    agreementIdx: index('depl_agreement_idx').on(t.agreementId),
   }),
 );
 
@@ -484,6 +493,10 @@ export const deploymentsRelations = relations(deployments, ({ one }) => ({
   project: one(projects, {
     fields: [deployments.projectId],
     references: [projects.id],
+  }),
+  agreement: one(agreements, {
+    fields: [deployments.agreementId],
+    references: [agreements.id],
   }),
 }));
 
