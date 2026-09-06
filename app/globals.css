@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: 248 249 251;
+    --surface: 255 255 255;
+    --surface-2: 241 244 248;
+    --border: 226 231 239;
+    --text: 26 35 50;
+    --text-2: 74 85 104;
+    --text-3: 136 150 167;
+    --accent: 37 99 235;
+    --accent-bg: 239 246 255;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: 13 17 23;
+      --surface: 22 27 34;
+      --surface-2: 28 35 48;
+      --border: 40 47 62;
+      --text: 230 237 243;
+      --text-2: 139 148 158;
+      --text-3: 90 100 120;
+      --accent: 88 166 255;
+      --accent-bg: 13 31 58;
+    }
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  body {
+    @apply bg-bg text-ink antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04';
+  }
+
+  /* Tabular figures wherever numbers stack in columns */
+  table td,
+  table th,
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-line bg-surface;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-medium text-ink2;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink
+           placeholder:text-ink3 focus:border-brand focus:outline-none
+           focus:ring-2 focus:ring-brand/20 disabled:opacity-50;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2
+           text-sm font-medium transition-colors focus-visible:outline-none
+           focus-visible:ring-2 focus-visible:ring-brand/40 disabled:pointer-events-none
+           disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand text-white hover:opacity-90;
+  }
+
+  .btn-ghost {
+    @apply btn border border-line bg-surface text-ink2 hover:bg-surface2 hover:text-ink;
+  }
+
+  .btn-danger {
+    @apply btn border border-rose-300 bg-surface text-rose-600
+           hover:bg-rose-50 dark:border-rose-900 dark:text-rose-400 dark:hover:bg-rose-950;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-medium;
+  }
+
+  .th {
+    @apply px-4 py-2.5 text-left text-2xs font-semibold uppercase tracking-wider text-ink3;
+  }
+
+  .td {
+    @apply px-4 py-3 text-sm text-ink2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

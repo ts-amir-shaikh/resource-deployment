@@ -1,0 +1,586 @@
+import 'server-only';
+import { and, eq, ne, sql, desc, inArray } from 'drizzle-orm';
+import { db, type Executor } from './db';
+import {
+  deployments,
+  resources,
+  projects,
+  clients,
+  agreements,
+  agreementResources,
+  invoices,
+  opportunities,
+  candidates,
+  opportunityCandidates,
+  opportunityStageHistory,
+  PIPELINE_STAGES,
+} from './schema';
+import { GST_RATE, today } from './utils';
+import crypto from 'node:crypto';
+
+/* ── Allocation ────────────────────────────────────────────── */
+
+export type AllocationBreakdown = {
+  billable: number;
+  shadow: number;
+  total: number;
+  free: number;
+  entries: {
+    deploymentId: number;
+    projectId: number;
+    projectName: string;
+    clientName: string;
+    deploymentType: 'billable' | 'shadow';
+    allocationPercentage: number;
+  }[];
+};
+
+/**
+ * Allocation consumed by a resource's active deployments.
+ * `excludeDeploymentId` is passed when editing, so a record does not
+ * count against its own headroom check.
+ */
+export async function getResourceAllocation(
+  resourceId: number,
+  excludeDeploymentId?: number,
+  /**
+   * Pass the transaction handle when calling from inside db.transaction(), so
+   * the read sees that transaction's uncommitted writes. Over a remote libSQL
+   * connection a plain `db` read would not.
+   */
+  exec: Executor = db,
+): Promise<AllocationBreakdown> {
+  const rows = await exec
+    .select({
+      deploymentId: deployments.id,
+      projectId: deployments.projectId,
+      projectName: projects.projectName,
+      clientName: clients.companyName,
+      deploymentType: deployments.deploymentType,
+      allocationPercentage: deployments.allocationPercentage,
+    })
+    .from(deployments)
+    .innerJoin(projects, eq(deployments.projectId, projects.id))
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .where(
+      excludeDeploymentId
+        ? and(
+            eq(deployments.resourceId, resourceId),
+            eq(deployments.status, 'active'),
+            ne(deployments.id, excludeDeploymentId),
+          )
+        : and(
+            eq(deployments.resourceId, resourceId),
+            eq(deployments.status, 'active'),
+          ),
+    )
+    .all();
+
+  const billable = rows
+    .filter((r) => r.deploymentType === 'billable')
+    .reduce((sum, r) => sum + r.allocationPercentage, 0);
+  const shadow = rows
+    .filter((r) => r.deploymentType === 'shadow')
+    .reduce((sum, r) => sum + r.allocationPercentage, 0);
+  const total = billable + shadow;
+
+  return {
+    billable,
+    shadow,
+    total,
+    free: Math.max(0, 100 - total),
+    entries: rows as AllocationBreakdown['entries'],
+  };
+}
+
+export class AllocationError extends Error {
+  constructor(
+    message: string,
+    public readonly headroom: number,
+    public readonly requested: number,
+  ) {
+    super(message);
+    this.name = 'AllocationError';
+  }
+}
+
+/**
+ * Throws when a new/updated deployment would push a resource past 100%.
+ * Both billable and shadow deployments consume capacity.
+ */
+export async function assertAllocationHeadroom(
+  resourceId: number,
+  requested: number,
+  excludeDeploymentId?: number,
+  exec: Executor = db,
+) {
+  const current = await getResourceAllocation(resourceId, excludeDeploymentId, exec);
+  if (current.total + requested > 100) {
+    throw new AllocationError(
+      `This resource has ${current.free}% allocation available, but ${requested}% was requested.`,
+      current.free,
+      requested,
+    );
+  }
+}
+
+/* ── Deployment billing maths ──────────────────────────────── */
+
+export function deploymentBilling(d: {
+  billingAmount: number;
+  commissionAmount: number;
+  gstApplicable: boolean;
+}) {
+  const gst = d.gstApplicable ? d.billingAmount * GST_RATE : 0;
+  return {
+    base: d.billingAmount,
+    gst,
+    total: d.billingAmount + gst,
+    margin: d.billingAmount - d.commissionAmount,
+  };
+}
+
+/* ── Agreements ────────────────────────────────────────────── */
+
+/**
+ * Walks `parent_agreement_id` back to v1, then returns the chain oldest-first.
+ * Bounded by a visited set so a cyclic row cannot hang the request.
+ */
+export async function getAgreementChain(agreementId: number) {
+  const chain: (typeof agreements.$inferSelect)[] = [];
+  const seen = new Set<number>();
+
+  // Walk backwards to the root.
+  let cursor: number | null = agreementId;
+  while (cursor !== null && !seen.has(cursor)) {
+    seen.add(cursor);
+    const row = await db.select().from(agreements).where(eq(agreements.id, cursor)).get();
+    if (!row) break;
+    chain.unshift(row);
+    cursor = row.parentAgreementId;
+  }
+
+  // Walk forwards from the given id through any renewals made after it.
+  let forward: number | null = agreementId;
+  while (forward !== null) {
+    const child: { id: number } | undefined = await db
+      .select({ id: agreements.id })
+      .from(agreements)
+      .where(eq(agreements.parentAgreementId, forward))
+      .get();
+    if (!child || seen.has(child.id)) break;
+    seen.add(child.id);
+    const row = await db.select().from(agreements).where(eq(agreements.id, child.id)).get();
+    if (!row) break;
+    chain.push(row);
+    forward = row.id;
+  }
+
+  return chain;
+}
+
+export async function getAgreementResources(agreementId: number) {
+  return await db
+    .select({
+      id: agreementResources.id,
+      resourceId: agreementResources.resourceId,
+      billingAmount: agreementResources.billingAmount,
+      resourceName: resources.name,
+      designation: resources.designation,
+    })
+    .from(agreementResources)
+    .innerJoin(resources, eq(agreementResources.resourceId, resources.id))
+    .where(eq(agreementResources.agreementId, agreementId))
+    .all();
+}
+
+/** Marks agreements whose end_date has passed as expired. Idempotent. */
+export async function syncExpiredAgreements() {
+  await db.update(agreements)
+    .set({ status: 'expired' })
+    .where(and(eq(agreements.status, 'active'), sql`${agreements.endDate} < ${today()}`))
+    .run();
+}
+
+/* ── Dashboard aggregations ────────────────────────────────── */
+
+export async function getDashboardSummary() {
+  const totalResources =
+    (await db.select({ c: sql<number>`count(*)` }).from(resources).get())?.c ?? 0;
+
+  const allocationRows = await db
+    .select({
+      resourceId: deployments.resourceId,
+      allocated: sql<number>`sum(${deployments.allocationPercentage})`,
+    })
+    .from(deployments)
+    .where(eq(deployments.status, 'active'))
+    .groupBy(deployments.resourceId)
+    .all();
+
+  const fullyDeployed = allocationRows.filter((r) => r.allocated >= 100).length;
+  const partiallyDeployed = allocationRows.filter(
+    (r) => r.allocated > 0 && r.allocated < 100,
+  ).length;
+  const available = totalResources - allocationRows.filter((r) => r.allocated > 0).length;
+
+  const activeDeployments = await db
+    .select({
+      type: deployments.deploymentType,
+      c: sql<number>`count(*)`,
+      billing: sql<number>`coalesce(sum(${deployments.billingAmount}), 0)`,
+      commission: sql<number>`coalesce(sum(${deployments.commissionAmount}), 0)`,
+      gst: sql<number>`coalesce(sum(case when ${deployments.gstApplicable} = 1 then ${deployments.billingAmount} * ${GST_RATE} else 0 end), 0)`,
+    })
+    .from(deployments)
+    .where(eq(deployments.status, 'active'))
+    .groupBy(deployments.deploymentType)
+    .all();
+
+  const billableRow = activeDeployments.find((r) => r.type === 'billable');
+  const shadowRow = activeDeployments.find((r) => r.type === 'shadow');
+
+  const activeProjects =
+    (await db
+      .select({ c: sql<number>`count(distinct ${deployments.projectId})` })
+      .from(deployments)
+      .where(eq(deployments.status, 'active'))
+      .get())?.c ?? 0;
+
+  const activeClients =
+    (await db
+      .select({ c: sql<number>`count(distinct ${projects.clientId})` })
+      .from(deployments)
+      .innerJoin(projects, eq(deployments.projectId, projects.id))
+      .where(eq(deployments.status, 'active'))
+      .get())?.c ?? 0;
+
+  return {
+    totalResources,
+    fullyDeployed,
+    partiallyDeployed,
+    available,
+    billableDeployments: billableRow?.c ?? 0,
+    shadowDeployments: shadowRow?.c ?? 0,
+    activeProjects,
+    activeClients,
+    monthlyBilling: billableRow?.billing ?? 0,
+    monthlyCommission: billableRow?.commission ?? 0,
+    monthlyGst: billableRow?.gst ?? 0,
+  };
+}
+
+export async function getInvoiceSummary() {
+  const rows = await db
+    .select({
+      status: invoices.status,
+      c: sql<number>`count(*)`,
+      total: sql<number>`coalesce(sum(${invoices.amount} + ${invoices.gstAmount}), 0)`,
+    })
+    .from(invoices)
+    .groupBy(invoices.status)
+    .all();
+
+  const byStatus = Object.fromEntries(
+    rows.map((r) => [r.status, { count: r.c, total: r.total }]),
+  ) as Record<string, { count: number; total: number }>;
+
+  const overdue = await db
+    .select({
+      c: sql<number>`count(*)`,
+      total: sql<number>`coalesce(sum(${invoices.amount} + ${invoices.gstAmount}), 0)`,
+    })
+    .from(invoices)
+    .where(
+      and(
+        inArray(invoices.status, ['raised', 'pending_collection']),
+        sql`${invoices.dueDate} is not null and ${invoices.dueDate} < ${today()}`,
+      ),
+    )
+    .get();
+
+  return {
+    byStatus,
+    overdueCount: overdue?.c ?? 0,
+    overdueAmount: overdue?.total ?? 0,
+    outstandingAmount:
+      (byStatus.raised?.total ?? 0) + (byStatus.pending_collection?.total ?? 0),
+  };
+}
+
+export async function getResourceUtilisation() {
+  const all = await db
+    .select({ id: resources.id, name: resources.name, designation: resources.designation })
+    .from(resources)
+    .orderBy(resources.name)
+    .all();
+
+  const rows = await db
+    .select({
+      resourceId: deployments.resourceId,
+      type: deployments.deploymentType,
+      allocated: sql<number>`sum(${deployments.allocationPercentage})`,
+    })
+    .from(deployments)
+    .where(eq(deployments.status, 'active'))
+    .groupBy(deployments.resourceId, deployments.deploymentType)
+    .all();
+
+  return all
+    .map((r) => {
+      const billable = rows.find(
+        (x) => x.resourceId === r.id && x.type === 'billable',
+      )?.allocated ?? 0;
+      const shadow = rows.find(
+        (x) => x.resourceId === r.id && x.type === 'shadow',
+      )?.allocated ?? 0;
+      return {
+        ...r,
+        billable,
+        shadow,
+        total: billable + shadow,
+        free: Math.max(0, 100 - billable - shadow),
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+}
+
+export async function getBillingByClient() {
+  return await db
+    .select({
+      clientId: clients.id,
+      clientName: clients.companyName,
+      billing: sql<number>`coalesce(sum(${deployments.billingAmount}), 0)`,
+      headcount: sql<number>`count(distinct ${deployments.resourceId})`,
+    })
+    .from(deployments)
+    .innerJoin(projects, eq(deployments.projectId, projects.id))
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .where(
+      and(eq(deployments.status, 'active'), eq(deployments.deploymentType, 'billable')),
+    )
+    .groupBy(clients.id)
+    .orderBy(desc(sql`coalesce(sum(${deployments.billingAmount}), 0)`))
+    .all();
+}
+
+export async function getSkillDistribution() {
+  return await db
+    .select({
+      skill: sql<string>`coalesce(nullif(${resources.primarySkill}, ''), 'Unassigned')`,
+      count: sql<number>`count(*)`,
+    })
+    .from(resources)
+    .groupBy(sql`coalesce(nullif(${resources.primarySkill}, ''), 'Unassigned')`)
+    .orderBy(desc(sql`count(*)`))
+    .all();
+}
+
+export async function getEndingSoon(days = 30) {
+  const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  return await db
+    .select({
+      id: deployments.id,
+      resourceName: resources.name,
+      projectName: projects.projectName,
+      clientName: clients.companyName,
+      deploymentType: deployments.deploymentType,
+      allocationPercentage: deployments.allocationPercentage,
+      endDate: deployments.endDate,
+      billingAmount: deployments.billingAmount,
+    })
+    .from(deployments)
+    .innerJoin(resources, eq(deployments.resourceId, resources.id))
+    .innerJoin(projects, eq(deployments.projectId, projects.id))
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .where(
+      and(
+        eq(deployments.status, 'active'),
+        sql`${deployments.endDate} is not null`,
+        sql`${deployments.endDate} <= ${cutoff}`,
+      ),
+    )
+    .orderBy(deployments.endDate)
+    .all();
+}
+
+/* ── Pipeline (M8) ─────────────────────────────────────────── */
+
+export function newShareToken() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+/** Candidates counted as filling a position. */
+const FILLED_STATUSES = ['selected', 'offered', 'joined'] as const;
+
+/** Per-opportunity candidate counts, used across list and board views. */
+export async function getOpportunityCandidateCounts() {
+  return await db
+    .select({
+      opportunityId: opportunityCandidates.opportunityId,
+      mapped: sql<number>`count(*)`,
+      filled: sql<number>`sum(case when ${opportunityCandidates.status} in ('selected','offered','joined') then 1 else 0 end)`,
+      inInterview: sql<number>`sum(case when ${opportunityCandidates.status} = 'interview' then 1 else 0 end)`,
+    })
+    .from(opportunityCandidates)
+    .groupBy(opportunityCandidates.opportunityId)
+    .all();
+}
+
+export async function getPipelineSummary() {
+  const rows = await db
+    .select({
+      stage: opportunities.stage,
+      count: sql<number>`count(*)`,
+      positions: sql<number>`coalesce(sum(${opportunities.requiredCount}), 0)`,
+    })
+    .from(opportunities)
+    .groupBy(opportunities.stage)
+    .all();
+
+  const byStage = Object.fromEntries(
+    rows.map((r) => [r.stage, { count: r.count, positions: r.positions }]),
+  ) as Record<string, { count: number; positions: number }>;
+
+  const openStages = PIPELINE_STAGES as readonly string[];
+  const open = rows.filter((r) => openStages.includes(r.stage));
+
+  const filled =
+    (await db
+      .select({
+        c: sql<number>`count(*)`,
+      })
+      .from(opportunityCandidates)
+      .innerJoin(
+        opportunities,
+        eq(opportunityCandidates.opportunityId, opportunities.id),
+      )
+      .where(
+        and(
+          inArray(opportunities.stage, [...PIPELINE_STAGES]),
+          inArray(opportunityCandidates.status, [...FILLED_STATUSES]),
+        ),
+      )
+      .get())?.c ?? 0;
+
+  // Won/lost over a rolling 90-day window, based on the closing stage move.
+  const cutoff = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+  const closed = await db
+    .select({
+      toStage: opportunityStageHistory.toStage,
+      c: sql<number>`count(distinct ${opportunityStageHistory.opportunityId})`,
+    })
+    .from(opportunityStageHistory)
+    .where(
+      and(
+        inArray(opportunityStageHistory.toStage, ['won', 'lost']),
+        sql`${opportunityStageHistory.createdAt} >= ${cutoff}`,
+      ),
+    )
+    .groupBy(opportunityStageHistory.toStage)
+    .all();
+
+  const followUpsDue =
+    (await db
+      .select({ c: sql<number>`count(*)` })
+      .from(opportunities)
+      .where(
+        and(
+          inArray(opportunities.stage, [...PIPELINE_STAGES]),
+          sql`${opportunities.nextStepDate} is not null and ${opportunities.nextStepDate} <= ${today()}`,
+        ),
+      )
+      .get())?.c ?? 0;
+
+  return {
+    byStage,
+    openCount: open.reduce((s, r) => s + r.count, 0),
+    openPositions: open.reduce((s, r) => s + r.positions, 0),
+    filledPositions: filled,
+    inInterview: byStage.interview?.count ?? 0,
+    won90d: closed.find((c) => c.toStage === 'won')?.c ?? 0,
+    lost90d: closed.find((c) => c.toStage === 'lost')?.c ?? 0,
+    onHold: byStage.hold?.count ?? 0,
+    followUpsDue,
+  };
+}
+
+/** Open opportunities whose next-step date has arrived or passed. */
+export async function getDueFollowUps() {
+  return await db
+    .select({
+      id: opportunities.id,
+      title: opportunities.title,
+      companyName: opportunities.companyName,
+      stage: opportunities.stage,
+      nextStep: opportunities.nextStep,
+      nextStepDate: opportunities.nextStepDate,
+      requiredCount: opportunities.requiredCount,
+      owner: opportunities.owner,
+    })
+    .from(opportunities)
+    .where(
+      and(
+        inArray(opportunities.stage, [...PIPELINE_STAGES]),
+        sql`${opportunities.nextStepDate} is not null and ${opportunities.nextStepDate} <= ${today()}`,
+      ),
+    )
+    .orderBy(opportunities.nextStepDate)
+    .all();
+}
+
+/**
+ * The stage an opportunity sat on before it was put on hold, so resuming
+ * returns it there rather than to the start of the pipeline.
+ */
+export async function getStageBeforeHold(
+  opportunityId: number,
+): Promise<string | null> {
+  const row = await db
+    .select({ fromStage: opportunityStageHistory.fromStage })
+    .from(opportunityStageHistory)
+    .where(
+      and(
+        eq(opportunityStageHistory.opportunityId, opportunityId),
+        eq(opportunityStageHistory.toStage, 'hold'),
+      ),
+    )
+    .orderBy(desc(opportunityStageHistory.id))
+    .get();
+
+  const from = row?.fromStage ?? null;
+  return from && (PIPELINE_STAGES as readonly string[]).includes(from) ? from : null;
+}
+
+export async function getCandidateOpportunityCounts() {
+  return await db
+    .select({
+      candidateId: opportunityCandidates.candidateId,
+      mapped: sql<number>`count(*)`,
+      active: sql<number>`sum(case when ${opportunityCandidates.status} not in ('rejected','withdrawn') then 1 else 0 end)`,
+    })
+    .from(opportunityCandidates)
+    .groupBy(opportunityCandidates.candidateId)
+    .all();
+}
+
+export async function getExpiringAgreements(days = 30) {
+  const cutoff = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  return await db
+    .select({
+      id: agreements.id,
+      title: agreements.title,
+      agreementNumber: agreements.agreementNumber,
+      projectName: projects.projectName,
+      clientName: clients.companyName,
+      value: agreements.value,
+      endDate: agreements.endDate,
+      renewalVersion: agreements.renewalVersion,
+    })
+    .from(agreements)
+    .innerJoin(projects, eq(agreements.projectId, projects.id))
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .where(and(eq(agreements.status, 'active'), sql`${agreements.endDate} <= ${cutoff}`))
+    .orderBy(agreements.endDate)
+    .all();
+}
