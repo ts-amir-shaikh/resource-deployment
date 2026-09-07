@@ -12,6 +12,7 @@ import {
   ReceiptIndianRupee,
   Target,
   UserSearch,
+  Sparkles,
   LogOut,
   Eye,
 } from 'lucide-react';
@@ -29,6 +30,7 @@ const ICONS: Record<string, LucideIcon> = {
   '/': LayoutDashboard,
   '/pipeline': Target,
   '/candidates': UserSearch,
+  '/agents': Sparkles,
   '/resources': Users,
   '/clients': Building2,
   '/projects': FolderKanban,

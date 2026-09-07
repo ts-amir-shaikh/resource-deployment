@@ -590,6 +590,66 @@ export const referrals = sqliteTable(
   }),
 );
 
+/* ── M19: Agent runs ───────────────────────────────────────── */
+
+export const AGENT_KINDS = [
+  'jd_evaluator',
+  'budgeting',
+  'resume_validation',
+  'resume_formatting',
+] as const;
+
+export const AGENT_RUN_STATUSES = ['running', 'complete', 'failed'] as const;
+
+/**
+ * One invocation of an agent.
+ *
+ * Recorded rather than fire-and-forget for three reasons: an evaluation about a
+ * real person should be re-readable rather than regenerated from memory, the
+ * spend needs attributing to whoever incurred it, and reopening a past result
+ * costs nothing where re-running costs money.
+ *
+ * Note what is absent: the resume file itself. Inputs hold what was typed or
+ * extracted, never the uploaded document — see the note in lib/agents/run.ts.
+ */
+export const agentRuns = sqliteTable(
+  'agent_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    agent: text('agent', { enum: AGENT_KINDS }).notNull(),
+    status: text('status', { enum: AGENT_RUN_STATUSES }).notNull().default('running'),
+
+    /** Who ran it — for attribution of both the judgement and the cost. */
+    userId: integer('user_id'),
+    userName: text('user_name').notNull(),
+
+    /** Optional links back to the record this was about. */
+    opportunityId: integer('opportunity_id').references(() => opportunities.id),
+    candidateId: integer('candidate_id').references(() => candidates.id),
+
+    /** A short label so a list of runs is readable at a glance. */
+    title: text('title').notNull(),
+    /** JSON: the prompt inputs, minus any uploaded file. */
+    inputs: text('inputs').notNull().default('{}'),
+    /** The model's answer, as markdown. */
+    output: text('output'),
+    error: text('error'),
+
+    model: text('model'),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    /** Estimated USD cost, computed from the token counts at run time. */
+    costUsd: real('cost_usd').notNull().default(0),
+
+    ...timestamps,
+  },
+  (t) => ({
+    agentIdx: index('agentrun_agent_idx').on(t.agent),
+    opportunityIdx: index('agentrun_opportunity_idx').on(t.opportunityId),
+    createdIdx: index('agentrun_created_idx').on(t.createdAt),
+  }),
+);
+
 /* ── Relations ─────────────────────────────────────────────── */
 
 export const referralsRelations = relations(referrals, ({ one }) => ({

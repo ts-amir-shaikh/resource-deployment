@@ -254,4 +254,26 @@ CREATE TABLE IF NOT EXISTS referrals (
 CREATE INDEX IF NOT EXISTS referral_opportunity_idx ON referrals(opportunity_id);
 CREATE INDEX IF NOT EXISTS referral_status_idx ON referrals(status);
 CREATE INDEX IF NOT EXISTS opp_listed_idx ON opportunities(is_listed);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agent TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running',
+  user_id INTEGER,
+  user_name TEXT NOT NULL,
+  opportunity_id INTEGER REFERENCES opportunities(id),
+  candidate_id INTEGER REFERENCES candidates(id),
+  title TEXT NOT NULL,
+  inputs TEXT NOT NULL DEFAULT '{}',
+  output TEXT,
+  error TEXT,
+  model TEXT,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS agentrun_agent_idx ON agent_runs(agent);
+CREATE INDEX IF NOT EXISTS agentrun_opportunity_idx ON agent_runs(opportunity_id);
+CREATE INDEX IF NOT EXISTS agentrun_created_idx ON agent_runs(created_at);
 `;

@@ -25,6 +25,7 @@ export const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', roles: BACK_OFFICE },
   { href: '/pipeline', label: 'Pipeline', roles: ALL },
   { href: '/candidates', label: 'Candidates', roles: ALL },
+  { href: '/agents', label: 'Agents', roles: ALL },
   { href: '/resources', label: 'Resources', roles: BACK_OFFICE },
   { href: '/clients', label: 'Clients', roles: BACK_OFFICE },
   { href: '/projects', label: 'Projects', roles: BACK_OFFICE },
@@ -51,6 +52,8 @@ export function landingPath(role: Role): string {
 const TA_READ_PREFIXES = [
   '/pipeline',
   '/candidates',
+  '/agents',
+  '/api/agents',
   '/api/opportunities',
   '/api/candidates',
   '/api/clients',
@@ -96,6 +99,8 @@ const TA_WRITE_RULES: WriteRule[] = [
   { test: (p) => /^\/api\/opportunities\/\d+\//.test(p), allow: true },
   { test: (p) => p.startsWith('/api/candidates'), allow: true },
   { test: (p) => p.startsWith('/api/referrals'), allow: true },
+  // Running agents is TA's daily work — JD analysis, resume vetting, formatting.
+  { test: (p) => p.startsWith('/api/agents'), allow: true },
 ];
 
 /** Can this role mutate at this path? (POST / PUT / PATCH / DELETE) */
