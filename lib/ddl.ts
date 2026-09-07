@@ -129,6 +129,8 @@ CREATE TABLE IF NOT EXISTS opportunities (
   required_count INTEGER NOT NULL DEFAULT 1,
   budget_min REAL,
   budget_max REAL,
+  hiring_budget_min REAL,
+  hiring_budget_max REAL,
   jd_content TEXT,
   working_days TEXT,
   working_hours TEXT,
@@ -206,4 +208,37 @@ CREATE TABLE IF NOT EXISTS opportunity_stage_history (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS oppstage_opp_idx ON opportunity_stage_history(opportunity_id);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS users_username_idx ON users(username);
+
+CREATE TABLE IF NOT EXISTS referrals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+  referrer_name TEXT NOT NULL,
+  referrer_email TEXT,
+  referrer_mobile TEXT,
+  candidate_name TEXT NOT NULL,
+  candidate_email TEXT,
+  candidate_mobile TEXT,
+  experience_years REAL,
+  notice_period_days INTEGER,
+  current_ctc REAL,
+  expected_ctc REAL,
+  notes TEXT,
+  status TEXT NOT NULL DEFAULT 'new',
+  converted_candidate_id INTEGER REFERENCES candidates(id),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS referral_opportunity_idx ON referrals(opportunity_id);
+CREATE INDEX IF NOT EXISTS referral_status_idx ON referrals(status);
 `;

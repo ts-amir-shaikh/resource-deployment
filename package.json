@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:seed": "tsx scripts/seed.ts",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "db:import": "tsx scripts/import.ts",
-    "db:clean": "tsx scripts/clean.ts"
+    "db:seed": "node --env-file=.env --import tsx scripts/seed.ts",
+    "db:migrate": "node --env-file=.env --import tsx scripts/migrate.ts",
+    "db:import": "node --env-file=.env --import tsx scripts/import.ts",
+    "db:clean": "node --env-file=.env --import tsx scripts/clean.ts",
+    "db:user": "node --env-file=.env --import tsx scripts/user.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

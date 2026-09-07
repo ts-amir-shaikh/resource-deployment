@@ -13,28 +13,40 @@ import {
   Target,
   UserSearch,
   LogOut,
+  Eye,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { navFor } from '@/lib/access';
+import { ROLE_LABELS, type Session } from '@/lib/auth';
 
-const NAV = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/pipeline', label: 'Pipeline', icon: Target },
-  { href: '/candidates', label: 'Candidates', icon: UserSearch },
-  { href: '/resources', label: 'Resources', icon: Users },
-  { href: '/clients', label: 'Clients', icon: Building2 },
-  { href: '/projects', label: 'Projects', icon: FolderKanban },
-  { href: '/deployments', label: 'Deployments', icon: Network },
-  { href: '/agreements', label: 'Agreements', icon: FileSignature },
-  { href: '/invoices', label: 'Invoices', icon: ReceiptIndianRupee },
-];
+/**
+ * Which links exist is decided by lib/access.ts — the same table middleware
+ * enforces — so the sidebar can never offer a page the request would reject.
+ * This map only supplies the icon for each.
+ */
+const ICONS: Record<string, LucideIcon> = {
+  '/': LayoutDashboard,
+  '/pipeline': Target,
+  '/candidates': UserSearch,
+  '/resources': Users,
+  '/clients': Building2,
+  '/projects': FolderKanban,
+  '/deployments': Network,
+  '/agreements': FileSignature,
+  '/invoices': ReceiptIndianRupee,
+};
 
-export default function Sidebar() {
+export default function Sidebar({ session }: { session: Session | null }) {
   // Both hooks run before any early return, per the rules of hooks.
   const pathname = usePathname();
   const router = useRouter();
 
   // The public stakeholder view and the sign-in screen get no app chrome.
   if (pathname.startsWith('/share/') || pathname === '/login') return null;
+  if (!session) return null;
+
+  const items = navFor(session.role);
 
   async function signOut() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -55,7 +67,8 @@ export default function Sidebar() {
       </div>
 
       <ul className="flex flex-1 flex-col gap-0.5 p-2">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label }) => {
+          const Icon = ICONS[href] ?? LayoutDashboard;
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
           return (
             <li key={href}>
@@ -78,6 +91,19 @@ export default function Sidebar() {
       </ul>
 
       <div className="border-t border-line p-2">
+        <div
+          className="mb-1 hidden px-2.5 py-1.5 md:block"
+          title={`${session.name} · ${ROLE_LABELS[session.role]}`}
+        >
+          <div className="truncate text-xs font-medium text-ink">{session.name}</div>
+          <div className="flex items-center gap-1 text-2xs text-ink3">
+            {session.role === 'management' && <Eye className="h-3 w-3 shrink-0" />}
+            <span className="truncate">
+              {ROLE_LABELS[session.role]}
+              {session.role === 'management' && ' · view only'}
+            </span>
+          </div>
+        </div>
         <button
           onClick={signOut}
           title="Sign out"

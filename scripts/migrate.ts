@@ -33,6 +33,16 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'agreement_id',
     ddl: 'ALTER TABLE deployments ADD COLUMN agreement_id INTEGER REFERENCES agreements(id)',
   },
+  {
+    table: 'opportunities',
+    column: 'hiring_budget_min',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN hiring_budget_min REAL',
+  },
+  {
+    table: 'opportunities',
+    column: 'hiring_budget_max',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN hiring_budget_max REAL',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

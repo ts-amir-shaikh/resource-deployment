@@ -8,9 +8,12 @@ import {
   opportunityStageHistory,
   candidates,
   clients,
+  referrals,
 } from '@/lib/schema';
 import { getStageBeforeHold } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
+import { requireSession } from '@/lib/session';
+import { stripClientBudget } from '@/lib/access';
 import OpportunityDetailClient from './client';
 
 export const dynamic = 'force-dynamic';
@@ -23,10 +26,12 @@ export default async function OpportunityDetailPage({
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-  // All six queries are keyed only on `id` from the route params — none
-  // depends on another's result — so they run concurrently instead of as
-  // six sequential round trips.
-  const [row, mapped, comments, history, pool, resumeTo] = await Promise.all([
+  const { role } = await requireSession();
+
+  // Every query here is keyed only on `id` from the route params — none
+  // depends on another's result — so they run concurrently instead of as a
+  // string of sequential round trips.
+  const [row, mapped, comments, history, pool, suggestions, resumeTo] = await Promise.all([
     db
       .select({
         id: opportunities.id,
@@ -45,6 +50,8 @@ export default async function OpportunityDetailPage({
         requiredCount: opportunities.requiredCount,
         budgetMin: opportunities.budgetMin,
         budgetMax: opportunities.budgetMax,
+        hiringBudgetMin: opportunities.hiringBudgetMin,
+        hiringBudgetMax: opportunities.hiringBudgetMax,
         jdContent: opportunities.jdContent,
         workingDays: opportunities.workingDays,
         workingHours: opportunities.workingHours,
@@ -110,6 +117,12 @@ export default async function OpportunityDetailPage({
       .from(candidates)
       .orderBy(candidates.name)
       .all(),
+    db
+      .select()
+      .from(referrals)
+      .where(eq(referrals.opportunityId, id))
+      .orderBy(desc(referrals.id))
+      .all(),
     getStageBeforeHold(id),
   ]);
 
@@ -118,14 +131,16 @@ export default async function OpportunityDetailPage({
   return (
     <OpportunityDetailClient
       opportunity={{
-        ...row,
+        ...stripClientBudget(role, row),
         isProspect: row.clientId === null,
         followUpDue: isFollowUpDue(row.nextStepDate),
       }}
+      role={role}
       mapped={mapped}
       comments={comments}
       history={history}
       pool={pool}
+      suggestions={suggestions}
       resumeTo={resumeTo ?? 'requirement'}
     />
   );

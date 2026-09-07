@@ -5,6 +5,9 @@ export type ApiError = {
   fields?: Record<string, string>;
   status: number;
   headroom?: number;
+  /** Set by the agreement-correction route when invoices already exist. */
+  requiresAcknowledgement?: boolean;
+  invoiceCount?: number;
 };
 
 /** Throws ApiError on non-2xx so callers can render field-level messages. */
@@ -30,6 +33,8 @@ export async function api<T = unknown>(
       message: payload?.error ?? `Request failed (${res.status})`,
       fields: payload?.fields,
       headroom: payload?.headroom,
+      requiresAcknowledgement: payload?.requiresAcknowledgement,
+      invoiceCount: payload?.invoiceCount,
       status: res.status,
     };
     throw err;

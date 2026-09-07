@@ -32,7 +32,7 @@ type Row = {
   expectedCtc: number | null;
   noticePeriodDays: number | null;
   location: string | null;
-  source: 'in_house' | 'partner' | 'agency';
+  source: 'in_house' | 'partner' | 'agency' | 'referral';
   sourceName: string | null;
   notes: string | null;
   mappedCount: number;
@@ -54,6 +54,7 @@ const SOURCE_TONE: Record<Row['source'], Tone> = {
   in_house: 'blue',
   partner: 'violet',
   agency: 'amber',
+  referral: 'green',
 };
 
 const BLANK = {
@@ -131,6 +132,7 @@ export default function CandidatesClient({
       in_house: initial.filter((c) => c.source === 'in_house').length,
       partner: initial.filter((c) => c.source === 'partner').length,
       agency: initial.filter((c) => c.source === 'agency').length,
+      referral: initial.filter((c) => c.source === 'referral').length,
     }),
     [initial],
   );
@@ -263,7 +265,7 @@ export default function CandidatesClient({
           />
         </div>
         <div className="flex rounded-md border border-line bg-surface p-0.5">
-          {(['all', 'in_house', 'partner', 'agency'] as const).map((s) => (
+          {(['all', 'in_house', 'partner', 'agency', 'referral'] as const).map((s) => (
             <button
               key={s}
               onClick={() => setSourceFilter(s)}
@@ -444,7 +446,7 @@ export default function CandidatesClient({
         <div className="space-y-5">
           <FormSection title="Source">
             <div className="flex rounded-md border border-line bg-surface p-0.5">
-              {(['in_house', 'partner', 'agency'] as const).map((s) => (
+              {(['in_house', 'partner', 'agency', 'referral'] as const).map((s) => (
                 <button
                   key={s}
                   type="button"

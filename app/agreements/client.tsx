@@ -127,6 +127,22 @@ export default function AgreementsClient({
   const [editBanner, setEditBanner] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
+  // Correction is the same modal in a second mode. It exists because Renew is
+  // the wrong tool for a typo: a renewal asserts the terms changed, and a
+  // correction says they were never right. Overwriting is the point, so it
+  // carries its own guard rails — see the /correct route.
+  const [editMode, setEditMode] = useState<'details' | 'correct'>('details');
+  const [correctForm, setCorrectForm] = useState({
+    scope: 'individual',
+    value: '',
+    startDate: '',
+    endDate: '',
+    correctionReason: '',
+  });
+  const [correctLines, setCorrectLines] = useState<ResourceLine[]>([]);
+  const [ackInvoices, setAckInvoices] = useState(false);
+  const [invoiceWarning, setInvoiceWarning] = useState<number | null>(null);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initial.filter((a) => {
@@ -199,15 +215,85 @@ export default function AgreementsClient({
     }
   }
 
-  function openEdit(a: Row) {
+  async function openEdit(a: Row) {
     setEditingRow(a);
+    setEditMode('details');
     setEditForm({
       agreementNumber: a.agreementNumber ?? '',
       title: a.title,
       notes: a.notes ?? '',
     });
+    setCorrectForm({
+      scope: a.scope,
+      value: String(a.value),
+      startDate: a.startDate,
+      endDate: a.endDate,
+      correctionReason: '',
+    });
+    setCorrectLines([]);
+    setAckInvoices(false);
+    setInvoiceWarning(null);
     setEditErrors({});
     setEditBanner(null);
+
+    // The rate card is not on the list row, so fetch it — the correction mode
+    // needs the current lines to edit rather than re-key from scratch.
+    try {
+      const detail = await api<{
+        resources: { resourceId: number; billingAmount: number }[];
+      }>(`/api/agreements/${a.id}`);
+      setCorrectLines(
+        detail.resources.length
+          ? detail.resources.map((r) => ({
+              resourceId: String(r.resourceId),
+              billingAmount: String(r.billingAmount),
+            }))
+          : [{ resourceId: '', billingAmount: '' }],
+      );
+    } catch {
+      setCorrectLines([{ resourceId: '', billingAmount: '' }]);
+    }
+  }
+
+  async function saveCorrection() {
+    if (!editingRow) return;
+    setEditSaving(true);
+    setEditErrors({});
+    setEditBanner(null);
+    try {
+      await api(`/api/agreements/${editingRow.id}/correct`, {
+        method: 'PUT',
+        json: {
+          agreementNumber: editForm.agreementNumber,
+          title: editForm.title,
+          notes: editForm.notes,
+          scope: correctForm.scope,
+          value: correctForm.value,
+          startDate: correctForm.startDate,
+          endDate: correctForm.endDate,
+          correctionReason: correctForm.correctionReason,
+          acknowledgeInvoices: ackInvoices,
+          resources: correctLines
+            .filter((l) => l.resourceId)
+            .map((l) => ({
+              resourceId: Number(l.resourceId),
+              billingAmount: Number(l.billingAmount) || 0,
+            })),
+        },
+      });
+      setEditingRow(null);
+      router.refresh();
+    } catch (e) {
+      if (isApiError(e) && e.fields) setEditErrors(e.fields);
+      // The route refuses once when invoices exist, and names how many. Show
+      // that as a checkbox to tick rather than a dead end.
+      if (isApiError(e) && e.requiresAcknowledgement) {
+        setInvoiceWarning(e.invoiceCount ?? 1);
+      }
+      setEditBanner(errorMessage(e));
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   async function saveEdit() {
@@ -680,8 +766,44 @@ export default function AgreementsClient({
         open={Boolean(editingRow)}
         onClose={() => setEditingRow(null)}
         title={editingRow ? `Edit: ${editingRow.title}` : 'Edit Agreement'}
-        description="Number, title and notes only — price, dates, scope and resources go through Renew"
+        description={
+          editMode === 'details'
+            ? 'Number, title and notes only — terms that genuinely changed go through Renew'
+            : 'Overwrite terms that were entered wrongly. Use Renew instead when the terms actually changed.'
+        }
+        wide={editMode === 'correct'}
       >
+        <div className="mb-4 flex rounded-md border border-line bg-surface p-0.5">
+          {(
+            [
+              ['details', 'Details'],
+              ['correct', 'Correct terms'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setEditMode(value);
+                setEditErrors({});
+                setEditBanner(null);
+              }}
+              className={`flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                editMode === value ? 'bg-brand text-white' : 'text-ink2 hover:text-ink'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {editMode === 'correct' && editingRow?.status === 'renewed' && (
+          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+            This version has been superseded by a renewal and cannot be corrected —
+            correct the latest version in the chain instead.
+          </div>
+        )}
+
         {editBanner && (
           <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
             {editBanner}
@@ -716,11 +838,174 @@ export default function AgreementsClient({
           </Field>
         </div>
 
-        {editingRow && (
+        {editMode === 'correct' && (
+          <div className="mt-5 space-y-5 border-t border-line pt-5">
+            <FormSection title="Corrected Terms">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Scope" required error={editErrors.scope}>
+                  <select
+                    className="input"
+                    value={correctForm.scope}
+                    onChange={(e) => {
+                      const scope = e.target.value;
+                      setCorrectForm({ ...correctForm, scope });
+                      // An individual agreement covers exactly one resource;
+                      // keep the first line rather than failing on save.
+                      if (scope === 'individual' && correctLines.length > 1) {
+                        setCorrectLines(correctLines.slice(0, 1));
+                      }
+                    }}
+                  >
+                    <option value="individual">Individual</option>
+                    <option value="team">Team</option>
+                  </select>
+                </Field>
+                <Field label="Value (₹/month)" required error={editErrors.value}>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    value={correctForm.value}
+                    onChange={(e) =>
+                      setCorrectForm({ ...correctForm, value: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="Start Date" required error={editErrors.startDate}>
+                  <input
+                    className="input"
+                    type="date"
+                    value={correctForm.startDate}
+                    onChange={(e) =>
+                      setCorrectForm({ ...correctForm, startDate: e.target.value })
+                    }
+                  />
+                </Field>
+                <Field label="End Date" required error={editErrors.endDate}>
+                  <input
+                    className="input"
+                    type="date"
+                    value={correctForm.endDate}
+                    onChange={(e) =>
+                      setCorrectForm({ ...correctForm, endDate: e.target.value })
+                    }
+                  />
+                </Field>
+              </div>
+            </FormSection>
+
+            <FormSection title="Resources Covered">
+              {editErrors.resources && (
+                <p className="mb-2 text-xs text-rose-600 dark:text-rose-400">
+                  {editErrors.resources}
+                </p>
+              )}
+              <div className="space-y-2">
+                {correctLines.map((line, i) => (
+                  <div key={i} className="flex gap-2">
+                    <select
+                      className="input flex-1"
+                      value={line.resourceId}
+                      onChange={(e) => {
+                        const next = [...correctLines];
+                        next[i] = { ...next[i], resourceId: e.target.value };
+                        setCorrectLines(next);
+                      }}
+                    >
+                      <option value="">Select a resource…</option>
+                      {resources.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                          {r.designation ? ` — ${r.designation}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="input w-40"
+                      type="number"
+                      min={0}
+                      placeholder="₹/month"
+                      value={line.billingAmount}
+                      onChange={(e) => {
+                        const next = [...correctLines];
+                        next[i] = { ...next[i], billingAmount: e.target.value };
+                        setCorrectLines(next);
+                      }}
+                    />
+                    {correctLines.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCorrectLines(correctLines.filter((_, x) => x !== i))
+                        }
+                        className="rounded-md border border-line px-2 text-ink3 hover:text-rose-600"
+                        aria-label="Remove resource line"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {correctForm.scope === 'team' ? (
+                <button
+                  type="button"
+                  className="btn-ghost mt-2"
+                  onClick={() =>
+                    setCorrectLines([...correctLines, { resourceId: '', billingAmount: '' }])
+                  }
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Resource
+                </button>
+              ) : (
+                <p className="mt-2 text-2xs text-ink3">
+                  An individual agreement covers exactly one resource
+                </p>
+              )}
+            </FormSection>
+
+            <Field
+              label="What was wrong?"
+              required
+              error={editErrors.correctionReason}
+              hint="Appended to the notes, so the overwrite is on record"
+            >
+              <input
+                className="input"
+                placeholder="e.g. billing rate keyed as 1,80,000 instead of 1,08,000"
+                value={correctForm.correctionReason}
+                onChange={(e) =>
+                  setCorrectForm({ ...correctForm, correctionReason: e.target.value })
+                }
+              />
+            </Field>
+
+            {invoiceWarning !== null && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                <input
+                  type="checkbox"
+                  checked={ackInvoices}
+                  onChange={(e) => setAckInvoices(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-line accent-[rgb(var(--accent))]"
+                />
+                <span>
+                  {invoiceWarning} invoice(s) were raised against this agreement.
+                  Correcting it does not change them — I will review those invoices
+                  afterwards.
+                </span>
+              </label>
+            )}
+          </div>
+        )}
+
+        {editingRow && editMode === 'details' && (
           <div className="mt-4 rounded-md border border-line bg-surface2 px-3 py-2 text-2xs text-ink3">
-            Need to change the value, dates, scope or resources instead? Close this and use{' '}
+            Terms that genuinely changed belong in{' '}
             <strong className="text-ink2">Renew</strong> — it creates a new version and
-            keeps this one in the history, rather than overwriting it.
+            keeps this one in the history. Use{' '}
+            <strong className="text-ink2">Correct terms</strong> above only when the
+            figures were entered wrongly to begin with.
           </div>
         )}
 
@@ -728,9 +1013,24 @@ export default function AgreementsClient({
           <button className="btn-ghost" onClick={() => setEditingRow(null)}>
             Cancel
           </button>
-          <button className="btn-primary" onClick={saveEdit} disabled={editSaving}>
-            {editSaving ? 'Saving…' : 'Save Changes'}
-          </button>
+          {editMode === 'details' ? (
+            <button className="btn-primary" onClick={saveEdit} disabled={editSaving}>
+              {editSaving ? 'Saving…' : 'Save Changes'}
+            </button>
+          ) : (
+            <button
+              className="btn-primary"
+              onClick={saveCorrection}
+              disabled={
+                editSaving ||
+                editingRow?.status === 'renewed' ||
+                !correctForm.correctionReason.trim() ||
+                (invoiceWarning !== null && !ackInvoices)
+              }
+            >
+              {editSaving ? 'Correcting…' : 'Apply Correction'}
+            </button>
+          )}
         </div>
       </Modal>
 

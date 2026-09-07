@@ -28,8 +28,12 @@ const optionalDate = z
   });
 
 const money = z.coerce.number().min(0, 'Cannot be negative');
+// z.literal('') comes FIRST in these unions on purpose. Number('') is 0, so
+// a leading z.coerce.number().min(0) happily matches an empty field and
+// stores 0 — which then renders as "₹0" where the value was simply never
+// entered. Matching the empty string first keeps blank meaning blank.
 const optionalMoney = z
-  .union([z.coerce.number().min(0), z.literal('')])
+  .union([z.literal(''), z.coerce.number().min(0)])
   .optional()
   .transform((v) => (v === '' || v === undefined ? undefined : Number(v)));
 
@@ -136,18 +140,21 @@ const agreementResourceEntry = z.object({
   billingAmount: money.default(0),
 });
 
-export const agreementSchema = z
-  .object({
-    projectId: z.coerce.number().int().positive('Select a project'),
-    agreementNumber: optionalStr,
-    title: z.string().trim().min(1, 'Title is required'),
-    scope: z.enum(['individual', 'team']),
-    value: money.refine((v) => v > 0, 'Agreement value is required'),
-    startDate: dateStr,
-    endDate: dateStr,
-    notes: optionalStr,
-    resources: z.array(agreementResourceEntry).default([]),
-  })
+/** The bare field shape, kept separate so correction can reuse it minus the
+ *  project. Refinements are applied by each schema below. */
+const agreementBase = z.object({
+  projectId: z.coerce.number().int().positive('Select a project'),
+  agreementNumber: optionalStr,
+  title: z.string().trim().min(1, 'Title is required'),
+  scope: z.enum(['individual', 'team']),
+  value: money.refine((v) => v > 0, 'Agreement value is required'),
+  startDate: dateStr,
+  endDate: dateStr,
+  notes: optionalStr,
+  resources: z.array(agreementResourceEntry).default([]),
+});
+
+export const agreementSchema = agreementBase
   .refine((d) => d.endDate >= d.startDate, {
     message: 'End date cannot be before the start date',
     path: ['endDate'],
@@ -170,6 +177,36 @@ export const agreementEditSchema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
   notes: optionalStr,
 });
+
+/**
+ * Correcting a mis-keyed agreement, as distinct from renewing one.
+ *
+ * Renewal is for terms that genuinely changed and must stay diffable; a
+ * correction is for terms that were never right in the first place, where a
+ * new version would record a change that never happened. Same shape as create,
+ * minus the project (moving an agreement between projects would orphan the
+ * deployments and invoices already hanging off it), plus an explicit
+ * acknowledgement when invoices already reference these numbers.
+ */
+export const agreementCorrectSchema = agreementBase
+  .omit({ projectId: true })
+  .extend({
+    /** Required when invoices exist — see the correct route. */
+    acknowledgeInvoices: z.coerce.boolean().default(false),
+    correctionReason: z.string().trim().min(1, 'Say what was wrong — it is kept in the notes'),
+  })
+  .refine((d) => d.endDate >= d.startDate, {
+    message: 'End date cannot be before the start date',
+    path: ['endDate'],
+  })
+  .refine((d) => d.resources.length > 0, {
+    message: 'Add at least one resource',
+    path: ['resources'],
+  })
+  .refine((d) => d.scope !== 'individual' || d.resources.length === 1, {
+    message: 'An individual agreement covers exactly one resource',
+    path: ['resources'],
+  });
 
 /* ── Invoices ──────────────────────────────────────────────── */
 
@@ -215,7 +252,7 @@ export const invoiceBulkAdvanceSchema = z.object({
 /* ── Opportunities ─────────────────────────────────────────── */
 
 const optionalInt = z
-  .union([z.coerce.number().int().min(0), z.literal('')])
+  .union([z.literal(''), z.coerce.number().int().min(0)])
   .optional()
   .transform((v) => (v === '' || v === undefined ? undefined : Number(v)));
 
@@ -249,6 +286,10 @@ export const opportunitySchema = z
       .max(999),
     budgetMin: optionalMoney,
     budgetMax: optionalMoney,
+    // What we can offer a candidate, as distinct from what the client pays.
+    // TA sees this in place of the client budget.
+    hiringBudgetMin: optionalMoney,
+    hiringBudgetMax: optionalMoney,
 
     jdContent: optionalStr,
     workingDays: optionalStr,
@@ -272,6 +313,13 @@ export const opportunitySchema = z
       d.budgetMax === undefined ||
       d.budgetMax >= d.budgetMin,
     { message: 'Max budget cannot be below min', path: ['budgetMax'] },
+  )
+  .refine(
+    (d) =>
+      d.hiringBudgetMin === undefined ||
+      d.hiringBudgetMax === undefined ||
+      d.hiringBudgetMax >= d.hiringBudgetMin,
+    { message: 'Max hiring budget cannot be below min', path: ['hiringBudgetMax'] },
   );
 
 export const stageMoveSchema = z
@@ -317,7 +365,7 @@ export const candidateSchema = z
     mobile: optionalStr,
     currentDesignation: optionalStr,
     experienceYears: z
-      .union([z.coerce.number().min(0).max(60), z.literal('')])
+      .union([z.literal(''), z.coerce.number().min(0).max(60)])
       .optional()
       .transform((v) => (v === '' || v === undefined ? undefined : Number(v))),
 
@@ -330,7 +378,7 @@ export const candidateSchema = z
     noticePeriodDays: optionalInt,
     location: optionalStr,
 
-    source: z.enum(['in_house', 'partner', 'agency']),
+    source: z.enum(['in_house', 'partner', 'agency', 'referral']),
     sourceName: optionalStr,
     resourceId: z
       .union([z.coerce.number().int().positive(), z.literal(''), z.null()])
@@ -341,7 +389,7 @@ export const candidateSchema = z
     notes: optionalStr,
   })
   .refine((d) => d.source === 'in_house' || Boolean(d.sourceName), {
-    message: 'Name the partner or agency this candidate came from',
+    message: 'Name the partner, agency, or person this candidate came from',
     path: ['sourceName'],
   })
   .refine((d) => d.source === 'in_house' || d.resourceId === undefined, {
@@ -392,3 +440,46 @@ export type ProjectInput = z.input<typeof projectSchema>;
 export type DeploymentInput = z.input<typeof deploymentSchema>;
 export type AgreementInput = z.input<typeof agreementSchema>;
 export type InvoiceInput = z.input<typeof invoiceSchema>;
+
+/* ── Referrals (public share link) ─────────────────────────── */
+
+const optionalYears = z
+  .union([z.literal(''), z.coerce.number().min(0).max(60)])
+  .optional()
+  .transform((v) => (v === '' || v === undefined ? undefined : Number(v)));
+
+const optionalDays = z
+  .union([z.literal(''), z.coerce.number().int().min(0).max(365)])
+  .optional()
+  .transform((v) => (v === '' || v === undefined ? undefined : Number(v)));
+
+/**
+ * Submitted through the unauthenticated share link, so it is validated
+ * strictly and stored in a staging table rather than written into the
+ * candidate pool. A contact route for both parties is mandatory: a
+ * recommendation nobody can follow up on is not worth a row.
+ */
+export const referralSchema = z
+  .object({
+    referrerName: z.string().trim().min(1, 'Your name is required'),
+    referrerEmail: optionalEmail,
+    referrerMobile: optionalStr,
+
+    candidateName: z.string().trim().min(1, "The candidate's name is required"),
+    candidateEmail: optionalEmail,
+    candidateMobile: optionalStr,
+
+    experienceYears: optionalYears,
+    noticePeriodDays: optionalDays,
+    currentCtc: optionalMoney,
+    expectedCtc: optionalMoney,
+    notes: optionalStr,
+  })
+  .refine((d) => Boolean(d.referrerEmail || d.referrerMobile), {
+    message: 'Add your email or mobile so we can get back to you',
+    path: ['referrerEmail'],
+  })
+  .refine((d) => Boolean(d.candidateEmail || d.candidateMobile), {
+    message: "Add the candidate's email or mobile",
+    path: ['candidateEmail'],
+  });

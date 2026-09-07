@@ -26,7 +26,12 @@ const authToken = process.env.TURSO_AUTH_TOKEN;
 const isLocal = url.startsWith('file:');
 
 // Child tables first, so foreign keys never block a delete.
+//
+// `users` is deliberately absent: sign-in accounts are not business data, and
+// wiping them mid-cutover would lock everyone out of the app they are about to
+// import into. Manage those with `npm run db:user`.
 const TABLES_IN_DELETE_ORDER = [
+  'referrals',
   'opportunity_stage_history',
   'opportunity_comments',
   'opportunity_candidates',
@@ -51,8 +56,16 @@ async function main() {
   console.log(`Target database: ${isLocal ? url : 'Turso (remote)'}`);
   console.log(commit ? 'Mode: COMMIT — this will delete rows.\n' : 'Mode: DRY RUN\n');
 
+  // A database that predates a table simply has nothing in it to delete —
+  // skip rather than failing the whole wipe on a missing table.
+  const { rows: present } = await client.execute(
+    "select name from sqlite_master where type='table'",
+  );
+  const existing = new Set(present.map((r) => String(r.name)));
+  const tables = TABLES_IN_DELETE_ORDER.filter((t) => existing.has(t));
+
   const counts: { table: string; rows: number }[] = [];
-  for (const table of TABLES_IN_DELETE_ORDER) {
+  for (const table of tables) {
     const { rows } = await client.execute(`SELECT count(*) AS c FROM ${table}`);
     counts.push({ table, rows: Number(rows[0].c) });
   }
@@ -102,7 +115,7 @@ async function main() {
   await client.execute('PRAGMA foreign_keys = OFF');
   console.log('\nDeleting…');
   try {
-    for (const table of TABLES_IN_DELETE_ORDER) {
+    for (const table of tables) {
       await client.execute(`DELETE FROM ${table}`);
       // Reset AUTOINCREMENT counters so freshly-imported data starts at id 1
       // again, matching what a human would expect after a full wipe.

@@ -25,6 +25,7 @@ import {
   ENGAGEMENT_LABELS,
   LIST_PAGE_SIZE,
 } from '@/lib/utils';
+import type { Role } from '@/lib/auth';
 import {
   PageHeader,
   Modal,
@@ -53,6 +54,8 @@ type Row = {
   requiredCount: number;
   budgetMin: number | null;
   budgetMax: number | null;
+  hiringBudgetMin: number | null;
+  hiringBudgetMax: number | null;
   stage: string;
   priority: string | null;
   owner: string | null;
@@ -103,6 +106,8 @@ const BLANK = {
   requiredCount: '1',
   budgetMin: '',
   budgetMax: '',
+  hiringBudgetMin: '',
+  hiringBudgetMax: '',
   jdContent: '',
   workingDays: '',
   workingHours: '',
@@ -115,11 +120,20 @@ const BLANK = {
 export default function PipelineClient({
   initial,
   clients,
+  role,
 }: {
   initial: Row[];
   clients: ClientOption[];
+  role: Role;
 }) {
   const router = useRouter();
+  // TA fulfils requirements but does not raise them, and Management is
+  // view-only — both match the policy middleware enforces, so the button is
+  // absent rather than present-and-rejected.
+  const canCreate = role === 'admin';
+  // TA sees what we can offer a candidate; everyone else sees what the client
+  // pays. The other figure is not in the payload at all for that role.
+  const showHiringBudget = role === 'ta';
   const [view, setView] = useState<'board' | 'list'>('board');
   const [search, setSearch] = useState('');
   const [showClosed, setShowClosed] = useState(false);
@@ -210,9 +224,11 @@ export default function PipelineClient({
         title="Pipeline"
         subtitle="Open requirements from first brief through to won"
         action={
-          <button className="btn-primary" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add Opportunity
-          </button>
+          canCreate ? (
+            <button className="btn-primary" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add Opportunity
+            </button>
+          ) : null
         }
       />
 
@@ -324,7 +340,8 @@ export default function PipelineClient({
                   : 'Add your first requirement to start tracking it through the pipeline.'
               }
               action={
-                !initial.length && (
+                !initial.length &&
+                canCreate && (
                   <button className="btn-primary" onClick={openCreate}>
                     <Plus className="h-4 w-4" /> Add Opportunity
                   </button>
@@ -449,7 +466,9 @@ export default function PipelineClient({
                   <th className="th">Stage</th>
                   <th className="th">Engagement</th>
                   <th className="th text-right">Filled</th>
-                  <th className="th text-right">Budget</th>
+                  <th className="th text-right">
+                    {showHiringBudget ? 'Hiring Budget' : 'Budget'}
+                  </th>
                   <th className="th">Next Step</th>
                 </tr>
               </thead>
@@ -505,7 +524,9 @@ export default function PipelineClient({
                     </td>
                     <td className="td text-right">
                       <span className="tnum text-ink2">
-                        {formatBudget(o.budgetMin, o.budgetMax)}
+                        {showHiringBudget
+                          ? formatBudget(o.hiringBudgetMin, o.hiringBudgetMax)
+                          : formatBudget(o.budgetMin, o.budgetMax)}
                       </span>
                     </td>
                     <td className="td">
@@ -753,6 +774,28 @@ export default function PipelineClient({
                   min={0}
                   value={form.budgetMax}
                   onChange={(e) => setForm({ ...form, budgetMax: e.target.value })}
+                />
+              </Field>
+              <Field
+                label="Hiring Budget Min (₹/month)"
+                error={errors.hiringBudgetMin}
+                hint="What TA can offer a candidate — shown to the TA team in place of the client budget"
+              >
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  value={form.hiringBudgetMin}
+                  onChange={(e) => setForm({ ...form, hiringBudgetMin: e.target.value })}
+                />
+              </Field>
+              <Field label="Hiring Budget Max (₹/month)" error={errors.hiringBudgetMax}>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  value={form.hiringBudgetMax}
+                  onChange={(e) => setForm({ ...form, hiringBudgetMax: e.target.value })}
                 />
               </Field>
               <Field label="Owner" error={errors.owner}>

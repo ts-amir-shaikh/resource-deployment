@@ -21,12 +21,16 @@ export async function importResources(
   opts: { commit: boolean; update: boolean },
 ) {
   const rawRows = readCsv(path);
-  checkHeaders(rawRows, ['name', 'email']);
+  checkHeaders(rawRows, ['name']);
 
-  const { valid, invalid } = validateRows(rawRows, resourceSchema, (raw: Row) =>
+  // Emails are generated, not read from the CSV: resource+1@techstalwarts.com,
+  // resource+2@techstalwarts.com, … one per data row, in file order.
+  // (rowNum is the spreadsheet row — 2 for the first data row — so rowNum - 1
+  //  gives the 1-based sequence number.)
+  const { valid, invalid } = validateRows(rawRows, resourceSchema, (raw: Row, rowNum: number) =>
     blankToUndefined({
       name: raw.name,
-      email: raw.email,
+      email: `resource+${rowNum - 1}@techstalwarts.com`,
       mobile: raw.mobile,
       designation: raw.designation,
       currentCtc: cleanNumber(raw.currentCtc),

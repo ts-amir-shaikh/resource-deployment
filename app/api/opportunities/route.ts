@@ -8,6 +8,8 @@ import {
 } from '@/lib/schema';
 import { opportunitySchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
+import { getSession } from '@/lib/session';
+import { stripClientBudgetAll } from '@/lib/access';
 import { getOpportunityCandidateCounts, newShareToken } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
 
@@ -60,6 +62,8 @@ export async function GET(req: Request) {
         requiredCount: opportunities.requiredCount,
         budgetMin: opportunities.budgetMin,
         budgetMax: opportunities.budgetMax,
+        hiringBudgetMin: opportunities.hiringBudgetMin,
+        hiringBudgetMax: opportunities.hiringBudgetMax,
         stage: opportunities.stage,
         priority: opportunities.priority,
         owner: opportunities.owner,
@@ -79,8 +83,12 @@ export async function GET(req: Request) {
 
     const counts = await getOpportunityCandidateCounts();
 
+    // See the detail route: stripping only in the page would leave the client
+    // budget one fetch away for a role that is not allowed to see it.
+    const { role } = (await getSession()) ?? { role: 'ta' as const };
+
     return ok(
-      rows.map((o) => {
+      stripClientBudgetAll(role, rows).map((o) => {
         const c = counts.find((x) => x.opportunityId === o.id);
         return {
           ...o,
@@ -128,6 +136,8 @@ export async function POST(req: Request) {
           requiredCount: data.requiredCount,
           budgetMin: data.budgetMin,
           budgetMax: data.budgetMax,
+          hiringBudgetMin: data.hiringBudgetMin,
+          hiringBudgetMax: data.hiringBudgetMax,
           jdContent: data.jdContent,
           workingDays: data.workingDays,
           workingHours: data.workingHours,

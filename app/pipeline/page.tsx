@@ -3,11 +3,15 @@ import { db } from '@/lib/db';
 import { opportunities, clients } from '@/lib/schema';
 import { getOpportunityCandidateCounts } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
+import { requireSession } from '@/lib/session';
+import { stripClientBudgetAll } from '@/lib/access';
 import PipelineClient from './client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PipelinePage() {
+  const { role } = await requireSession();
+
   // Independent of each other — run concurrently.
   const [rows, counts, clientOptions] = await Promise.all([
     db
@@ -27,6 +31,8 @@ export default async function PipelinePage() {
         requiredCount: opportunities.requiredCount,
         budgetMin: opportunities.budgetMin,
         budgetMax: opportunities.budgetMax,
+        hiringBudgetMin: opportunities.hiringBudgetMin,
+        hiringBudgetMax: opportunities.hiringBudgetMax,
         stage: opportunities.stage,
         priority: opportunities.priority,
         owner: opportunities.owner,
@@ -48,7 +54,11 @@ export default async function PipelinePage() {
       .all(),
   ]);
 
-  const initial = rows.map((o) => {
+  // What the client pays never reaches a TA browser — stripped here, on the
+  // server, rather than hidden in the markup.
+  const visible = stripClientBudgetAll(role, rows);
+
+  const initial = visible.map((o) => {
     const c = counts.find((x) => x.opportunityId === o.id);
     return {
       ...o,
@@ -59,5 +69,5 @@ export default async function PipelinePage() {
     };
   });
 
-  return <PipelineClient initial={initial} clients={clientOptions} />;
+  return <PipelineClient initial={initial} clients={clientOptions} role={role} />;
 }

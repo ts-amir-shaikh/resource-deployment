@@ -285,8 +285,12 @@ export const opportunities = sqliteTable(
     engagementType: text('engagement_type', { enum: ENGAGEMENT_TYPES }),
 
     requiredCount: integer('required_count').notNull().default(1),
+    /** What the client pays. Hidden from the TA role — stripped server-side. */
     budgetMin: real('budget_min'),
     budgetMax: real('budget_max'),
+    /** What TA can offer a candidate. Shown to TA in place of client budget. */
+    hiringBudgetMin: real('hiring_budget_min'),
+    hiringBudgetMax: real('hiring_budget_max'),
 
     jdContent: text('jd_content'),
     workingDays: text('working_days'),
@@ -317,7 +321,7 @@ export const opportunities = sqliteTable(
 
 /* ── M9: Candidates ────────────────────────────────────────── */
 
-export const CANDIDATE_SOURCES = ['in_house', 'partner', 'agency'] as const;
+export const CANDIDATE_SOURCES = ['in_house', 'partner', 'agency', 'referral'] as const;
 
 export const candidates = sqliteTable(
   'candidates',
@@ -434,7 +438,85 @@ export const opportunityStageHistory = sqliteTable(
   }),
 );
 
+/* ── M10: Users & roles ────────────────────────────────────── */
+
+export const USER_ROLES = ['admin', 'management', 'ta'] as const;
+
+export const users = sqliteTable(
+  'users',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    username: text('username').notNull().unique(),
+    /** PBKDF2-SHA256, hex encoded. Never a plaintext password. */
+    passwordHash: text('password_hash').notNull(),
+    passwordSalt: text('password_salt').notNull(),
+    role: text('role', { enum: USER_ROLES }).notNull().default('admin'),
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    ...timestamps,
+  },
+  (t) => ({
+    usernameIdx: index('users_username_idx').on(t.username),
+  }),
+);
+
+/* ── M13: Referrals from the public share link ─────────────── */
+
+export const REFERRAL_STATUSES = ['new', 'accepted', 'dismissed'] as const;
+
+/**
+ * A candidate recommendation submitted through the public share link.
+ *
+ * Deliberately a staging inbox rather than a direct write into `candidates`:
+ * that endpoint is unauthenticated and the link is forwardable, so anything
+ * it wrote straight into the candidate pool would be unreviewed. Accepting a
+ * referral is an explicit action that creates the real candidate row.
+ */
+export const referrals = sqliteTable(
+  'referrals',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    opportunityId: integer('opportunity_id')
+      .notNull()
+      .references(() => opportunities.id, { onDelete: 'cascade' }),
+
+    referrerName: text('referrer_name').notNull(),
+    referrerEmail: text('referrer_email'),
+    referrerMobile: text('referrer_mobile'),
+
+    candidateName: text('candidate_name').notNull(),
+    candidateEmail: text('candidate_email'),
+    candidateMobile: text('candidate_mobile'),
+
+    experienceYears: real('experience_years'),
+    noticePeriodDays: integer('notice_period_days'),
+    currentCtc: real('current_ctc'),
+    expectedCtc: real('expected_ctc'),
+    notes: text('notes'),
+
+    status: text('status', { enum: REFERRAL_STATUSES }).notNull().default('new'),
+    /** Set when accepted into the candidate pool. */
+    convertedCandidateId: integer('converted_candidate_id').references(() => candidates.id),
+    ...timestamps,
+  },
+  (t) => ({
+    opportunityIdx: index('referral_opportunity_idx').on(t.opportunityId),
+    statusIdx: index('referral_status_idx').on(t.status),
+  }),
+);
+
 /* ── Relations ─────────────────────────────────────────────── */
+
+export const referralsRelations = relations(referrals, ({ one }) => ({
+  opportunity: one(opportunities, {
+    fields: [referrals.opportunityId],
+    references: [opportunities.id],
+  }),
+  convertedCandidate: one(candidates, {
+    fields: [referrals.convertedCandidateId],
+    references: [candidates.id],
+  }),
+}));
 
 export const clientsRelations = relations(clients, ({ many }) => ({
   projects: many(projects),

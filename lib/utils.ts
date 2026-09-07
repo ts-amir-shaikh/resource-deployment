@@ -126,6 +126,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   in_house: 'In-house',
   partner: 'Partner',
   agency: 'Agency',
+  referral: 'Referral',
 };
 
 export const WORK_MODE_LABELS: Record<string, string> = {

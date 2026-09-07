@@ -14,10 +14,14 @@ import {
   Pencil,
   Rocket,
   CalendarClock,
+  Inbox,
+  UserPlus,
+  X,
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import {
   formatINR,
+  formatINRCompact,
   formatDate,
   formatExperience,
   formatBudget,
@@ -31,6 +35,7 @@ import {
   ENGAGEMENT_LABELS,
 } from '@/lib/utils';
 import { Modal, Field, Badge, FormSection, TableShell, type Tone } from '@/components/ui';
+import type { Role } from '@/lib/auth';
 
 type Opportunity = {
   id: number;
@@ -49,6 +54,8 @@ type Opportunity = {
   requiredCount: number;
   budgetMin: number | null;
   budgetMax: number | null;
+  hiringBudgetMin: number | null;
+  hiringBudgetMax: number | null;
   jdContent: string | null;
   workingDays: string | null;
   workingHours: string | null;
@@ -101,6 +108,24 @@ type StageEvent = {
   createdAt: string;
 };
 
+type Suggestion = {
+  id: number;
+  referrerName: string;
+  referrerEmail: string | null;
+  referrerMobile: string | null;
+  candidateName: string;
+  candidateEmail: string | null;
+  candidateMobile: string | null;
+  experienceYears: number | null;
+  noticePeriodDays: number | null;
+  currentCtc: number | null;
+  expectedCtc: number | null;
+  notes: string | null;
+  status: string;
+  convertedCandidateId: number | null;
+  createdAt: string;
+};
+
 type PoolCandidate = {
   id: number;
   name: string;
@@ -141,16 +166,53 @@ export default function OpportunityDetailClient({
   comments,
   history,
   pool,
+  suggestions,
   resumeTo,
+  role,
 }: {
   opportunity: Opportunity;
   mapped: Mapped[];
   comments: Comment[];
   history: StageEvent[];
   pool: PoolCandidate[];
+  suggestions: Suggestion[];
   resumeTo: string;
+  role: Role;
 }) {
   const router = useRouter();
+  // Mirrors the policy middleware enforces, so the UI never offers an action
+  // the request would reject.
+  const readOnly = role === 'management';
+  const canEditRequirement = role === 'admin';
+  const showHiringBudget = role === 'ta';
+
+  // Stakeholder replies from the share link are kept in their own thread —
+  // mixing outside suggestions into the internal running commentary buries
+  // both. Referred profiles are separate again, in the Suggestions inbox.
+  const [thread, setThread] = useState<'internal' | 'stakeholder'>('internal');
+  const internalComments = comments.filter((c) => c.authorRole !== 'stakeholder');
+  const stakeholderComments = comments.filter((c) => c.authorRole === 'stakeholder');
+  const shownComments = thread === 'internal' ? internalComments : stakeholderComments;
+
+  const [suggestionBusy, setSuggestionBusy] = useState<number | null>(null);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const newSuggestions = suggestions.filter((s) => s.status === 'new');
+
+  async function actOnSuggestion(id: number, action: 'accept' | 'dismiss') {
+    setSuggestionBusy(id);
+    setSuggestionError(null);
+    try {
+      await api(`/api/referrals/${id}`, {
+        method: 'PATCH',
+        json: { action, mapToOpportunity: action === 'accept' },
+      });
+      router.refresh();
+    } catch (e) {
+      setSuggestionError(errorMessage(e));
+    } finally {
+      setSuggestionBusy(null);
+    }
+  }
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -463,7 +525,12 @@ export default function OpportunityDetailClient({
               {[
                 ['Experience', formatExperience(o.experienceMin, o.experienceMax)],
                 ['Positions', `${filled} filled of ${o.requiredCount}`],
-                ['Budget', formatBudget(o.budgetMin, o.budgetMax)],
+                showHiringBudget
+                  ? [
+                      'Hiring Budget',
+                      formatBudget(o.hiringBudgetMin, o.hiringBudgetMax),
+                    ]
+                  : ['Budget', formatBudget(o.budgetMin, o.budgetMax)],
                 ['Work Mode', o.workMode ? WORK_MODE_LABELS[o.workMode] : '—'],
                 ['Location', o.location ?? '—'],
                 ['Timezone', o.timezone ?? '—'],
@@ -613,16 +680,144 @@ export default function OpportunityDetailClient({
 
         {/* Right column */}
         <div className="space-y-6">
-          {/* Comments */}
+          {/* Referred profiles awaiting review */}
           <section className="card">
             <header className="flex items-center gap-2 border-b border-line px-4 py-3">
-              <MessageSquare className="h-4 w-4 text-ink3" />
+              <Inbox className="h-4 w-4 text-ink3" />
               <h2 className="text-sm font-semibold text-ink">
-                Discussion
-                <span className="ml-1.5 font-normal text-ink3">{comments.length}</span>
+                Suggested Profiles
+                {newSuggestions.length > 0 && (
+                  <span className="ml-1.5 font-normal text-ink3">
+                    {newSuggestions.length} new
+                  </span>
+                )}
               </h2>
             </header>
 
+            {suggestionError && (
+              <p className="border-b border-line px-4 py-2 text-xs text-rose-600 dark:text-rose-400">
+                {suggestionError}
+              </p>
+            )}
+
+            <ul className="max-h-96 divide-y divide-line overflow-y-auto">
+              {suggestions.map((sg) => (
+                <li key={sg.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-semibold text-ink">
+                      {sg.candidateName}
+                    </span>
+                    {sg.status === 'new' && <Badge tone="amber">New</Badge>}
+                    {sg.status === 'accepted' && <Badge tone="green">In pool</Badge>}
+                    {sg.status === 'dismissed' && (
+                      <Badge tone="neutral">Dismissed</Badge>
+                    )}
+                  </div>
+
+                  <div className="mt-1 text-2xs text-ink3">
+                    Referred by {sg.referrerName}
+                    {sg.referrerEmail && ` · ${sg.referrerEmail}`}
+                    {sg.referrerMobile && ` · ${sg.referrerMobile}`}
+                  </div>
+
+                  <div className="mt-1.5 space-y-0.5 text-xs text-ink2">
+                    {(sg.candidateEmail || sg.candidateMobile) && (
+                      <div className="tnum">
+                        {[sg.candidateEmail, sg.candidateMobile]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    )}
+                    <div className="tnum">
+                      {[
+                        sg.experienceYears !== null && `${sg.experienceYears} yrs`,
+                        sg.noticePeriodDays !== null && `${sg.noticePeriodDays}d notice`,
+                        sg.currentCtc !== null && `current ${formatINRCompact(sg.currentCtc)}`,
+                        sg.expectedCtc !== null &&
+                          `expected ${formatINRCompact(sg.expectedCtc)}`,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </div>
+                  </div>
+
+                  {sg.notes && (
+                    <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-ink2">
+                      {sg.notes}
+                    </p>
+                  )}
+
+                  {sg.status === 'new' && !readOnly && (
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        className="btn px-2 py-1 text-xs"
+                        onClick={() => actOnSuggestion(sg.id, 'accept')}
+                        disabled={suggestionBusy === sg.id}
+                      >
+                        <UserPlus className="h-3.5 w-3.5" /> Add to pool
+                      </button>
+                      <button
+                        className="btn-ghost px-2 py-1 text-xs"
+                        onClick={() => actOnSuggestion(sg.id, 'dismiss')}
+                        disabled={suggestionBusy === sg.id}
+                      >
+                        <X className="h-3.5 w-3.5" /> Dismiss
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="tnum mt-1 text-2xs text-ink3">
+                    {formatDate(sg.createdAt.slice(0, 10))}
+                  </div>
+                </li>
+              ))}
+              {suggestions.length === 0 && (
+                <li className="px-4 py-6 text-center text-sm text-ink3">
+                  Profiles recommended through the share link land here for review
+                  before they join the candidate pool.
+                </li>
+              )}
+            </ul>
+          </section>
+
+          {/* Comments */}
+          <section className="card">
+            <header className="border-b border-line px-4 py-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-ink3" />
+                <h2 className="text-sm font-semibold text-ink">
+                  Discussion
+                  <span className="ml-1.5 font-normal text-ink3">{comments.length}</span>
+                </h2>
+              </div>
+              <div className="mt-2.5 flex rounded-md border border-line bg-surface p-0.5">
+                {(
+                  [
+                    ['internal', 'Team', internalComments.length],
+                    ['stakeholder', 'Stakeholder', stakeholderComments.length],
+                  ] as const
+                ).map(([value, label, count]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setThread(value)}
+                    className={`flex-1 rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                      thread === value ? 'bg-brand text-white' : 'text-ink2 hover:text-ink'
+                    }`}
+                  >
+                    {label}
+                    <span className="ml-1.5 opacity-60">{count}</span>
+                  </button>
+                ))}
+              </div>
+            </header>
+
+            {thread === 'stakeholder' ? (
+              <p className="border-b border-line px-4 py-2.5 text-2xs text-ink3">
+                Notes left by people holding the share link. Reply over email — this
+                thread is one-way.
+              </p>
+            ) : readOnly ? null : (
             <div className="space-y-2 border-b border-line p-3">
               {commentError && (
                 <p className="text-xs text-rose-600 dark:text-rose-400">{commentError}</p>
@@ -665,9 +860,10 @@ export default function OpportunityDetailClient({
                 Post
               </button>
             </div>
+            )}
 
             <ul className="max-h-96 divide-y divide-line overflow-y-auto">
-              {comments.map((c) => (
+              {shownComments.map((c) => (
                 <li key={c.id} className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-xs font-semibold text-ink">{c.author}</span>
@@ -685,9 +881,11 @@ export default function OpportunityDetailClient({
                   </div>
                 </li>
               ))}
-              {comments.length === 0 && (
+              {shownComments.length === 0 && (
                 <li className="px-4 py-6 text-center text-sm text-ink3">
-                  No comments yet.
+                  {thread === 'stakeholder'
+                    ? 'No notes from the share link yet.'
+                    : 'No comments yet.'}
                 </li>
               )}
             </ul>

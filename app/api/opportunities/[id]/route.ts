@@ -10,6 +10,8 @@ import {
 } from '@/lib/schema';
 import { opportunitySchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
+import { getSession } from '@/lib/session';
+import { stripClientBudget } from '@/lib/access';
 import { isFollowUpDue } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -39,6 +41,8 @@ export async function GET(_req: Request, { params }: Ctx) {
         requiredCount: opportunities.requiredCount,
         budgetMin: opportunities.budgetMin,
         budgetMax: opportunities.budgetMax,
+        hiringBudgetMin: opportunities.hiringBudgetMin,
+        hiringBudgetMax: opportunities.hiringBudgetMax,
         jdContent: opportunities.jdContent,
         workingDays: opportunities.workingDays,
         workingHours: opportunities.workingHours,
@@ -98,8 +102,12 @@ export async function GET(_req: Request, { params }: Ctx) {
       .orderBy(desc(opportunityStageHistory.id))
       .all();
 
+    // The pages strip this too, but the API is reachable on its own — a role
+    // that cannot see the client budget on screen must not be able to curl it.
+    const { role } = (await getSession()) ?? { role: 'ta' as const };
+
     return ok({
-      ...row,
+      ...stripClientBudget(role, row),
       isProspect: row.clientId === null,
       followUpDue: isFollowUpDue(row.nextStepDate),
       candidates: mapped,
@@ -143,6 +151,8 @@ export async function PUT(req: Request, { params }: Ctx) {
         requiredCount: data.requiredCount,
         budgetMin: data.budgetMin,
         budgetMax: data.budgetMax,
+        hiringBudgetMin: data.hiringBudgetMin,
+        hiringBudgetMax: data.hiringBudgetMax,
         jdContent: data.jdContent,
         workingDays: data.workingDays,
         workingHours: data.workingHours,

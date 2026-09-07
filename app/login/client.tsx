@@ -5,12 +5,17 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Lock, LogIn } from 'lucide-react';
 import { api, errorMessage } from '@/lib/client';
 import { Field } from '@/components/ui';
+import { canAccess } from '@/lib/access';
+import type { Role } from '@/lib/auth';
 
-export default function LoginClient() {
+type LoginResult = { role: Role; name: string; landing: string };
+
+export default function LoginClient({ hasAccounts }: { hasAccounts: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get('next') || '/';
 
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -20,9 +25,17 @@ export default function LoginClient() {
     setBusy(true);
     setError(null);
     try {
-      await api('/api/auth/login', { method: 'POST', json: { password } });
+      const result = (await api('/api/auth/login', {
+        method: 'POST',
+        json: hasAccounts ? { username, password } : { password },
+      })) as LoginResult;
+
+      // A TA who was bounced to /login from a page their role can't open must
+      // not be sent straight back to it — that would loop.
+      const target = canAccess(result.role, next.split('?')[0]) ? next : result.landing;
+
       // Full navigation so the new cookie is picked up by middleware.
-      router.replace(next);
+      router.replace(target);
       router.refresh();
     } catch (err) {
       setError(errorMessage(err));
@@ -51,8 +64,9 @@ export default function LoginClient() {
             Sign in
           </h1>
           <p className="mt-1 text-sm text-ink2">
-            This workspace holds client and compensation data. Enter the team
-            password to continue.
+            {hasAccounts
+              ? 'This workspace holds client and compensation data. Sign in with your account.'
+              : 'This workspace holds client and compensation data. Enter the team password to continue.'}
           </p>
 
           <form onSubmit={submit} className="mt-5 space-y-3">
@@ -62,11 +76,23 @@ export default function LoginClient() {
               </div>
             )}
 
+            {hasAccounts && (
+              <Field label="Username" required>
+                <input
+                  className="input"
+                  autoFocus
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </Field>
+            )}
+
             <Field label="Password" required>
               <input
                 className="input"
                 type="password"
-                autoFocus
+                autoFocus={!hasAccounts}
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -76,7 +102,7 @@ export default function LoginClient() {
             <button
               type="submit"
               className="btn-primary w-full"
-              disabled={busy || !password}
+              disabled={busy || !password || (hasAccounts && !username)}
             >
               <LogIn className="h-4 w-4" />
               {busy ? 'Signing in…' : 'Sign in'}
