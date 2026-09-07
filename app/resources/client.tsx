@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Plus, Pencil, Trash2, Search, Users, X } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import { formatMoney, formatDate, parseSkills, LIST_PAGE_SIZE } from '@/lib/utils';
@@ -262,7 +263,12 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
                 {pageItems.map((r) => (
                   <tr key={r.id} className="hover:bg-surface2/50">
                     <td className="td">
-                      <div className="font-medium text-ink">{r.name}</div>
+                      <Link
+                        href={`/resources/${r.id}`}
+                        className="font-medium text-ink hover:text-brand"
+                      >
+                        {r.name}
+                      </Link>
                       <div className="text-2xs text-ink3">
                         {r.designation ?? '—'} · {r.email}
                       </div>

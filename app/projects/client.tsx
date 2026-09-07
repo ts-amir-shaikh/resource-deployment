@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Plus, Pencil, Trash2, Search, FolderKanban } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import { formatMoneyMulti, LIST_PAGE_SIZE, type MoneyByCurrency } from '@/lib/utils';
@@ -222,7 +223,12 @@ export default function ProjectsClient({
                 {pageItems.map((p) => (
                   <tr key={p.id} className="hover:bg-surface2/50">
                     <td className="td">
-                      <div className="font-medium text-ink">{p.projectName}</div>
+                      <Link
+                        href={`/projects/${p.id}`}
+                        className="font-medium text-ink hover:text-brand"
+                      >
+                        {p.projectName}
+                      </Link>
                     </td>
                     <td className="td">{p.clientName}</td>
                     <td className="td">

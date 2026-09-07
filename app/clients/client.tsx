@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Plus, Pencil, Trash2, Search, Building2, Mail, Phone } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import { formatMoneyMulti, LIST_PAGE_SIZE, type MoneyByCurrency } from '@/lib/utils';
@@ -230,7 +231,12 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
                 {pageItems.map((c) => (
                   <tr key={c.id} className="hover:bg-surface2/50">
                     <td className="td">
-                      <div className="font-medium text-ink">{c.companyName}</div>
+                      <Link
+                        href={`/clients/${c.id}`}
+                        className="font-medium text-ink hover:text-brand"
+                      >
+                        {c.companyName}
+                      </Link>
                       {c.altSpocName && (
                         <div className="text-2xs text-ink3">
                           Alt: {c.altSpocName}

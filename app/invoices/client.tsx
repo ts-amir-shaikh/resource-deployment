@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Plus,
   Pencil,
@@ -623,9 +624,12 @@ export default function InvoicesClient({
                       />
                     </td>
                     <td className="td">
-                      <div className="font-mono text-xs text-ink">
+                      <Link
+                        href={`/invoices/${i.id}`}
+                        className="block font-mono text-xs text-ink hover:text-brand"
+                      >
                         {i.invoiceNumber ?? `#${i.id}`}
-                      </div>
+                      </Link>
                       <div className="text-2xs text-ink3">
                         {i.agreementNumber ?? (i.agreementId ? i.agreementTitle : 'No PO')}
                       </div>

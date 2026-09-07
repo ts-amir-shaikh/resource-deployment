@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Plus, Pencil, Search, Network, CircleStop, AlertTriangle } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import {
@@ -424,7 +425,12 @@ export default function DeploymentsClient({
                     className={`hover:bg-surface2/50 ${d.status === 'ended' ? 'opacity-60' : ''}`}
                   >
                     <td className="td">
-                      <div className="font-medium text-ink">{d.resourceName}</div>
+                      <Link
+                        href={`/deployments/${d.id}`}
+                        className="font-medium text-ink hover:text-brand"
+                      >
+                        {d.resourceName}
+                      </Link>
                       <div className="text-2xs text-ink3">{d.designation ?? '—'}</div>
                     </td>
                     <td className="td">

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Plus,
   Pencil,
@@ -466,7 +467,12 @@ export default function AgreementsClient({
                     <tr key={a.id} className="hover:bg-surface2/50">
                       <td className="td">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-ink">{a.title}</span>
+                          <Link
+                            href={`/agreements/${a.id}`}
+                            className="font-medium text-ink hover:text-brand"
+                          >
+                            {a.title}
+                          </Link>
                           {a.renewalVersion > 1 && (
                             <Badge tone="violet">v{a.renewalVersion}</Badge>
                           )}
