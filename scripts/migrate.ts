@@ -65,6 +65,39 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'fx_rate_to_inr',
     ddl: 'ALTER TABLE invoices ADD COLUMN fx_rate_to_inr REAL NOT NULL DEFAULT 1',
   },
+  // Phase 5 — public job board. is_listed defaults to 0, so applying this
+  // migration publishes nothing: every existing requirement stays private
+  // until somebody lists it deliberately.
+  {
+    table: 'opportunities',
+    column: 'is_listed',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN is_listed INTEGER NOT NULL DEFAULT 0',
+  },
+  {
+    table: 'opportunities',
+    column: 'listed_at',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN listed_at TEXT',
+  },
+  {
+    table: 'opportunities',
+    column: 'public_title',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN public_title TEXT',
+  },
+  {
+    table: 'opportunities',
+    column: 'public_company_label',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN public_company_label TEXT',
+  },
+  {
+    table: 'opportunities',
+    column: 'show_client_name',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN show_client_name INTEGER NOT NULL DEFAULT 0',
+  },
+  {
+    table: 'referrals',
+    column: 'kind',
+    ddl: "ALTER TABLE referrals ADD COLUMN kind TEXT NOT NULL DEFAULT 'referral'",
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

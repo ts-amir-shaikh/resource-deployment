@@ -33,6 +33,7 @@ export default async function PipelinePage() {
         budgetMax: opportunities.budgetMax,
         hiringBudgetMin: opportunities.hiringBudgetMin,
         hiringBudgetMax: opportunities.hiringBudgetMax,
+        isListed: opportunities.isListed,
         stage: opportunities.stage,
         priority: opportunities.priority,
         owner: opportunities.owner,

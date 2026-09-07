@@ -144,6 +144,11 @@ CREATE TABLE IF NOT EXISTS opportunities (
   next_step TEXT,
   next_step_date TEXT,
   closed_reason TEXT,
+  is_listed INTEGER NOT NULL DEFAULT 0,
+  listed_at TEXT,
+  public_title TEXT,
+  public_company_label TEXT,
+  show_client_name INTEGER NOT NULL DEFAULT 0,
   share_token TEXT NOT NULL UNIQUE,
   converted_project_id INTEGER REFERENCES projects(id),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -239,10 +244,12 @@ CREATE TABLE IF NOT EXISTS referrals (
   current_ctc REAL,
   expected_ctc REAL,
   notes TEXT,
+  kind TEXT NOT NULL DEFAULT 'referral',
   status TEXT NOT NULL DEFAULT 'new',
   converted_candidate_id INTEGER REFERENCES candidates(id),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS referral_opportunity_idx ON referrals(opportunity_id);
 CREATE INDEX IF NOT EXISTS referral_status_idx ON referrals(status);
+CREATE INDEX IF NOT EXISTS opp_listed_idx ON opportunities(is_listed);
 `;

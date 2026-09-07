@@ -11,13 +11,15 @@ import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
  *   /share/*      the public stakeholder view — the entire point is that
  *                 consultants without accounts can open it
  *   /api/share/*  the matching read endpoint and referral submission
+ *   /jobs/*       the public job board and its apply form
+ *   /api/jobs/*   the matching read and apply endpoints
  *
  * Enforcing writes here rather than in each route handler means a new API
  * route is covered by the policy the moment it exists, instead of being open
  * until someone remembers to add a guard to it.
  */
-const PUBLIC_PREFIXES = ['/share/', '/api/share/'];
-const PUBLIC_EXACT = ['/login', '/api/auth/login'];
+const PUBLIC_PREFIXES = ['/share/', '/api/share/', '/jobs/', '/api/jobs/'];
+const PUBLIC_EXACT = ['/login', '/api/auth/login', '/jobs', '/api/jobs'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -77,5 +79,9 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   // Skip Next internals and static assets.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  //
+  // robots.txt is excluded deliberately: the matcher gated it behind the login
+  // redirect, so crawlers were served an HTML sign-in page instead of the
+  // directives — which made the whole file useless.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'],
 };

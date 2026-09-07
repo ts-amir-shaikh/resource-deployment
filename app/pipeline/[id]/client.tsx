@@ -17,6 +17,7 @@ import {
   Inbox,
   UserPlus,
   X,
+  Globe,
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import {
@@ -62,6 +63,11 @@ type Opportunity = {
   budgetMax: number | null;
   hiringBudgetMin: number | null;
   hiringBudgetMax: number | null;
+  isListed: boolean;
+  listedAt: string | null;
+  publicTitle: string | null;
+  publicCompanyLabel: string | null;
+  showClientName: boolean;
   jdContent: string | null;
   workingDays: string | null;
   workingHours: string | null;
@@ -116,6 +122,7 @@ type StageEvent = {
 
 type Suggestion = {
   id: number;
+  kind: string;
   referrerName: string;
   referrerEmail: string | null;
   referrerMobile: string | null;
@@ -236,6 +243,36 @@ export default function OpportunityDetailClient({
       setEditBanner(errorMessage(e));
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  // M16 — publishing this requirement to the public board. Admin and TA both
+  // control it: TA lives closest to these roles and keeps the board current.
+  const canManageListing = role === 'admin' || role === 'ta';
+  const [listingOpen, setListingOpen] = useState(false);
+  const [listingForm, setListingForm] = useState({
+    publicTitle: o.publicTitle ?? '',
+    publicCompanyLabel: o.publicCompanyLabel ?? '',
+    showClientName: o.showClientName,
+  });
+  const [listingBusy, setListingBusy] = useState(false);
+  const [listingError, setListingError] = useState<string | null>(null);
+  const isClosed = ['won', 'lost'].includes(o.stage);
+
+  async function saveListing(isListed: boolean) {
+    setListingBusy(true);
+    setListingError(null);
+    try {
+      await api(`/api/opportunities/${o.id}/listing`, {
+        method: 'PATCH',
+        json: { ...listingForm, isListed },
+      });
+      setListingOpen(false);
+      router.refresh();
+    } catch (e) {
+      setListingError(errorMessage(e));
+    } finally {
+      setListingBusy(false);
     }
   }
 
@@ -500,6 +537,34 @@ export default function OpportunityDetailClient({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {o.isListed && (
+              <a
+                href={`/jobs/${o.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-ghost"
+                title="Open the public listing"
+              >
+                <Globe className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Listed
+              </a>
+            )}
+            {canManageListing && !isClosed && (
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setListingForm({
+                    publicTitle: o.publicTitle ?? '',
+                    publicCompanyLabel: o.publicCompanyLabel ?? '',
+                    showClientName: o.showClientName,
+                  });
+                  setListingError(null);
+                  setListingOpen(true);
+                }}
+              >
+                <Globe className="h-4 w-4" />
+                {o.isListed ? 'Listing' : 'Publish to job board'}
+              </button>
+            )}
             {canEditRequirement && (
               <button className="btn-ghost" onClick={openEdit}>
                 <Pencil className="h-4 w-4" /> Edit requirement
@@ -757,6 +822,11 @@ export default function OpportunityDetailClient({
                     <span className="text-xs font-semibold text-ink">
                       {sg.candidateName}
                     </span>
+                    {sg.kind === 'application' ? (
+                      <Badge tone="blue">Applied</Badge>
+                    ) : (
+                      <Badge tone="violet">Referred</Badge>
+                    )}
                     {sg.status === 'new' && <Badge tone="amber">New</Badge>}
                     {sg.status === 'accepted' && <Badge tone="green">In pool</Badge>}
                     {sg.status === 'dismissed' && (
@@ -765,9 +835,11 @@ export default function OpportunityDetailClient({
                   </div>
 
                   <div className="mt-1 text-2xs text-ink3">
-                    Referred by {sg.referrerName}
-                    {sg.referrerEmail && ` · ${sg.referrerEmail}`}
-                    {sg.referrerMobile && ` · ${sg.referrerMobile}`}
+                    {sg.kind === 'application'
+                      ? 'Applied via the job board'
+                      : `Referred by ${sg.referrerName}`}
+                    {sg.kind !== 'application' && sg.referrerEmail && ` · ${sg.referrerEmail}`}
+                    {sg.kind !== 'application' && sg.referrerMobile && ` · ${sg.referrerMobile}`}
                   </div>
 
                   <div className="mt-1.5 space-y-0.5 text-xs text-ink2">
@@ -823,8 +895,8 @@ export default function OpportunityDetailClient({
               ))}
               {suggestions.length === 0 && (
                 <li className="px-4 py-6 text-center text-sm text-ink3">
-                  Profiles recommended through the share link land here for review
-                  before they join the candidate pool.
+                  Applications from the job board and profiles recommended through the
+                  share link land here for review before joining the candidate pool.
                 </li>
               )}
             </ul>
@@ -972,6 +1044,99 @@ export default function OpportunityDetailClient({
       </div>
 
       {/* Move stage */}
+      {/* Public job board listing */}
+      <Modal
+        open={listingOpen}
+        onClose={() => setListingOpen(false)}
+        title={o.isListed ? 'Public listing' : 'Publish to the job board'}
+        description="Anyone can read this page, and search engines may index it"
+      >
+        {listingError && (
+          <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+            {listingError}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <Field
+            label="Advert title"
+            hint="Leave blank to use the internal title — rarely the right headline"
+          >
+            <input
+              className="input"
+              placeholder={o.title}
+              value={listingForm.publicTitle}
+              onChange={(e) =>
+                setListingForm({ ...listingForm, publicTitle: e.target.value })
+              }
+            />
+          </Field>
+
+          <Field
+            label="Client shown as"
+            hint="Stands in for the client name, e.g. “A leading retail group”"
+          >
+            <input
+              className="input"
+              placeholder="A Techstalwarts client"
+              disabled={listingForm.showClientName}
+              value={listingForm.publicCompanyLabel}
+              onChange={(e) =>
+                setListingForm({ ...listingForm, publicCompanyLabel: e.target.value })
+              }
+            />
+          </Field>
+
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+            <input
+              type="checkbox"
+              checked={listingForm.showClientName}
+              onChange={(e) =>
+                setListingForm({ ...listingForm, showClientName: e.target.checked })
+              }
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-line accent-[rgb(var(--accent))]"
+            />
+            <span>
+              Name <strong>{o.companyName}</strong> publicly. Only tick this if the
+              client has agreed — a job board is read by competitors, and candidates
+              can approach them directly.
+            </span>
+          </label>
+
+          <div className="rounded-md border border-line bg-surface2 px-3 py-2 text-2xs text-ink3">
+            Never published: budget, hiring budget, pipeline stage, owner, next step
+            and every candidate detail. De-listing stops serving the page but cannot
+            un-publish a copy already cached or shared.
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-between gap-2 border-t border-line pt-4">
+          {o.isListed ? (
+            <button
+              className="btn-ghost text-rose-600 dark:text-rose-400"
+              onClick={() => saveListing(false)}
+              disabled={listingBusy}
+            >
+              Remove from board
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <button className="btn-ghost" onClick={() => setListingOpen(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => saveListing(true)}
+              disabled={listingBusy}
+            >
+              {listingBusy ? 'Saving…' : o.isListed ? 'Save changes' : 'Publish'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Edit requirement — Admin only */}
       <Modal
         open={editOpen}
@@ -1042,6 +1207,17 @@ export default function OpportunityDetailClient({
             ))}
           </div>
         </Field>
+
+        {o.isListed && ['won', 'lost'].includes(stageTarget) && (
+          <div className="mt-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+            <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              This role is live on the job board and will be{' '}
+              <strong>removed automatically</strong>. Anyone opening its link will be
+              told the requirement is closed.
+            </span>
+          </div>
+        )}
 
         {['lost', 'hold'].includes(stageTarget) && (
           <div className="mt-4">

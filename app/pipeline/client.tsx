@@ -13,6 +13,7 @@ import {
   Users,
   CalendarClock,
   X,
+  Globe,
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import {
@@ -61,6 +62,7 @@ type Row = {
   budgetMax: number | null;
   hiringBudgetMin: number | null;
   hiringBudgetMax: number | null;
+  isListed: boolean;
   stage: string;
   priority: string | null;
   owner: string | null;
@@ -453,12 +455,20 @@ export default function PipelineClient({
                     }
                   >
                     <td className="td">
-                      <Link
-                        href={`/pipeline/${o.id}`}
-                        className="font-medium text-ink hover:text-brand hover:underline"
-                      >
-                        {o.title}
-                      </Link>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Link
+                          href={`/pipeline/${o.id}`}
+                          className="font-medium text-ink hover:text-brand hover:underline"
+                        >
+                          {o.title}
+                        </Link>
+                        {o.isListed && (
+                          <Globe
+                            className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400"
+                            aria-label="Listed on the public job board"
+                          />
+                        )}
+                      </span>
                       <div className="text-2xs text-ink3">
                         {formatExperience(o.experienceMin, o.experienceMax)}
                         {o.primarySkill && ` · ${o.primarySkill}`}

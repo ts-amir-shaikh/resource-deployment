@@ -341,6 +341,28 @@ export const opportunities = sqliteTable(
     /** Required when moving to lost or hold. */
     closedReason: text('closed_reason'),
 
+    /* ── M16: public job board ──────────────────────────────
+     * Listing is opt-in and off by default: a requirement becomes visible to
+     * the world only when someone deliberately publishes it. Nothing here is
+     * ever read by the internal screens — it exists purely to shape what the
+     * public sees. */
+
+    isListed: integer('is_listed', { mode: 'boolean' }).notNull().default(false),
+    /** When it went live — drives "posted 3 days ago" and newest-first order. */
+    listedAt: text('listed_at'),
+    /** Advert headline. The internal title is rarely the right one. */
+    publicTitle: text('public_title'),
+    /**
+     * What stands in for the client on a public page, e.g. "A leading retail
+     * group". The board must not leak who we staff for: competitors read it,
+     * and candidates would approach the client directly.
+     */
+    publicCompanyLabel: text('public_company_label'),
+    /** Per-requirement opt-in to naming the client outright. */
+    showClientName: integer('show_client_name', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+
     /** Unguessable token backing the read-only stakeholder share page. */
     shareToken: text('share_token').notNull().unique(),
     /** Set once a won opportunity has been converted into a project. */
@@ -501,6 +523,13 @@ export const users = sqliteTable(
 export const REFERRAL_STATUSES = ['new', 'accepted', 'dismissed'] as const;
 
 /**
+ * Where an inbound profile came from. Both land in the same inbox and get the
+ * same review before reaching the candidate pool — an application is simply a
+ * referral where the referrer and the candidate are the same person.
+ */
+export const REFERRAL_KINDS = ['referral', 'application'] as const;
+
+/**
  * A candidate recommendation submitted through the public share link.
  *
  * Deliberately a staging inbox rather than a direct write into `candidates`:
@@ -530,6 +559,7 @@ export const referrals = sqliteTable(
     expectedCtc: real('expected_ctc'),
     notes: text('notes'),
 
+    kind: text('kind', { enum: REFERRAL_KINDS }).notNull().default('referral'),
     status: text('status', { enum: REFERRAL_STATUSES }).notNull().default('new'),
     /** Set when accepted into the candidate pool. */
     convertedCandidateId: integer('converted_candidate_id').references(() => candidates.id),

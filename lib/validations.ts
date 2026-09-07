@@ -506,3 +506,27 @@ export const referralSchema = z
     message: "Add the candidate's email or mobile",
     path: ['candidateEmail'],
   });
+
+/**
+ * A candidate applying to a listed role.
+ *
+ * Same destination as a referral — the staging inbox — because the review step
+ * before anything reaches the candidate pool matters more for an unauthenticated
+ * public form, not less. The referrer fields are filled from the applicant, so
+ * one inbox handles both and the `kind` column says which is which.
+ */
+export const applicationSchema = z
+  .object({
+    candidateName: z.string().trim().min(1, 'Your name is required'),
+    candidateEmail: optionalEmail,
+    candidateMobile: optionalStr,
+    experienceYears: optionalYears,
+    noticePeriodDays: optionalDays,
+    currentCtc: optionalMoney,
+    expectedCtc: optionalMoney,
+    notes: optionalStr,
+  })
+  .refine((d) => Boolean(d.candidateEmail || d.candidateMobile), {
+    message: 'Add your email or mobile so we can reach you',
+    path: ['candidateEmail'],
+  });

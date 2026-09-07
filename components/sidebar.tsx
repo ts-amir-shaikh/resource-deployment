@@ -43,7 +43,8 @@ export default function Sidebar({ session }: { session: Session | null }) {
   const router = useRouter();
 
   // The public stakeholder view and the sign-in screen get no app chrome.
-  if (pathname.startsWith('/share/') || pathname === '/login') return null;
+  if (pathname.startsWith('/share/') || pathname.startsWith('/jobs')) return null;
+  if (pathname === '/login') return null;
   if (!session) return null;
 
   const items = navFor(session.role);

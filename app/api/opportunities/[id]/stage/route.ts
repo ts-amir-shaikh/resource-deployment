@@ -48,12 +48,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       );
     }
 
+    const closing = ['won', 'lost'].includes(data.toStage);
+    // A filled or dead role must not stay advertised. Withdrawing it is part
+    // of closing the deal, not a separate chore somebody remembers later.
+    const wasListed = existing.isListed;
+
     const patch: Partial<typeof opportunities.$inferInsert> = {
       stage: data.toStage as never,
       // Reason belongs only to lost/hold; clear it when the deal reopens.
       closedReason: ['lost', 'hold'].includes(data.toStage)
         ? data.closedReason
         : null,
+      ...(closing ? { isListed: false, listedAt: null } : {}),
     };
 
     const row = await db.transaction(async (tx) => {
@@ -76,7 +82,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return updated;
     });
 
-    return ok(row);
+    // Reported back so the UI can say the advert came down, rather than the
+    // listing vanishing silently.
+    return ok({ ...row, delisted: closing && wasListed });
   });
 }
 
