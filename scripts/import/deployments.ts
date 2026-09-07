@@ -115,6 +115,9 @@ export async function importDeployments(
       resourceId: String(resourceId),
       projectId: String(projectId),
       agreementId,
+      // Blank means INR, matching the column default — an existing sheet
+      // without the column keeps importing unchanged.
+      currency: (raw.currency || 'INR').toUpperCase(),
       deploymentType: raw.deploymentType || 'billable',
       allocationPercentage: raw.allocationPercentage || '100',
       startDate: raw.startDate,
@@ -219,13 +222,14 @@ export async function importDeployments(
     if (a.kind === 'create') {
       await client.execute({
         sql: `INSERT INTO deployments
-                (resource_id, project_id, agreement_id, deployment_type, allocation_percentage,
+                (resource_id, project_id, agreement_id, currency, deployment_type, allocation_percentage,
                  start_date, end_date, billing_amount, commission_amount, gst_applicable, status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
         args: [
           d.resourceId,
           d.projectId,
           d.agreementId ?? null,
+          d.currency,
           d.deploymentType,
           d.allocationPercentage,
           d.startDate,
@@ -238,11 +242,12 @@ export async function importDeployments(
     } else {
       await client.execute({
         sql: `UPDATE deployments SET
-                agreement_id = ?, deployment_type = ?, allocation_percentage = ?,
+                agreement_id = ?, currency = ?, deployment_type = ?, allocation_percentage = ?,
                 end_date = ?, billing_amount = ?, commission_amount = ?, gst_applicable = ?
               WHERE id = ?`,
         args: [
           d.agreementId ?? null,
+          d.currency,
           d.deploymentType,
           d.allocationPercentage,
           d.endDate ?? null,

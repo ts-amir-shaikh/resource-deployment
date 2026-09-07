@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search, Users, X } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINR, formatDate, parseSkills, LIST_PAGE_SIZE } from '@/lib/utils';
+import { formatMoney, formatDate, parseSkills, LIST_PAGE_SIZE } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -280,10 +280,10 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
                       )}
                     </td>
                     <td className="td">
-                      <div className="tnum text-ink">{formatINR(r.currentCtc)}</div>
+                      <div className="tnum text-ink">{formatMoney(r.currentCtc, 'INR')}</div>
                       {r.revisedCtc && (
                         <div className="text-2xs text-emerald-600 dark:text-emerald-400">
-                          → {formatINR(r.revisedCtc)} from{' '}
+                          → {formatMoney(r.revisedCtc, 'INR')} from{' '}
                           {formatDate(r.revisedEffectiveFrom)}
                         </div>
                       )}

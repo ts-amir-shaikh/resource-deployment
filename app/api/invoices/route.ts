@@ -97,7 +97,7 @@ export async function POST(req: Request) {
 
     if (data.agreementId) {
       const agreement = await db
-        .select({ id: agreements.id, projectId: agreements.projectId })
+        .select({ id: agreements.id, projectId: agreements.projectId, currency: agreements.currency })
         .from(agreements)
         .where(eq(agreements.id, data.agreementId))
         .get();
@@ -106,6 +106,16 @@ export async function POST(req: Request) {
         return fail('That agreement belongs to a different project', 422, {
           fields: { agreementId: 'Pick an agreement from the selected project' },
         });
+      }
+      // An invoice is denominated in the currency of the PO it is raised
+      // against. It keeps that currency afterwards even if the agreement is
+      // later corrected — an invoice already sent does not change.
+      if (agreement.currency !== data.currency) {
+        return fail(
+          `This agreement is in ${agreement.currency}; the invoice must be raised in the same currency.`,
+          422,
+          { fields: { currency: `Must be ${agreement.currency}` } },
+        );
       }
     }
 
@@ -119,6 +129,8 @@ export async function POST(req: Request) {
           scope: data.scope,
           periodFrom: data.periodFrom,
           periodTo: data.periodTo,
+          currency: data.currency,
+          fxRateToInr: data.fxRateToInr,
           amount: data.amount,
           gstAmount: data.gstAmount,
           invoiceDate: data.invoiceDate,

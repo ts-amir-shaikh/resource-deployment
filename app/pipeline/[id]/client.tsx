@@ -20,8 +20,8 @@ import {
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import {
-  formatINR,
-  formatINRCompact,
+  formatMoney,
+  formatMoneyCompact,
   formatDate,
   formatExperience,
   formatBudget,
@@ -699,7 +699,7 @@ export default function OpportunityDetailClient({
                       </td>
                       <td className="td text-right">
                         <span className="tnum text-ink">
-                          {formatINR(m.expectedBilling)}
+                          {formatMoney(m.expectedBilling, 'INR')}
                         </span>
                       </td>
                       <td className="td text-right">
@@ -782,9 +782,9 @@ export default function OpportunityDetailClient({
                       {[
                         sg.experienceYears !== null && `${sg.experienceYears} yrs`,
                         sg.noticePeriodDays !== null && `${sg.noticePeriodDays}d notice`,
-                        sg.currentCtc !== null && `current ${formatINRCompact(sg.currentCtc)}`,
+                        sg.currentCtc !== null && `current ${formatMoneyCompact(sg.currentCtc, 'INR')}`,
                         sg.expectedCtc !== null &&
-                          `expected ${formatINRCompact(sg.expectedCtc)}`,
+                          `expected ${formatMoneyCompact(sg.expectedCtc, 'INR')}`,
                       ]
                         .filter(Boolean)
                         .join(' · ') || '—'}

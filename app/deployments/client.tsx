@@ -4,7 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Search, Network, CircleStop, AlertTriangle } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINR, formatDate, today, GST_RATE, LIST_PAGE_SIZE } from '@/lib/utils';
+import {
+  formatMoney,
+  formatDate,
+  today,
+  GST_RATE,
+  LIST_PAGE_SIZE,
+  CURRENCY_OPTIONS,
+  gstApplies,
+} from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -32,6 +40,7 @@ type Row = {
   allocationPercentage: number;
   startDate: string;
   endDate: string | null;
+  currency: string;
   billingAmount: number;
   commissionAmount: number;
   gstApplicable: boolean;
@@ -69,6 +78,7 @@ const BLANK = {
   allocationPercentage: '100',
   startDate: today(),
   endDate: '',
+  currency: 'INR',
   billingAmount: '',
   commissionAmount: '',
   gstApplicable: true,
@@ -150,11 +160,20 @@ export default function DeploymentsClient({
     }
     let cancelled = false;
     setLoadingRateCard(true);
-    api<{ resources: { resourceId: number; resourceName: string; billingAmount: number }[] }>(
-      `/api/agreements/${form.agreementId}`,
-    )
+    api<{
+      currency: string;
+      resources: { resourceId: number; resourceName: string; billingAmount: number }[];
+    }>(`/api/agreements/${form.agreementId}`)
       .then((detail) => {
-        if (!cancelled) setAgreementResources(detail.resources);
+        if (cancelled) return;
+        setAgreementResources(detail.resources);
+        // The PO is signed in one currency, so a deployment under it inherits
+        // that and the picker locks — the API rejects a mismatch anyway.
+        setForm((f) => ({
+          ...f,
+          currency: detail.currency,
+          gstApplicable: gstApplies(detail.currency) ? f.gstApplicable : false,
+        }));
       })
       .catch(() => {
         if (!cancelled) setAgreementResources([]);
@@ -197,6 +216,9 @@ export default function DeploymentsClient({
     });
   }
 
+  const currencySymbol =
+    CURRENCY_OPTIONS.find((c) => c.value === form.currency)?.symbol ?? '₹';
+
   // Live headroom for the resource selected in the form. When editing an
   // active record, its own allocation is added back so it isn't double-counted.
   const selectedResource = resources.find((r) => r.id === Number(form.resourceId));
@@ -213,10 +235,11 @@ export default function DeploymentsClient({
   const isShadow = form.deploymentType === 'shadow';
   const billingPreview = useMemo(() => {
     const base = Number(form.billingAmount) || 0;
-    const gst = form.gstApplicable && !isShadow ? base * GST_RATE : 0;
+    const gst =
+      form.gstApplicable && !isShadow && gstApplies(form.currency) ? base * GST_RATE : 0;
     const commission = Number(form.commissionAmount) || 0;
     return { base, gst, total: base + gst, margin: base - commission };
-  }, [form.billingAmount, form.commissionAmount, form.gstApplicable, isShadow]);
+  }, [form.billingAmount, form.commissionAmount, form.gstApplicable, form.currency, isShadow]);
 
   // Shadow deployments carry no billing; clear the fields when the type flips.
   useEffect(() => {
@@ -247,6 +270,7 @@ export default function DeploymentsClient({
       allocationPercentage: String(d.allocationPercentage),
       startDate: d.startDate,
       endDate: d.endDate ?? '',
+      currency: d.currency ?? 'INR',
       billingAmount: d.billingAmount ? String(d.billingAmount) : '',
       commissionAmount: d.commissionAmount ? String(d.commissionAmount) : '',
       gstApplicable: d.gstApplicable,
@@ -434,11 +458,11 @@ export default function DeploymentsClient({
                       ) : (
                         <>
                           <div className="tnum font-medium text-ink">
-                            {formatINR(d.billingAmount)}
+                            {formatMoney(d.billingAmount, d.currency)}
                           </div>
                           <div className="tnum text-2xs text-ink3">
                             {d.gstApplicable
-                              ? `+${formatINR(d.billingAmount * GST_RATE)} GST`
+                              ? `+${formatMoney(d.billingAmount * GST_RATE, d.currency)} GST`
                               : 'no GST'}
                           </div>
                         </>
@@ -565,7 +589,7 @@ export default function DeploymentsClient({
                     return (
                       <option key={r.id} value={r.id}>
                         {r.name} — {r.free}% free
-                        {rate ? ` · ${formatINR(rate.billingAmount)}/mo` : ''}
+                        {rate ? ` · ${formatMoney(rate.billingAmount, form.currency)}/mo` : ''}
                       </option>
                     );
                   })}
@@ -677,7 +701,38 @@ export default function DeploymentsClient({
             <FormSection title="Billing">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field
-                  label="Billing Amount (₹/month)"
+                  label="Currency"
+                  error={errors.currency}
+                  hint={
+                    form.agreementId
+                      ? 'Set by the agreement — a PO is signed in one currency'
+                      : undefined
+                  }
+                >
+                  <select
+                    className="input"
+                    value={form.currency}
+                    disabled={Boolean(form.agreementId)}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        currency: e.target.value,
+                        // GST is an Indian tax; it has no meaning on AED or USD.
+                        gstApplicable: gstApplies(e.target.value)
+                          ? form.gstApplicable
+                          : false,
+                      })
+                    }
+                  >
+                    {CURRENCY_OPTIONS.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field
+                  label={`Billing Amount (${currencySymbol}/month)`}
                   required
                   error={errors.billingAmount}
                   hint={
@@ -697,7 +752,7 @@ export default function DeploymentsClient({
                   />
                 </Field>
                 <Field
-                  label="Commission (₹/month)"
+                  label={`Commission (${currencySymbol}/month)`}
                   error={errors.commissionAmount}
                   hint="Cannot exceed the billing amount"
                 >
@@ -713,42 +768,49 @@ export default function DeploymentsClient({
                 </Field>
               </div>
 
-              <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-ink2">
-                <input
-                  type="checkbox"
-                  checked={form.gstApplicable}
-                  onChange={(e) =>
-                    setForm({ ...form, gstApplicable: e.target.checked })
-                  }
-                  className="h-4 w-4 rounded border-line accent-[rgb(var(--accent))]"
-                />
-                GST applicable (18%)
-              </label>
+              {gstApplies(form.currency) ? (
+                <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-ink2">
+                  <input
+                    type="checkbox"
+                    checked={form.gstApplicable}
+                    onChange={(e) =>
+                      setForm({ ...form, gstApplicable: e.target.checked })
+                    }
+                    className="h-4 w-4 rounded border-line accent-[rgb(var(--accent))]"
+                  />
+                  GST applicable (18%)
+                </label>
+              ) : (
+                <p className="mt-3 text-2xs text-ink3">
+                  GST is an Indian tax and does not apply to a {form.currency}{' '}
+                  engagement.
+                </p>
+              )}
 
               {billingPreview.base > 0 && (
                 <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-md border border-line bg-surface2 p-3 text-sm sm:grid-cols-4">
                   <div>
                     <dt className="text-2xs text-ink3">Base</dt>
                     <dd className="tnum font-medium text-ink">
-                      {formatINR(billingPreview.base)}
+                      {formatMoney(billingPreview.base, form.currency)}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-2xs text-ink3">GST</dt>
                     <dd className="tnum font-medium text-ink">
-                      {formatINR(billingPreview.gst)}
+                      {formatMoney(billingPreview.gst, form.currency)}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-2xs text-ink3">Total</dt>
                     <dd className="tnum font-medium text-ink">
-                      {formatINR(billingPreview.total)}
+                      {formatMoney(billingPreview.total, form.currency)}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-2xs text-ink3">Margin</dt>
                     <dd className="tnum font-medium text-emerald-600 dark:text-emerald-400">
-                      {formatINR(billingPreview.margin)}
+                      {formatMoney(billingPreview.margin, form.currency)}
                     </dd>
                   </div>
                 </dl>

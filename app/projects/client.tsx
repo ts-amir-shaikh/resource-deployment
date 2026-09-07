@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search, FolderKanban } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINRCompact, LIST_PAGE_SIZE } from '@/lib/utils';
+import { formatMoneyMulti, LIST_PAGE_SIZE, type MoneyByCurrency } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -26,7 +26,7 @@ type Row = {
   managerDesignation: string | null;
   clientName: string;
   headcount: number;
-  monthlyBilling: number;
+  monthlyBilling: MoneyByCurrency;
 };
 
 type ClientOption = { id: number; companyName: string };
@@ -247,7 +247,7 @@ export default function ProjectsClient({
                     </td>
                     <td className="td text-right">
                       <span className="tnum font-medium text-ink">
-                        {p.monthlyBilling > 0 ? formatINRCompact(p.monthlyBilling) : '—'}
+                        {formatMoneyMulti(p.monthlyBilling)}
                       </span>
                     </td>
                     <td className="td text-right">

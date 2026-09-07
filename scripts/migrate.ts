@@ -43,6 +43,28 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'hiring_budget_max',
     ddl: 'ALTER TABLE opportunities ADD COLUMN hiring_budget_max REAL',
   },
+  // Phase 4 — multi-currency. Existing rows are all rupee-denominated, so the
+  // default backfills them correctly and no data migration is needed.
+  {
+    table: 'deployments',
+    column: 'currency',
+    ddl: "ALTER TABLE deployments ADD COLUMN currency TEXT NOT NULL DEFAULT 'INR'",
+  },
+  {
+    table: 'agreements',
+    column: 'currency',
+    ddl: "ALTER TABLE agreements ADD COLUMN currency TEXT NOT NULL DEFAULT 'INR'",
+  },
+  {
+    table: 'invoices',
+    column: 'currency',
+    ddl: "ALTER TABLE invoices ADD COLUMN currency TEXT NOT NULL DEFAULT 'INR'",
+  },
+  {
+    table: 'invoices',
+    column: 'fx_rate_to_inr',
+    ddl: 'ALTER TABLE invoices ADD COLUMN fx_rate_to_inr REAL NOT NULL DEFAULT 1',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

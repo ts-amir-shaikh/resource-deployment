@@ -75,6 +75,15 @@ export const projects = sqliteTable(
 
 /* ── M4: Deployments ───────────────────────────────────────── */
 
+/**
+ * Currencies client-facing money can be denominated in.
+ *
+ * Resource CTC is deliberately absent from this: that is payroll and stays in
+ * rupees. Currency here covers what a client is billed — PO value, deployment
+ * billing, invoice amounts.
+ */
+export const CURRENCIES = ['INR', 'AED', 'USD'] as const;
+
 export const DEPLOYMENT_TYPES = ['billable', 'shadow'] as const;
 export const DEPLOYMENT_STATUSES = ['active', 'ended'] as const;
 
@@ -105,6 +114,13 @@ export const deployments = sqliteTable(
 
     startDate: text('start_date').notNull(),
     endDate: text('end_date'),
+
+    /**
+     * Denominated currency. Inherited and locked from the linked agreement
+     * when one is set; free to choose when the deployment has no PO behind it
+     * (agreementId is nullable).
+     */
+    currency: text('currency', { enum: CURRENCIES }).notNull().default('INR'),
 
     /** Forced to 0 for shadow deployments. */
     billingAmount: real('billing_amount').default(0).notNull(),
@@ -144,6 +160,10 @@ export const agreements = sqliteTable(
     agreementNumber: text('agreement_number'),
     title: text('title').notNull(),
     scope: text('scope', { enum: AGREEMENT_SCOPES }).notNull().default('individual'),
+
+    /** A PO is signed in one currency; this is the source of truth for the
+     *  deployments and invoices that hang off it. */
+    currency: text('currency', { enum: CURRENCIES }).notNull().default('INR'),
 
     value: real('value').notNull(),
     startDate: text('start_date').notNull(),
@@ -204,7 +224,23 @@ export const invoices = sqliteTable(
     periodFrom: text('period_from').notNull(),
     periodTo: text('period_to').notNull(),
 
+    /** Inherited from the agreement when linked. An invoice keeps the currency
+     *  it was RAISED in even if the agreement is later corrected. */
+    currency: text('currency', { enum: CURRENCIES }).notNull().default('INR'),
+
+    /**
+     * Rate to INR captured at the moment this invoice was raised — 1 for INR.
+     *
+     * Nothing reads this yet. It exists so a later reporting module can state
+     * consolidated revenue using the rate that actually applied on the day,
+     * rather than today's. That history cannot be reconstructed after the
+     * fact, which is why the column ships with the currency rather than with
+     * the feature that consumes it.
+     */
+    fxRateToInr: real('fx_rate_to_inr').notNull().default(1),
+
     amount: real('amount').notNull(),
+    /** Indian tax — forced to 0 unless the currency is INR. */
     gstAmount: real('gst_amount').default(0).notNull(),
 
     invoiceDate: text('invoice_date'),

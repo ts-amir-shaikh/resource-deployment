@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search, Building2, Mail, Phone } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINRCompact, LIST_PAGE_SIZE } from '@/lib/utils';
+import { formatMoneyMulti, LIST_PAGE_SIZE, type MoneyByCurrency } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -31,7 +31,7 @@ type Row = {
   altSpocMobile: string | null;
   altSpocDesignation: string | null;
   projectCount: number;
-  monthlyBilling: number;
+  monthlyBilling: MoneyByCurrency;
 };
 
 const BLANK = {
@@ -278,7 +278,7 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
                     </td>
                     <td className="td text-right">
                       <span className="tnum font-medium text-ink">
-                        {c.monthlyBilling > 0 ? formatINRCompact(c.monthlyBilling) : '—'}
+                        {formatMoneyMulti(c.monthlyBilling)}
                       </span>
                     </td>
                     <td className="td text-right">

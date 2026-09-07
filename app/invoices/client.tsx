@@ -15,8 +15,12 @@ import {
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import {
-  formatINR,
-  formatINRCompact,
+  formatMoney,
+  formatMoneyMulti,
+  CURRENCY_OPTIONS,
+  gstApplies,
+  sumByCurrency,
+  type MoneyByCurrency,
   formatDate,
   today,
   GST_RATE,
@@ -47,6 +51,8 @@ type Row = {
   scope: 'individual' | 'team';
   periodFrom: string;
   periodTo: string;
+  currency: string;
+  fxRateToInr: number;
   amount: number;
   gstAmount: number;
   invoiceDate: string | null;
@@ -89,6 +95,8 @@ const BLANK = {
   scope: 'team' as 'individual' | 'team',
   periodFrom: '',
   periodTo: '',
+  currency: 'INR',
+  fxRateToInr: '1',
   amount: '',
   gstAmount: '',
   invoiceDate: '',
@@ -161,15 +169,26 @@ export default function InvoicesClient({
     [filtered, page],
   );
 
+  // Per status AND per currency — adding a dirham invoice to a rupee one would
+  // produce a status tile showing a number that is true of neither.
   const totals = useMemo(() => {
-    const by: Record<string, { count: number; total: number }> = {};
-    for (const st of INVOICE_STATUS_ORDER) by[st] = { count: 0, total: 0 };
+    const by: Record<string, { count: number; rows: { currency: string; amount: number }[] }> =
+      {};
+    for (const st of INVOICE_STATUS_ORDER) by[st] = { count: 0, rows: [] };
     for (const i of initial) {
       by[i.status].count += 1;
-      by[i.status].total += i.totalAmount;
+      by[i.status].rows.push({ currency: i.currency, amount: i.totalAmount });
     }
-    return by;
+    return Object.fromEntries(
+      Object.entries(by).map(([st, v]) => [
+        st,
+        { count: v.count, total: sumByCurrency(v.rows) },
+      ]),
+    ) as Record<string, { count: number; total: MoneyByCurrency }>;
   }, [initial]);
+
+  const invoiceSymbol =
+    CURRENCY_OPTIONS.find((c) => c.value === form.currency)?.symbol ?? '₹';
 
   const overdueCount = initial.filter((i) => i.overdue).length;
 
@@ -196,11 +215,21 @@ export default function InvoicesClient({
     }
     let cancelled = false;
     setLoadingRateCard(true);
-    api<{ resources: { resourceId: number; resourceName: string; billingAmount: number }[] }>(
-      `/api/agreements/${form.agreementId}`,
-    )
+    api<{
+      currency: string;
+      resources: { resourceId: number; resourceName: string; billingAmount: number }[];
+    }>(`/api/agreements/${form.agreementId}`)
       .then((detail) => {
-        if (!cancelled) setAgreementResources(detail.resources);
+        if (cancelled) return;
+        setAgreementResources(detail.resources);
+        // An invoice is raised against a PO, so it is denominated in the PO's
+        // currency — the API rejects a mismatch regardless.
+        setForm((f) => ({
+          ...f,
+          currency: detail.currency,
+          gstAmount: gstApplies(detail.currency) ? f.gstAmount : '',
+          fxRateToInr: detail.currency === 'INR' ? '1' : f.fxRateToInr,
+        }));
       })
       .catch(() => {
         if (!cancelled) setAgreementResources([]);
@@ -245,6 +274,8 @@ export default function InvoicesClient({
       scope: i.scope,
       periodFrom: i.periodFrom,
       periodTo: i.periodTo,
+      currency: i.currency ?? 'INR',
+      fxRateToInr: String(i.fxRateToInr ?? 1),
       amount: String(i.amount),
       gstAmount: String(i.gstAmount),
       invoiceDate: i.invoiceDate ?? '',
@@ -278,6 +309,7 @@ export default function InvoicesClient({
         ...form,
         amount: Number(form.amount) || 0,
         gstAmount: Number(form.gstAmount) || 0,
+        fxRateToInr: Number(form.fxRateToInr) || 1,
       };
       if (editing) {
         await api(`/api/invoices/${editing.id}`, { method: 'PUT', json: payload });
@@ -372,7 +404,7 @@ export default function InvoicesClient({
                 {totals[st].count}
               </div>
               <div className="tnum text-xs text-ink2">
-                {formatINRCompact(totals[st].total)}
+                {formatMoneyMulti(totals[st].total)}
               </div>
             </button>
           );
@@ -505,7 +537,7 @@ export default function InvoicesClient({
                         </div>
                         <div className="truncate text-2xs text-ink3">{i.projectName}</div>
                         <div className="tnum mt-1.5 text-sm font-semibold text-ink">
-                          {formatINR(i.totalAmount)}
+                          {formatMoney(i.totalAmount, i.currency)}
                         </div>
                         <div className="tnum text-2xs text-ink3">
                           {formatDate(i.periodFrom)} → {formatDate(i.periodTo)}
@@ -610,10 +642,10 @@ export default function InvoicesClient({
                     </td>
                     <td className="td text-right">
                       <div className="tnum font-medium text-ink">
-                        {formatINR(i.totalAmount)}
+                        {formatMoney(i.totalAmount, i.currency)}
                       </div>
                       <div className="tnum text-2xs text-ink3">
-                        {formatINR(i.amount)} + {formatINR(i.gstAmount)} GST
+                        {formatMoney(i.amount, i.currency)} + {formatMoney(i.gstAmount, i.currency)} GST
                       </div>
                     </td>
                     <td className="td">
@@ -790,7 +822,58 @@ export default function InvoicesClient({
           <FormSection title="Amounts">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field
-                label="Amount (pre-GST) ₹"
+                label="Currency"
+                required
+                error={errors.currency}
+                hint={
+                  form.agreementId
+                    ? 'Set by the agreement this invoice is raised against'
+                    : undefined
+                }
+              >
+                <select
+                  className="input"
+                  value={form.currency}
+                  disabled={Boolean(form.agreementId)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      currency: e.target.value,
+                      gstAmount: gstApplies(e.target.value) ? form.gstAmount : '',
+                      fxRateToInr: e.target.value === 'INR' ? '1' : form.fxRateToInr,
+                    })
+                  }
+                >
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              {!gstApplies(form.currency) && (
+                <Field
+                  label={`Exchange rate — 1 ${form.currency} in ₹`}
+                  required
+                  error={errors.fxRateToInr}
+                  hint="Locked at the rate on the day this invoice is raised, for later reporting"
+                >
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    step="0.0001"
+                    value={form.fxRateToInr}
+                    onChange={(e) =>
+                      setForm({ ...form, fxRateToInr: e.target.value })
+                    }
+                  />
+                </Field>
+              )}
+
+              <Field
+                label={`Amount (pre-GST) ${invoiceSymbol}`}
                 required
                 error={errors.amount}
                 hint={
@@ -809,10 +892,11 @@ export default function InvoicesClient({
               </Field>
               <Field
                 label="GST Amount ₹"
+                className={gstApplies(form.currency) ? undefined : 'hidden'}
                 error={errors.gstAmount}
                 hint={
                   gstSuggestion > 0
-                    ? `18% would be ${formatINR(gstSuggestion)}`
+                    ? `18% would be ${formatMoney(gstSuggestion, form.currency)}`
                     : undefined
                 }
               >
@@ -843,7 +927,7 @@ export default function InvoicesClient({
               <div className="tnum mt-3 flex items-baseline justify-between rounded-md border border-line bg-surface2 px-3 py-2">
                 <span className="text-xs text-ink2">Invoice total</span>
                 <span className="text-lg font-semibold text-ink">
-                  {formatINR(Number(form.amount) + (Number(form.gstAmount) || 0))}
+                  {formatMoney(Number(form.amount) + (Number(form.gstAmount) || 0), form.currency)}
                 </span>
               </div>
             )}
@@ -917,7 +1001,7 @@ export default function InvoicesClient({
                         <span className="text-sm text-ink">{r.resourceName}</span>
                       </span>
                       <span className="tnum text-xs text-ink2">
-                        {formatINR(r.billingAmount)}/mo
+                        {formatMoney(r.billingAmount, form.currency)}/mo
                       </span>
                     </label>
                   );
@@ -928,10 +1012,11 @@ export default function InvoicesClient({
                   {form.resourceIds.length} of {agreementResources.length} selected
                 </span>
                 <span className="font-medium text-ink">
-                  {formatINR(
+                  {formatMoney(
                     agreementResources
                       .filter((r) => form.resourceIds.includes(r.resourceId))
                       .reduce((s, r) => s + r.billingAmount, 0),
+                    form.currency,
                   )}
                   /mo
                 </span>

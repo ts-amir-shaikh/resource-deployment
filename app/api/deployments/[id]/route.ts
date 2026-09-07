@@ -70,7 +70,7 @@ export async function PUT(req: Request, { params }: Ctx) {
 
     if (data.agreementId) {
       const agreement = await db
-        .select({ id: agreements.id, projectId: agreements.projectId })
+        .select({ id: agreements.id, projectId: agreements.projectId, currency: agreements.currency })
         .from(agreements)
         .where(eq(agreements.id, data.agreementId))
         .get();
@@ -79,6 +79,16 @@ export async function PUT(req: Request, { params }: Ctx) {
         return fail('That agreement belongs to a different project', 422, {
           fields: { agreementId: 'Pick an agreement raised against the selected project' },
         });
+      }
+      // A PO is signed in one currency; anything billed under it is denominated
+      // in that currency. The form locks the picker, so a mismatch here means a
+      // hand-made request or a stale page.
+      if (agreement.currency !== data.currency) {
+        return fail(
+          `This agreement is in ${agreement.currency}; the deployment must use the same currency.`,
+          422,
+          { fields: { currency: `Must be ${agreement.currency}` } },
+        );
       }
     }
 
@@ -94,6 +104,7 @@ export async function PUT(req: Request, { params }: Ctx) {
         resourceId: data.resourceId,
         projectId: data.projectId,
         agreementId: data.agreementId ?? null,
+        currency: data.currency,
         deploymentType: data.deploymentType,
         allocationPercentage: data.allocationPercentage,
         startDate: data.startDate,

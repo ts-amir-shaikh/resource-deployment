@@ -27,6 +27,8 @@ const optionalDate = z
     message: 'Use a valid date',
   });
 
+const currency = z.enum(['INR', 'AED', 'USD']).default('INR');
+
 const money = z.coerce.number().min(0, 'Cannot be negative');
 // z.literal('') comes FIRST in these unions on purpose. Number('') is 0, so
 // a leading z.coerce.number().min(0) happily matches an empty field and
@@ -98,6 +100,7 @@ export const deploymentSchema = z
       .transform((v) =>
         v === '' || v === null || v === undefined ? undefined : Number(v),
       ),
+    currency,
     deploymentType: z.enum(['billable', 'shadow']),
     allocationPercentage: z.coerce
       .number()
@@ -113,6 +116,10 @@ export const deploymentSchema = z
   .refine((d) => !d.endDate || d.endDate >= d.startDate, {
     message: 'End date cannot be before the start date',
     path: ['endDate'],
+  })
+  .refine((d) => d.currency === 'INR' || !d.gstApplicable, {
+    message: 'GST is an Indian tax and cannot apply to a foreign-currency engagement',
+    path: ['gstApplicable'],
   })
   .refine((d) => d.deploymentType !== 'billable' || d.billingAmount > 0, {
     message: 'Billable deployments need a billing amount',
@@ -147,6 +154,7 @@ const agreementBase = z.object({
   agreementNumber: optionalStr,
   title: z.string().trim().min(1, 'Title is required'),
   scope: z.enum(['individual', 'team']),
+  currency,
   value: money.refine((v) => v > 0, 'Agreement value is required'),
   startDate: dateStr,
   endDate: dateStr,
@@ -219,6 +227,13 @@ export const invoiceSchema = z
       .transform((v) => (v === '' || v === null || v === undefined ? undefined : Number(v))),
     invoiceNumber: optionalStr,
     scope: z.enum(['individual', 'team']),
+    currency,
+    /**
+     * Rate to INR on the day the invoice is raised. Required above 0 for a
+     * non-INR invoice and pinned to 1 for INR — captured now because a later
+     * reporting module cannot reconstruct the rate that applied back then.
+     */
+    fxRateToInr: z.coerce.number().positive('Enter the exchange rate').default(1),
     periodFrom: dateStr,
     periodTo: dateStr,
     amount: money.refine((v) => v > 0, 'Invoice amount is required'),
@@ -231,6 +246,14 @@ export const invoiceSchema = z
   .refine((d) => d.periodTo >= d.periodFrom, {
     message: 'Period end cannot be before period start',
     path: ['periodTo'],
+  })
+  .refine((d) => d.currency === 'INR' || d.gstAmount === 0, {
+    message: 'GST is an Indian tax and cannot apply to a foreign-currency invoice',
+    path: ['gstAmount'],
+  })
+  .refine((d) => d.currency !== 'INR' || d.fxRateToInr === 1, {
+    message: 'An INR invoice has an exchange rate of 1',
+    path: ['fxRateToInr'],
   })
   .refine((d) => !d.dueDate || !d.invoiceDate || d.dueDate >= d.invoiceDate, {
     message: 'Due date cannot be before the invoice date',

@@ -16,7 +16,14 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINR, formatINRCompact, formatDate, today, LIST_PAGE_SIZE } from '@/lib/utils';
+import {
+  formatMoney,
+  formatMoneyCompact,
+  formatDate,
+  today,
+  LIST_PAGE_SIZE,
+  CURRENCY_OPTIONS,
+} from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -36,6 +43,7 @@ type Row = {
   agreementNumber: string | null;
   title: string;
   scope: 'individual' | 'team';
+  currency: string;
   value: number;
   startDate: string;
   endDate: string;
@@ -56,6 +64,7 @@ type HistoryVersion = {
   id: number;
   title: string;
   agreementNumber: string | null;
+  currency: string;
   value: number;
   startDate: string;
   endDate: string;
@@ -83,6 +92,7 @@ const BLANK = {
   agreementNumber: '',
   title: '',
   scope: 'individual' as 'individual' | 'team',
+  currency: 'INR',
   value: '',
   startDate: today(),
   endDate: '',
@@ -134,6 +144,7 @@ export default function AgreementsClient({
   const [editMode, setEditMode] = useState<'details' | 'correct'>('details');
   const [correctForm, setCorrectForm] = useState({
     scope: 'individual',
+    currency: 'INR',
     value: '',
     startDate: '',
     endDate: '',
@@ -169,6 +180,11 @@ export default function AgreementsClient({
     [filtered, page],
   );
 
+  const formSymbol =
+    CURRENCY_OPTIONS.find((c) => c.value === form.currency)?.symbol ?? '₹';
+  const correctSymbol =
+    CURRENCY_OPTIONS.find((c) => c.value === correctForm.currency)?.symbol ?? '₹';
+
   const linesTotal = lines.reduce((s, l) => s + (Number(l.billingAmount) || 0), 0);
 
   function openCreate() {
@@ -190,6 +206,8 @@ export default function AgreementsClient({
       agreementNumber: '',
       title: a.title,
       scope: a.scope,
+      // A renewal restates the same contract, so it stays in its currency.
+      currency: a.currency,
       value: String(a.value),
       startDate: a.endDate,
       endDate: '',
@@ -225,6 +243,7 @@ export default function AgreementsClient({
     });
     setCorrectForm({
       scope: a.scope,
+      currency: a.currency,
       value: String(a.value),
       startDate: a.startDate,
       endDate: a.endDate,
@@ -268,6 +287,7 @@ export default function AgreementsClient({
           title: editForm.title,
           notes: editForm.notes,
           scope: correctForm.scope,
+          currency: correctForm.currency,
           value: correctForm.value,
           startDate: correctForm.startDate,
           endDate: correctForm.endDate,
@@ -479,7 +499,7 @@ export default function AgreementsClient({
                       </td>
                       <td className="td text-right">
                         <span className="tnum font-medium text-ink">
-                          {formatINRCompact(a.value)}
+                          {formatMoneyCompact(a.value, a.currency)}
                         </span>
                       </td>
                       <td className="td">
@@ -568,7 +588,7 @@ export default function AgreementsClient({
         {renewingFrom && (
           <div className="mb-4 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-300">
             Renewing from v{renewingFrom.renewalVersion} ·{' '}
-            {formatINR(renewingFrom.value)} · ended {formatDate(renewingFrom.endDate)}.
+            {formatMoney(renewingFrom.value, renewingFrom.currency)} · ended {formatDate(renewingFrom.endDate)}.
             Adjust the value and resources below — both versions stay in the history.
           </div>
         )}
@@ -634,7 +654,33 @@ export default function AgreementsClient({
                   ))}
                 </div>
               </Field>
-              <Field label="Total Value (₹)" required error={errors.value}>
+              <Field
+                label="Currency"
+                required
+                error={errors.currency}
+                hint={
+                  renewingFrom
+                    ? 'A renewal restates the same contract'
+                    : 'Deployments and invoices under this PO inherit it'
+                }
+              >
+                <select
+                  className="input"
+                  value={form.currency}
+                  onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                >
+                  {CURRENCY_OPTIONS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field
+                label={`Total Value (${formSymbol})`}
+                required
+                error={errors.value}
+              >
                 <input
                   className="input"
                   type="number"
@@ -740,7 +786,7 @@ export default function AgreementsClient({
               )}
               {linesTotal > 0 && (
                 <span className="tnum text-xs text-ink2">
-                  Monthly total: <strong className="text-ink">{formatINR(linesTotal)}</strong>
+                  Monthly total: <strong className="text-ink">{formatMoney(linesTotal, form.currency)}</strong>
                 </span>
               )}
             </div>
@@ -860,7 +906,30 @@ export default function AgreementsClient({
                     <option value="team">Team</option>
                   </select>
                 </Field>
-                <Field label="Value (₹/month)" required error={editErrors.value}>
+                <Field
+                  label="Currency"
+                  error={editErrors.currency}
+                  hint="Locked once invoices or deployments reference this PO"
+                >
+                  <select
+                    className="input"
+                    value={correctForm.currency}
+                    onChange={(e) =>
+                      setCorrectForm({ ...correctForm, currency: e.target.value })
+                    }
+                  >
+                    {CURRENCY_OPTIONS.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field
+                  label={`Value (${correctSymbol})`}
+                  required
+                  error={editErrors.value}
+                >
                   <input
                     className="input"
                     type="number"
@@ -1059,7 +1128,7 @@ export default function AgreementsClient({
                     </Badge>
                   </div>
                   <div className="tnum text-sm font-semibold text-ink">
-                    {formatINR(v.value)}
+                    {formatMoney(v.value, v.currency)}
                   </div>
                 </div>
 
@@ -1083,7 +1152,7 @@ export default function AgreementsClient({
                         }
                       >
                         {v.diff.valueDelta >= 0 ? '+' : ''}
-                        {formatINR(v.diff.valueDelta)}
+                        {formatMoney(v.diff.valueDelta, v.currency)}
                         {v.diff.valuePctChange !== null &&
                           ` (${v.diff.valuePctChange >= 0 ? '+' : ''}${v.diff.valuePctChange.toFixed(1)}%)`}
                       </span>

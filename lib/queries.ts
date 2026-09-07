@@ -15,7 +15,7 @@ import {
   opportunityStageHistory,
   PIPELINE_STAGES,
 } from './schema';
-import { GST_RATE, today } from './utils';
+import { GST_RATE, today, sumByCurrency, type MoneyByCurrency } from './utils';
 import crypto from 'node:crypto';
 
 /* ── Allocation ────────────────────────────────────────────── */
@@ -224,9 +224,13 @@ export async function getDashboardSummary() {
   ).length;
   const available = totalResources - allocationRows.filter((r) => r.allocated > 0).length;
 
+  // Grouped by currency as well as type: adding a dirham figure to a rupee one
+  // produces a number that means nothing, so the rollup keeps them apart and
+  // the UI renders each.
   const activeDeployments = await db
     .select({
       type: deployments.deploymentType,
+      currency: deployments.currency,
       c: sql<number>`count(*)`,
       billing: sql<number>`coalesce(sum(${deployments.billingAmount}), 0)`,
       commission: sql<number>`coalesce(sum(${deployments.commissionAmount}), 0)`,
@@ -234,11 +238,13 @@ export async function getDashboardSummary() {
     })
     .from(deployments)
     .where(eq(deployments.status, 'active'))
-    .groupBy(deployments.deploymentType)
+    .groupBy(deployments.deploymentType, deployments.currency)
     .all();
 
-  const billableRow = activeDeployments.find((r) => r.type === 'billable');
-  const shadowRow = activeDeployments.find((r) => r.type === 'shadow');
+  const billableRows = activeDeployments.filter((r) => r.type === 'billable');
+  const shadowRows = activeDeployments.filter((r) => r.type === 'shadow');
+  const countOf = (rows: typeof activeDeployments) =>
+    rows.reduce((n, r) => n + r.c, 0);
 
   const activeProjects =
     (await db
@@ -260,13 +266,19 @@ export async function getDashboardSummary() {
     fullyDeployed,
     partiallyDeployed,
     available,
-    billableDeployments: billableRow?.c ?? 0,
-    shadowDeployments: shadowRow?.c ?? 0,
+    billableDeployments: countOf(billableRows),
+    shadowDeployments: countOf(shadowRows),
     activeProjects,
     activeClients,
-    monthlyBilling: billableRow?.billing ?? 0,
-    monthlyCommission: billableRow?.commission ?? 0,
-    monthlyGst: billableRow?.gst ?? 0,
+    monthlyBilling: sumByCurrency(
+      billableRows.map((r) => ({ currency: r.currency, amount: r.billing })),
+    ),
+    monthlyCommission: sumByCurrency(
+      billableRows.map((r) => ({ currency: r.currency, amount: r.commission })),
+    ),
+    monthlyGst: sumByCurrency(
+      billableRows.map((r) => ({ currency: r.currency, amount: r.gst })),
+    ),
   };
 }
 
@@ -274,19 +286,27 @@ export async function getInvoiceSummary() {
   const rows = await db
     .select({
       status: invoices.status,
+      currency: invoices.currency,
       c: sql<number>`count(*)`,
       total: sql<number>`coalesce(sum(${invoices.amount} + ${invoices.gstAmount}), 0)`,
     })
     .from(invoices)
-    .groupBy(invoices.status)
+    .groupBy(invoices.status, invoices.currency)
     .all();
 
-  const byStatus = Object.fromEntries(
-    rows.map((r) => [r.status, { count: r.c, total: r.total }]),
-  ) as Record<string, { count: number; total: number }>;
+  const byStatus: Record<string, { count: number; total: MoneyByCurrency }> = {};
+  for (const r of rows) {
+    const entry = (byStatus[r.status] ??= { count: 0, total: [] });
+    entry.count += r.c;
+    entry.total = sumByCurrency([
+      ...entry.total.map((t) => ({ currency: t.currency as string, amount: t.amount })),
+      { currency: r.currency, amount: r.total },
+    ]);
+  }
 
-  const overdue = await db
+  const overdueRows = await db
     .select({
+      currency: invoices.currency,
       c: sql<number>`count(*)`,
       total: sql<number>`coalesce(sum(${invoices.amount} + ${invoices.gstAmount}), 0)`,
     })
@@ -297,14 +317,21 @@ export async function getInvoiceSummary() {
         sql`${invoices.dueDate} is not null and ${invoices.dueDate} < ${today()}`,
       ),
     )
-    .get();
+    .groupBy(invoices.currency)
+    .all();
 
   return {
     byStatus,
-    overdueCount: overdue?.c ?? 0,
-    overdueAmount: overdue?.total ?? 0,
-    outstandingAmount:
-      (byStatus.raised?.total ?? 0) + (byStatus.pending_collection?.total ?? 0),
+    overdueCount: overdueRows.reduce((n, r) => n + r.c, 0),
+    overdueAmount: sumByCurrency(
+      overdueRows.map((r) => ({ currency: r.currency, amount: r.total })),
+    ),
+    // Raised and pending-collection are both money owed to us; they are folded
+    // together per currency rather than into one figure.
+    outstandingAmount: sumByCurrency([
+      ...(byStatus.raised?.total ?? []),
+      ...(byStatus.pending_collection?.total ?? []),
+    ]),
   };
 }
 
@@ -346,22 +373,66 @@ export async function getResourceUtilisation() {
 }
 
 export async function getBillingByClient() {
-  return await db
-    .select({
-      clientId: clients.id,
-      clientName: clients.companyName,
-      billing: sql<number>`coalesce(sum(${deployments.billingAmount}), 0)`,
-      headcount: sql<number>`count(distinct ${deployments.resourceId})`,
-    })
-    .from(deployments)
-    .innerJoin(projects, eq(deployments.projectId, projects.id))
-    .innerJoin(clients, eq(projects.clientId, clients.id))
-    .where(
-      and(eq(deployments.status, 'active'), eq(deployments.deploymentType, 'billable')),
-    )
-    .groupBy(clients.id)
-    .orderBy(desc(sql`coalesce(sum(${deployments.billingAmount}), 0)`))
-    .all();
+  const where = and(
+    eq(deployments.status, 'active'),
+    eq(deployments.deploymentType, 'billable'),
+  );
+
+  // Two queries on purpose. Billing has to be grouped by currency, but
+  // headcount must NOT be: count(distinct resource) per currency group and
+  // then combined is wrong either way — summing double-counts anyone deployed
+  // to the same client in two currencies, and taking the max silently drops
+  // the people in the smaller group.
+  const [billingRows, headcountRows] = await Promise.all([
+    db
+      .select({
+        clientId: clients.id,
+        clientName: clients.companyName,
+        currency: deployments.currency,
+        billing: sql<number>`coalesce(sum(${deployments.billingAmount}), 0)`,
+      })
+      .from(deployments)
+      .innerJoin(projects, eq(deployments.projectId, projects.id))
+      .innerJoin(clients, eq(projects.clientId, clients.id))
+      .where(where)
+      .groupBy(clients.id, deployments.currency)
+      .all(),
+    db
+      .select({
+        clientId: clients.id,
+        headcount: sql<number>`count(distinct ${deployments.resourceId})`,
+      })
+      .from(deployments)
+      .innerJoin(projects, eq(deployments.projectId, projects.id))
+      .innerJoin(clients, eq(projects.clientId, clients.id))
+      .where(where)
+      .groupBy(clients.id)
+      .all(),
+  ]);
+
+  const byClient = new Map<
+    number,
+    { clientId: number; clientName: string; rows: { currency: string; amount: number }[] }
+  >();
+  for (const r of billingRows) {
+    const entry = byClient.get(r.clientId) ?? {
+      clientId: r.clientId,
+      clientName: r.clientName,
+      rows: [],
+    };
+    entry.rows.push({ currency: r.currency, amount: r.billing });
+    byClient.set(r.clientId, entry);
+  }
+
+  return [...byClient.values()]
+    .map((c) => ({
+      clientId: c.clientId,
+      clientName: c.clientName,
+      billing: sumByCurrency(c.rows),
+      largest: c.rows.reduce((a, b) => (b.amount > a.amount ? b : a)),
+      headcount: headcountRows.find((h) => h.clientId === c.clientId)?.headcount ?? 0,
+    }))
+    .sort((a, b) => b.largest.amount - a.largest.amount);
 }
 
 export async function getSkillDistribution() {
@@ -573,6 +644,7 @@ export async function getExpiringAgreements(days = 30) {
       agreementNumber: agreements.agreementNumber,
       projectName: projects.projectName,
       clientName: clients.companyName,
+      currency: agreements.currency,
       value: agreements.value,
       endDate: agreements.endDate,
       renewalVersion: agreements.renewalVersion,

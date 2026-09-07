@@ -40,6 +40,33 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const { data, error } = await parseBody(req, agreementCorrectSchema);
     if (error) return error;
 
+    // Correcting a typo in the value is one thing; changing the currency under
+    // figures that deployments are billing at and invoices were raised in is
+    // another — it silently restates what was charged. Blocked outright rather
+    // than offered behind an acknowledgement, because there is no correct way
+    // to reinterpret an invoice already sent.
+    if (data.currency !== existing.currency) {
+      const [invoiceCount, deploymentCount] = await Promise.all([
+        db
+          .select({ id: invoices.id })
+          .from(invoices)
+          .where(eq(invoices.agreementId, id))
+          .all(),
+        db
+          .select({ id: deployments.id })
+          .from(deployments)
+          .where(eq(deployments.agreementId, id))
+          .all(),
+      ]);
+      if (invoiceCount.length > 0 || deploymentCount.length > 0) {
+        return fail(
+          `This agreement is in ${existing.currency} and already has ${invoiceCount.length} invoice(s) and ${deploymentCount.length} deployment(s) against it. The currency cannot be changed — raise a new agreement in ${data.currency} instead.`,
+          409,
+          { fields: { currency: `Locked to ${existing.currency}` } },
+        );
+      }
+    }
+
     // A deployment points at both an agreement and a resource, and reads its
     // billing rate from the rate card. Dropping a resource that a deployment
     // is using would leave that deployment with no rate to resolve.
@@ -96,6 +123,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
           agreementNumber: data.agreementNumber,
           title: data.title,
           scope: data.scope,
+          currency: data.currency,
           value: data.value,
           startDate: data.startDate,
           endDate: data.endDate,

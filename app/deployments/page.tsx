@@ -25,6 +25,7 @@ export default async function DeploymentsPage() {
         allocationPercentage: deployments.allocationPercentage,
         startDate: deployments.startDate,
         endDate: deployments.endDate,
+        currency: deployments.currency,
         billingAmount: deployments.billingAmount,
         commissionAmount: deployments.commissionAmount,
         gstApplicable: deployments.gstApplicable,

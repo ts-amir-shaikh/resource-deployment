@@ -12,8 +12,8 @@ import {
   syncExpiredAgreements,
 } from '@/lib/queries';
 import {
-  formatINR,
-  formatINRCompact,
+  formatMoneyMulti,
+  sumByCurrency,
   formatDate,
   daysUntil,
   INVOICE_STATUS_LABELS,
@@ -49,7 +49,22 @@ export default async function DashboardPage() {
       getDueFollowUps(),
     ]);
 
-  const maxBilling = Math.max(...billingByClient.map((b) => b.billing), 1);
+  // getBillingByClient already folds to one entry per client with its billing
+  // per currency. Bars are sized WITHIN a currency — a bar comparing ₹80,000
+  // against AED 8,000 would be pure nonsense.
+  const maxByCurrency = new Map<string, number>();
+  for (const c of billingByClient) {
+    maxByCurrency.set(
+      c.largest.currency,
+      Math.max(maxByCurrency.get(c.largest.currency) ?? 0, c.largest.amount),
+    );
+  }
+
+  const billingClients = billingByClient.map((c) => ({
+    ...c,
+    barPercent: (c.largest.amount / (maxByCurrency.get(c.largest.currency) || 1)) * 100,
+  }));
+
   const deployedPct = s.totalResources
     ? Math.round(((s.fullyDeployed + s.partiallyDeployed) / s.totalResources) * 100)
     : 0;
@@ -97,7 +112,7 @@ export default async function DashboardPage() {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-rose-900 dark:text-rose-200">
                     {inv.overdueCount} overdue invoice
-                    {inv.overdueCount > 1 ? 's' : ''} · {formatINR(inv.overdueAmount)}
+                    {inv.overdueCount > 1 ? 's' : ''} · {formatMoneyMulti(inv.overdueAmount)}
                   </div>
                   <div className="text-xs text-rose-700 dark:text-rose-400">
                     Past due date and not yet collected
@@ -131,14 +146,23 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
             label="Monthly Billing"
-            value={formatINRCompact(s.monthlyBilling)}
-            sub={`${formatINRCompact(s.monthlyGst)} GST · ${formatINRCompact(s.monthlyBilling - s.monthlyCommission)} margin`}
+            value={formatMoneyMulti(s.monthlyBilling)}
+            sub={`${formatMoneyMulti(s.monthlyGst)} GST · ${formatMoneyMulti(
+              // Margin per currency: billing minus commission, never across.
+              sumByCurrency([
+                ...s.monthlyBilling,
+                ...s.monthlyCommission.map((c) => ({
+                  currency: c.currency as string,
+                  amount: -c.amount,
+                })),
+              ]),
+            )} margin`}
           />
           <Stat
             label="Outstanding"
-            value={formatINRCompact(inv.outstandingAmount)}
-            sub={`${formatINRCompact(inv.overdueAmount)} overdue`}
-            tone={inv.overdueAmount > 0 ? 'bad' : 'default'}
+            value={formatMoneyMulti(inv.outstandingAmount)}
+            sub={`${formatMoneyMulti(inv.overdueAmount)} overdue`}
+            tone={inv.overdueAmount.length > 0 ? 'bad' : 'default'}
           />
           <Stat
             label="Bench Utilisation"
@@ -202,7 +226,7 @@ export default async function DashboardPage() {
           <Stat label="Active Projects" value={s.activeProjects} />
           <Stat
             label="Monthly Commission"
-            value={formatINRCompact(s.monthlyCommission)}
+            value={formatMoneyMulti(s.monthlyCommission)}
           />
         </div>
 
@@ -308,20 +332,20 @@ export default async function DashboardPage() {
               </p>
             </header>
             <ul className="divide-y divide-line">
-              {billingByClient.map((c) => (
+              {billingClients.map((c) => (
                 <li key={c.clientId} className="px-4 py-3">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="truncate text-sm font-medium text-ink">
                       {c.clientName}
                     </span>
                     <span className="tnum shrink-0 text-sm font-semibold text-ink">
-                      {formatINRCompact(c.billing)}
+                      {formatMoneyMulti(c.billing)}
                     </span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface2">
                     <div
                       className="h-full rounded-full bg-brand"
-                      style={{ width: `${(c.billing / maxBilling) * 100}%` }}
+                      style={{ width: `${c.barPercent}%` }}
                     />
                   </div>
                   <div className="mt-1 text-2xs text-ink3">
@@ -329,7 +353,7 @@ export default async function DashboardPage() {
                   </div>
                 </li>
               ))}
-              {billingByClient.length === 0 && (
+              {billingClients.length === 0 && (
                 <li className="px-4 py-8 text-center text-sm text-ink3">
                   No active billable deployments yet
                 </li>
@@ -360,7 +384,7 @@ export default async function DashboardPage() {
                     {inv.byStatus[st]?.count ?? 0}
                   </div>
                   <div className="tnum text-xs text-ink2">
-                    {formatINR(inv.byStatus[st]?.total ?? 0)}
+                    {formatMoneyMulti(inv.byStatus[st]?.total)}
                   </div>
                 </div>
               ))}

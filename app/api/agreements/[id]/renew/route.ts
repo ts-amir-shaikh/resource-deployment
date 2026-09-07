@@ -40,6 +40,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           agreementNumber: data.agreementNumber,
           title: data.title,
           scope: data.scope,
+          currency: data.currency,
           value: data.value,
           startDate: data.startDate,
           endDate: data.endDate,

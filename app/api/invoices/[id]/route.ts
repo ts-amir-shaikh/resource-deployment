@@ -88,6 +88,33 @@ export async function PUT(req: Request, { params }: Ctx) {
     const { data, error } = await parseBody(req, invoiceSchema);
     if (error) return error;
 
+    // The create route has always validated the agreement; this one never did,
+    // so an edit could quietly point an invoice at a PO from another project.
+    if (data.agreementId) {
+      const agreement = await db
+        .select({
+          id: agreements.id,
+          projectId: agreements.projectId,
+          currency: agreements.currency,
+        })
+        .from(agreements)
+        .where(eq(agreements.id, data.agreementId))
+        .get();
+      if (!agreement) return fail('Selected agreement no longer exists', 422);
+      if (agreement.projectId !== data.projectId) {
+        return fail('That agreement belongs to a different project', 422, {
+          fields: { agreementId: 'Pick an agreement from the selected project' },
+        });
+      }
+      if (agreement.currency !== data.currency) {
+        return fail(
+          `This agreement is in ${agreement.currency}; the invoice must be raised in the same currency.`,
+          422,
+          { fields: { currency: `Must be ${agreement.currency}` } },
+        );
+      }
+    }
+
     const updated = await db.transaction(async (tx) => {
       const row = await tx
         .update(invoices)
@@ -98,6 +125,8 @@ export async function PUT(req: Request, { params }: Ctx) {
           scope: data.scope,
           periodFrom: data.periodFrom,
           periodTo: data.periodTo,
+          currency: data.currency,
+          fxRateToInr: data.fxRateToInr,
           amount: data.amount,
           gstAmount: data.gstAmount,
           invoiceDate: data.invoiceDate,

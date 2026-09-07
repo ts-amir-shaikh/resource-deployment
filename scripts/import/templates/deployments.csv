@@ -1,3 +1,3 @@
-resourceEmail,clientName,projectName,agreementNumber,deploymentType,allocationPercentage,startDate,endDate,billingAmount,commissionAmount,gstApplicable
-aditi.rao@example.com,Meridian Logistics,Fleet Tracking Platform,,billable,100,2026-01-15,,185000,25000,true
-rohan.mehta@example.com,Vantage Retail Co,POS Modernisation,,billable,60,2026-02-01,,140000,18000,true
+resourceEmail,clientName,projectName,agreementNumber,currency,deploymentType,allocationPercentage,startDate,endDate,billingAmount,commissionAmount,gstApplicable
+aditi.rao@example.com,Meridian Logistics,Fleet Tracking Platform,,INR,billable,100,2026-01-15,,185000,25000,true
+rohan.mehta@example.com,Vantage Retail Co,POS Modernisation,,INR,billable,60,2026-02-01,,140000,18000,true

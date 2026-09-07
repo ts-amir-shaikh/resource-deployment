@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, Search, UserSearch, X, Link2 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatINR, parseSkills, SOURCE_LABELS, LIST_PAGE_SIZE } from '@/lib/utils';
+import { formatMoney, parseSkills, SOURCE_LABELS, LIST_PAGE_SIZE } from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -374,7 +374,7 @@ export default function CandidatesClient({
                       )}
                     </td>
                     <td className="td text-right">
-                      <span className="tnum text-ink">{formatINR(c.expectedCtc)}</span>
+                      <span className="tnum text-ink">{formatMoney(c.expectedCtc, 'INR')}</span>
                     </td>
                     <td className="td text-right">
                       <span className="tnum text-ink2">

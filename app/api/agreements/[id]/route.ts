@@ -30,6 +30,7 @@ export async function GET(_req: Request, { params }: Ctx) {
         agreementNumber: agreements.agreementNumber,
         title: agreements.title,
         scope: agreements.scope,
+        currency: agreements.currency,
         value: agreements.value,
         startDate: agreements.startDate,
         endDate: agreements.endDate,
