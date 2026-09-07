@@ -36,6 +36,12 @@ import {
 } from '@/lib/utils';
 import { Modal, Field, Badge, FormSection, TableShell, type Tone } from '@/components/ui';
 import type { Role } from '@/lib/auth';
+import OpportunityFormFields, {
+  toFormValues,
+  toPayload,
+  type ClientOption,
+  type OpportunityFormValues,
+} from '@/components/opportunity-form';
 
 type Opportunity = {
   id: number;
@@ -167,6 +173,7 @@ export default function OpportunityDetailClient({
   history,
   pool,
   suggestions,
+  clients,
   resumeTo,
   role,
 }: {
@@ -176,6 +183,7 @@ export default function OpportunityDetailClient({
   history: StageEvent[];
   pool: PoolCandidate[];
   suggestions: Suggestion[];
+  clients: ClientOption[];
   resumeTo: string;
   role: Role;
 }) {
@@ -193,6 +201,43 @@ export default function OpportunityDetailClient({
   const internalComments = comments.filter((c) => c.authorRole !== 'stakeholder');
   const stakeholderComments = comments.filter((c) => c.authorRole === 'stakeholder');
   const shownComments = thread === 'internal' ? internalComments : stakeholderComments;
+
+  // M12: correcting the requirement itself — a brief that was taken down
+  // wrongly, or terms the client has since restated. Admin only; the same
+  // form the pipeline board uses to create one.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<OpportunityFormValues>(() => toFormValues(o));
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [editBanner, setEditBanner] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
+  function openEdit() {
+    // Re-derive from the current row rather than trusting state left over
+    // from a previous open — the page refreshes after every mutation.
+    setEditForm(toFormValues(o));
+    setEditErrors({});
+    setEditBanner(null);
+    setEditOpen(true);
+  }
+
+  async function saveEdit() {
+    setEditSaving(true);
+    setEditErrors({});
+    setEditBanner(null);
+    try {
+      await api(`/api/opportunities/${o.id}`, {
+        method: 'PUT',
+        json: toPayload(editForm, clients),
+      });
+      setEditOpen(false);
+      router.refresh();
+    } catch (e) {
+      if (isApiError(e) && e.fields) setEditErrors(e.fields);
+      setEditBanner(errorMessage(e));
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   const [suggestionBusy, setSuggestionBusy] = useState<number | null>(null);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
@@ -455,6 +500,11 @@ export default function OpportunityDetailClient({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {canEditRequirement && (
+              <button className="btn-ghost" onClick={openEdit}>
+                <Pencil className="h-4 w-4" /> Edit requirement
+              </button>
+            )}
             <button className="btn-ghost" onClick={copyShare}>
               {copied ? (
                 <>
@@ -922,6 +972,38 @@ export default function OpportunityDetailClient({
       </div>
 
       {/* Move stage */}
+      {/* Edit requirement — Admin only */}
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit Requirement"
+        description="Stage, candidates and comments are untouched — those move through their own actions"
+        wide
+      >
+        {editBanner && (
+          <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+            {editBanner}
+          </div>
+        )}
+
+        <OpportunityFormFields
+          form={editForm}
+          setForm={setEditForm}
+          errors={editErrors}
+          clients={clients}
+        />
+
+        <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+          <button className="btn-ghost" onClick={() => setEditOpen(false)}>
+            Cancel
+          </button>
+          <button className="btn-primary" onClick={saveEdit} disabled={editSaving}>
+            {editSaving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </Modal>
+
+
       <Modal
         open={stageOpen}
         onClose={() => setStageOpen(false)}

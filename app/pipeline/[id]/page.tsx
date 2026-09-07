@@ -31,7 +31,8 @@ export default async function OpportunityDetailPage({
   // Every query here is keyed only on `id` from the route params — none
   // depends on another's result — so they run concurrently instead of as a
   // string of sequential round trips.
-  const [row, mapped, comments, history, pool, suggestions, resumeTo] = await Promise.all([
+  const [row, mapped, comments, history, pool, suggestions, clientOptions, resumeTo] =
+    await Promise.all([
     db
       .select({
         id: opportunities.id,
@@ -123,6 +124,11 @@ export default async function OpportunityDetailPage({
       .where(eq(referrals.opportunityId, id))
       .orderBy(desc(referrals.id))
       .all(),
+    db
+      .select({ id: clients.id, companyName: clients.companyName })
+      .from(clients)
+      .orderBy(clients.companyName)
+      .all(),
     getStageBeforeHold(id),
   ]);
 
@@ -141,6 +147,7 @@ export default async function OpportunityDetailPage({
       history={history}
       pool={pool}
       suggestions={suggestions}
+      clients={clientOptions}
       resumeTo={resumeTo ?? 'requirement'}
     />
   );
