@@ -10,14 +10,22 @@ import { parse } from 'csv-parse/sync';
 import { createClient, type Client } from '@libsql/client';
 import type { ZodTypeAny, output } from 'zod';
 
+// Set-but-blank (e.g. a `.env` with TURSO_DATABASE_URL="") is treated the
+// same as unset — `??` alone wouldn't catch that, and libSQL rejects '' with
+// an opaque error rather than falling back.
+function resolvedUrl(): string {
+  return (process.env.TURSO_DATABASE_URL || '').trim() || 'file:./data/deployment.db';
+}
+
 export function getClient(): Client {
-  const url = process.env.TURSO_DATABASE_URL ?? 'file:./data/deployment.db';
   const authToken = process.env.TURSO_AUTH_TOKEN;
-  return createClient({ url, authToken });
+  return createClient({ url: resolvedUrl(), authToken });
 }
 
 export function targetLabel(): string {
-  return process.env.TURSO_DATABASE_URL ? 'Turso' : 'local file (data/deployment.db)';
+  return resolvedUrl().startsWith('file:')
+    ? 'local file (data/deployment.db)'
+    : 'Turso';
 }
 
 export type Row = Record<string, string>;

@@ -7,10 +7,15 @@ import * as schema from './schema';
  * Local development falls back to a libSQL file, so `npm run dev` needs no
  * cloud credentials. In production TURSO_DATABASE_URL points at Turso.
  *
+ * `|| ''` before `.trim()` guards against an env var that's *set but blank*
+ * (e.g. a `.env` with `TURSO_DATABASE_URL=""`) — `??` alone only falls back
+ * for null/undefined, not empty string, and libSQL rejects '' outright with
+ * an opaque URL_INVALID rather than a helpful message.
+ *
  * Note the libSQL driver is async — every query is awaited, unlike the
  * synchronous better-sqlite3 driver this replaced.
  */
-const url = process.env.TURSO_DATABASE_URL ?? 'file:./data/deployment.db';
+const url = (process.env.TURSO_DATABASE_URL || '').trim() || 'file:./data/deployment.db';
 const authToken = process.env.TURSO_AUTH_TOKEN;
 
 function createDb() {

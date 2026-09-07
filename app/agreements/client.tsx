@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
+  Pencil,
   Search,
   FileSignature,
   RefreshCw,
@@ -117,6 +118,15 @@ export default function AgreementsClient({
   const [historyFor, setHistoryFor] = useState<Row | null>(null);
   const [history, setHistory] = useState<HistoryVersion[] | null>(null);
 
+  // Separate, narrower modal for administrative edits — number/title/notes
+  // only. Price, dates, scope and resources change through Renew instead, so
+  // the version history stays the single source of truth for commercial terms.
+  const [editingRow, setEditingRow] = useState<Row | null>(null);
+  const [editForm, setEditForm] = useState({ agreementNumber: '', title: '', notes: '' });
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+  const [editBanner, setEditBanner] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initial.filter((a) => {
@@ -186,6 +196,34 @@ export default function AgreementsClient({
       );
     } catch {
       // Leave the blank line in place; the user can re-pick resources.
+    }
+  }
+
+  function openEdit(a: Row) {
+    setEditingRow(a);
+    setEditForm({
+      agreementNumber: a.agreementNumber ?? '',
+      title: a.title,
+      notes: a.notes ?? '',
+    });
+    setEditErrors({});
+    setEditBanner(null);
+  }
+
+  async function saveEdit() {
+    if (!editingRow) return;
+    setEditSaving(true);
+    setEditErrors({});
+    setEditBanner(null);
+    try {
+      await api(`/api/agreements/${editingRow.id}`, { method: 'PUT', json: editForm });
+      setEditingRow(null);
+      router.refresh();
+    } catch (e) {
+      if (isApiError(e) && e.fields) setEditErrors(e.fields);
+      setEditBanner(errorMessage(e));
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -369,6 +407,14 @@ export default function AgreementsClient({
                       </td>
                       <td className="td text-right">
                         <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => openEdit(a)}
+                            className="rounded p-1.5 text-ink3 hover:bg-surface2 hover:text-ink"
+                            title="Edit details"
+                            aria-label={`Edit ${a.title}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
                           {a.renewalVersion > 1 || a.status === 'renewed' ? (
                             <button
                               onClick={() => openHistory(a)}
@@ -625,6 +671,65 @@ export default function AgreementsClient({
               : renewingFrom
                 ? `Create v${renewingFrom.renewalVersion + 1}`
                 : 'Add Agreement'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* Edit — administrative fields only */}
+      <Modal
+        open={Boolean(editingRow)}
+        onClose={() => setEditingRow(null)}
+        title={editingRow ? `Edit: ${editingRow.title}` : 'Edit Agreement'}
+        description="Number, title and notes only — price, dates, scope and resources go through Renew"
+      >
+        {editBanner && (
+          <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+            {editBanner}
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <Field label="PO / Agreement Number" error={editErrors.agreementNumber}>
+            <input
+              className="input font-mono"
+              placeholder="e.g. NW/PO/2025-0207"
+              value={editForm.agreementNumber}
+              onChange={(e) =>
+                setEditForm({ ...editForm, agreementNumber: e.target.value })
+              }
+            />
+          </Field>
+          <Field label="Title" required error={editErrors.title}>
+            <input
+              className="input"
+              value={editForm.title}
+              onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+            />
+          </Field>
+          <Field label="Notes" error={editErrors.notes}>
+            <input
+              className="input"
+              placeholder="Optional"
+              value={editForm.notes}
+              onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+            />
+          </Field>
+        </div>
+
+        {editingRow && (
+          <div className="mt-4 rounded-md border border-line bg-surface2 px-3 py-2 text-2xs text-ink3">
+            Need to change the value, dates, scope or resources instead? Close this and use{' '}
+            <strong className="text-ink2">Renew</strong> — it creates a new version and
+            keeps this one in the history, rather than overwriting it.
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+          <button className="btn-ghost" onClick={() => setEditingRow(null)}>
+            Cancel
+          </button>
+          <button className="btn-primary" onClick={saveEdit} disabled={editSaving}>
+            {editSaving ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
       </Modal>

@@ -16,7 +16,9 @@
 import { createClient, type Client } from '@libsql/client';
 import { DDL } from '../lib/ddl';
 
-const url = process.env.TURSO_DATABASE_URL ?? 'file:./data/deployment.db';
+// `|| ''` before `.trim()` treats an env var that's set-but-blank the same
+// as unset — `??` alone doesn't, and libSQL rejects '' with an opaque error.
+const url = (process.env.TURSO_DATABASE_URL || '').trim() || 'file:./data/deployment.db';
 const authToken = process.env.TURSO_AUTH_TOKEN;
 
 type ColumnMigration = {
