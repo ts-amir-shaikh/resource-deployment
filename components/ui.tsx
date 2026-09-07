@@ -377,3 +377,37 @@ export function Pagination({
     </div>
   );
 }
+
+/**
+ * A single KPI tile. Shared by the Pipeline and Dashboard rows so both read
+ * the same, and so a value that is unavailable renders identically everywhere.
+ */
+export function KpiCard({
+  label,
+  value,
+  note,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: 'default' | 'good' | 'bad';
+}) {
+  const valueTone =
+    tone === 'good'
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : tone === 'bad'
+        ? 'text-rose-600 dark:text-rose-400'
+        : 'text-ink';
+  return (
+    <div className="card p-3">
+      <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
+        {label}
+      </div>
+      <div className={`tnum mt-1 truncate text-xl font-semibold ${valueTone}`} title={value}>
+        {value}
+      </div>
+      {note && <div className="mt-0.5 truncate text-2xs text-ink3">{note}</div>}
+    </div>
+  );
+}

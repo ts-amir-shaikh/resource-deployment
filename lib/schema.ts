@@ -322,8 +322,27 @@ export const opportunities = sqliteTable(
 
     requiredCount: integer('required_count').notNull().default(1),
     /** What the client pays. Hidden from the TA role — stripped server-side. */
+    /**
+     * Currency for every money figure on this requirement.
+     *
+     * Phase 4 left opportunities in rupees on the grounds that currency starts
+     * at the contract. Attaching a deal value to a requirement changes that: a
+     * Dubai role is worth dirhams, and folding it into a rupee pipeline total
+     * would reintroduce exactly the bug M14 removed.
+     */
+    currency: text('currency', { enum: CURRENCIES }).notNull().default('INR'),
+
     budgetMin: real('budget_min'),
     budgetMax: real('budget_max'),
+
+    /**
+     * Monthly value of the deal, overriding what would be derived from
+     * budget × positions.
+     *
+     * Not merely a convenience: most requirements are logged before a budget is
+     * agreed, so for the majority this is the only number there will be.
+     */
+    dealValue: real('deal_value'),
     /** What TA can offer a candidate. Shown to TA in place of client budget. */
     hiringBudgetMin: real('hiring_budget_min'),
     hiringBudgetMax: real('hiring_budget_max'),

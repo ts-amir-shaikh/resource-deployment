@@ -15,7 +15,13 @@ import {
   opportunityStageHistory,
   PIPELINE_STAGES,
 } from './schema';
-import { GST_RATE, today, sumByCurrency, type MoneyByCurrency } from './utils';
+import {
+  GST_RATE,
+  today,
+  sumByCurrency,
+  valueSummary,
+  type MoneyByCurrency,
+} from './utils';
 import crypto from 'node:crypto';
 
 /* ── Allocation ────────────────────────────────────────────── */
@@ -655,4 +661,69 @@ export async function getExpiringAgreements(days = 30) {
     .where(and(eq(agreements.status, 'active'), sql`${agreements.endDate} <= ${cutoff}`))
     .orderBy(agreements.endDate)
     .all();
+}
+
+/**
+ * Value-based pipeline KPIs for the dashboard.
+ *
+ * Won and lost "this month" come from opportunity_stage_history rather than
+ * the opportunity's current stage: the history table has recorded every move
+ * with a timestamp since Phase 2, so these figures have real history behind
+ * them immediately instead of starting empty. Current stage alone could only
+ * ever say "won at some point".
+ */
+export async function getPipelineValue() {
+  const rows = await db
+    .select({
+      id: opportunities.id,
+      stage: opportunities.stage,
+      currency: opportunities.currency,
+      dealValue: opportunities.dealValue,
+      budgetMin: opportunities.budgetMin,
+      budgetMax: opportunities.budgetMax,
+      requiredCount: opportunities.requiredCount,
+    })
+    .from(opportunities)
+    .all();
+
+  const openStages = PIPELINE_STAGES as readonly string[];
+  const open = rows.filter((r) => openStages.includes(r.stage));
+
+  // First day of the current month, as the YYYY-MM prefix the timestamps use.
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const closures = await db
+    .select({
+      opportunityId: opportunityStageHistory.opportunityId,
+      toStage: opportunityStageHistory.toStage,
+    })
+    .from(opportunityStageHistory)
+    .where(
+      and(
+        inArray(opportunityStageHistory.toStage, ['won', 'lost']),
+        sql`substr(${opportunityStageHistory.createdAt}, 1, 7) = ${monthPrefix}`,
+      ),
+    )
+    .all();
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const closedThisMonth = (stage: 'won' | 'lost') =>
+    closures
+      .filter((c) => c.toStage === stage)
+      .map((c) => byId.get(c.opportunityId))
+      .filter((r): r is (typeof rows)[number] => Boolean(r));
+
+  const wonRows = closedThisMonth('won');
+  const lostRows = closedThisMonth('lost');
+  const decided = wonRows.length + lostRows.length;
+
+  return {
+    open: valueSummary(open),
+    weighted: valueSummary(open, { weighted: true }),
+    wonThisMonth: valueSummary(wonRows),
+    lostThisMonth: valueSummary(lostRows),
+    // Of the deals actually decided this month, how many went our way. Null
+    // when nothing closed, because 0% and "no data" are different claims.
+    conversionRate: decided > 0 ? Math.round((wonRows.length / decided) * 100) : null,
+    decidedThisMonth: decided,
+  };
 }

@@ -98,6 +98,17 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'kind',
     ddl: "ALTER TABLE referrals ADD COLUMN kind TEXT NOT NULL DEFAULT 'referral'",
   },
+  // Phase 6 — pipeline value.
+  {
+    table: 'opportunities',
+    column: 'currency',
+    ddl: "ALTER TABLE opportunities ADD COLUMN currency TEXT NOT NULL DEFAULT 'INR'",
+  },
+  {
+    table: 'opportunities',
+    column: 'deal_value',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN deal_value REAL',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

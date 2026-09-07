@@ -116,6 +116,11 @@ export const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * What the client pays is commercial information TA does not get. The hiring
  * budget — what we can offer a candidate — takes its place on their screens.
  *
+ * `dealValue` goes with it: pipeline value IS client-facing money, and leaving
+ * it would hand back through one field exactly what the other two withhold.
+ * Nulling all three also makes opportunityValue() return null for TA, so their
+ * cards read "—" rather than a figure derived from data they cannot see.
+ *
  * Applied server-side on the way out rather than hidden with CSS, so the
  * numbers are never in the payload the browser receives.
  */
@@ -124,7 +129,7 @@ export function stripClientBudget<T extends Record<string, unknown>>(
   row: T,
 ): T {
   if (role !== 'ta') return row;
-  return { ...row, budgetMin: null, budgetMax: null };
+  return { ...row, budgetMin: null, budgetMax: null, dealValue: null };
 }
 
 export function stripClientBudgetAll<T extends Record<string, unknown>>(

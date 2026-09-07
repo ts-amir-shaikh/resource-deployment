@@ -10,6 +10,7 @@
  */
 
 import { FormSection, Field } from '@/components/ui';
+import { CURRENCY_OPTIONS, formatMoney, opportunityValue } from '@/lib/utils';
 
 export type OpportunityFormValues = {
   clientId: string;
@@ -25,8 +26,10 @@ export type OpportunityFormValues = {
   timezone: string;
   engagementType: string;
   requiredCount: string;
+  currency: string;
   budgetMin: string;
   budgetMax: string;
+  dealValue: string;
   hiringBudgetMin: string;
   hiringBudgetMax: string;
   jdContent: string;
@@ -54,8 +57,10 @@ export const BLANK_OPPORTUNITY: OpportunityFormValues = {
   timezone: '',
   engagementType: '',
   requiredCount: '1',
+  currency: 'INR',
   budgetMin: '',
   budgetMax: '',
+  dealValue: '',
   hiringBudgetMin: '',
   hiringBudgetMax: '',
   jdContent: '',
@@ -85,8 +90,10 @@ export function toFormValues(o: {
   timezone: string | null;
   engagementType: string | null;
   requiredCount: number;
+  currency?: string | null;
   budgetMin: number | null;
   budgetMax: number | null;
+  dealValue?: number | null;
   hiringBudgetMin: number | null;
   hiringBudgetMax: number | null;
   jdContent?: string | null;
@@ -119,8 +126,10 @@ export function toFormValues(o: {
     timezone: str(o.timezone),
     engagementType: str(o.engagementType),
     requiredCount: str(o.requiredCount),
+    currency: o.currency ?? 'INR',
     budgetMin: str(o.budgetMin),
     budgetMax: str(o.budgetMax),
+    dealValue: str(o.dealValue),
     hiringBudgetMin: str(o.hiringBudgetMin),
     hiringBudgetMax: str(o.hiringBudgetMax),
     jdContent: str(o.jdContent),
@@ -158,6 +167,15 @@ export default function OpportunityFormFields({
   errors: Record<string, string>;
   clients: ClientOption[];
 }) {
+  // Shown as the placeholder and hint, so it is obvious what leaving the
+  // override blank will actually produce.
+  const derived = opportunityValue({
+    dealValue: null,
+    budgetMin: form.budgetMin === '' ? null : Number(form.budgetMin),
+    budgetMax: form.budgetMax === '' ? null : Number(form.budgetMax),
+    requiredCount: Number(form.requiredCount) || 1,
+  });
+
   return (
     <div className="space-y-5">
       <FormSection title="Company">
@@ -339,6 +357,37 @@ export default function OpportunityFormFields({
 
       <FormSection title="Budget & Ownership">
         <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Currency" error={errors.currency}>
+            <select
+              className="input"
+              value={form.currency}
+              onChange={(e) => setForm({ ...form, currency: e.target.value })}
+            >
+              {CURRENCY_OPTIONS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field
+            label="Deal Value (per month)"
+            error={errors.dealValue}
+            hint={
+              derived !== null
+                ? `Blank uses budget × positions — ${formatMoney(derived, form.currency)}`
+                : 'Blank leaves this requirement unvalued in pipeline totals'
+            }
+          >
+            <input
+              className="input"
+              type="number"
+              min={0}
+              placeholder={derived !== null ? String(derived) : ''}
+              value={form.dealValue}
+              onChange={(e) => setForm({ ...form, dealValue: e.target.value })}
+            />
+          </Field>
           <Field
             label="Budget Min (₹/month)"
             error={errors.budgetMin}

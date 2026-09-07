@@ -59,6 +59,8 @@ type Opportunity = {
   timezone: string | null;
   engagementType: string | null;
   requiredCount: number;
+  currency: string;
+  dealValue: number | null;
   budgetMin: number | null;
   budgetMax: number | null;
   hiringBudgetMin: number | null;

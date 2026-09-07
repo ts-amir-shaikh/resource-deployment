@@ -262,3 +262,81 @@ export function isInvoiceOverdue(status: string, dueDate: string | null): boolea
   if (status === 'collected' || status === 'not_raised' || !dueDate) return false;
   return dueDate < today();
 }
+
+/* ── Pipeline value (M17) ──────────────────────────────────── */
+
+/**
+ * Odds a deal at each stage eventually closes, used for the weighted pipeline.
+ *
+ * Deliberately a plain table rather than anything learned: with nine live
+ * opportunities there is no sample to learn from, and a number invented by a
+ * model would look more authoritative than a number someone chose on purpose.
+ * Tune these as real hit rates emerge.
+ */
+export const STAGE_WIN_PROBABILITY: Record<string, number> = {
+  requirement: 0.1,
+  qualification: 0.25,
+  budgeting: 0.4,
+  candidate_mapping: 0.6,
+  interview: 0.75,
+  agreement: 0.9,
+  won: 1,
+  lost: 0,
+  hold: 0,
+};
+
+export type ValuableOpportunity = {
+  dealValue?: number | null;
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+  requiredCount: number;
+};
+
+/**
+ * What a requirement is worth per month, or null when there is nothing to go on.
+ *
+ * Returns null rather than 0 on purpose: a requirement nobody has priced is not
+ * a worthless one, and rendering it as ₹0 would drag averages down and make an
+ * un-costed deal look like a dead one.
+ *
+ * The top of the budget range is used because that is the figure being
+ * negotiated toward — the floor systematically understates the pipeline.
+ */
+export function opportunityValue(o: ValuableOpportunity): number | null {
+  if (o.dealValue !== null && o.dealValue !== undefined) return o.dealValue;
+  const rate = o.budgetMax ?? o.budgetMin;
+  if (rate === null || rate === undefined) return null;
+  return rate * Math.max(1, o.requiredCount);
+}
+
+/**
+ * Totals a set of opportunities by currency, and reports how many of them
+ * actually carried a value.
+ *
+ * The coverage counts are not decoration. With most requirements unpriced, a
+ * bare total is the value of a handful of deals wearing the label of the whole
+ * pipeline — so every caller has the numbers needed to say so.
+ */
+export function valueSummary(
+  rows: (ValuableOpportunity & { currency?: string | null; stage?: string })[],
+  opts: { weighted?: boolean } = {},
+): { total: MoneyByCurrency; valued: number; count: number } {
+  const entries: { currency: string; amount: number }[] = [];
+  let valued = 0;
+
+  for (const r of rows) {
+    const v = opportunityValue(r);
+    if (v === null) continue;
+    valued++;
+    const weight = opts.weighted ? (STAGE_WIN_PROBABILITY[r.stage ?? ''] ?? 0) : 1;
+    entries.push({ currency: r.currency ?? 'INR', amount: v * weight });
+  }
+
+  return { total: sumByCurrency(entries), valued, count: rows.length };
+}
+
+/** "2 of 9 valued" — or nothing at all once everything carries a number. */
+export function coverageNote(valued: number, count: number): string | null {
+  if (count === 0 || valued === count) return null;
+  return `${valued} of ${count} valued`;
+}

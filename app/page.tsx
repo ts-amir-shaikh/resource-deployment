@@ -8,19 +8,21 @@ import {
   getEndingSoon,
   getExpiringAgreements,
   getPipelineSummary,
+  getPipelineValue,
   getDueFollowUps,
   syncExpiredAgreements,
 } from '@/lib/queries';
 import {
   formatMoneyMulti,
   sumByCurrency,
+  coverageNote,
   formatDate,
   daysUntil,
   INVOICE_STATUS_LABELS,
   STAGE_LABELS,
   ACTIVE_STAGES,
 } from '@/lib/utils';
-import { Badge, Stat, AllocationBar, PageHeader, TableShell } from '@/components/ui';
+import { Badge, Stat, AllocationBar, PageHeader, TableShell, KpiCard } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +50,8 @@ export default async function DashboardPage() {
       getPipelineSummary(),
       getDueFollowUps(),
     ]);
+
+  const pipelineValue = await getPipelineValue();
 
   // getBillingByClient already folds to one entry per client with its billing
   // per currency. Bars are sized WITHIN a currency — a bar comparing ₹80,000
@@ -142,7 +146,50 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Primary KPIs */}
+        {/* Demand KPIs — what is coming, as against the delivery tiles below */}
+        <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <KpiCard
+            label="Open Pipeline"
+            value={formatMoneyMulti(pipelineValue.open.total)}
+            note={
+              coverageNote(pipelineValue.open.valued, pipelineValue.open.count) ??
+              'per month, open stages'
+            }
+          />
+          <KpiCard
+            label="Weighted Pipeline"
+            value={formatMoneyMulti(pipelineValue.weighted.total)}
+            note="by stage win probability"
+          />
+          <KpiCard
+            label="Won This Month"
+            value={formatMoneyMulti(pipelineValue.wonThisMonth.total)}
+            note={`${pipelineValue.wonThisMonth.count} deal${
+              pipelineValue.wonThisMonth.count === 1 ? '' : 's'
+            } closed`}
+            tone="good"
+          />
+          <KpiCard
+            label="Win Rate"
+            value={
+              pipelineValue.conversionRate === null
+                ? '—'
+                : `${pipelineValue.conversionRate}%`
+            }
+            note={
+              pipelineValue.decidedThisMonth === 0
+                ? 'nothing decided this month'
+                : `of ${pipelineValue.decidedThisMonth} decided this month`
+            }
+            tone={
+              pipelineValue.conversionRate !== null && pipelineValue.conversionRate < 40
+                ? 'bad'
+                : 'default'
+            }
+          />
+        </div>
+
+        {/* Delivery KPIs */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
             label="Monthly Billing"

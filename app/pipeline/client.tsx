@@ -25,6 +25,11 @@ import {
   WORK_MODE_LABELS,
   ENGAGEMENT_LABELS,
   LIST_PAGE_SIZE,
+  opportunityValue,
+  valueSummary,
+  coverageNote,
+  formatMoneyMulti,
+  formatMoneyCompact,
 } from '@/lib/utils';
 import type { Role } from '@/lib/auth';
 import OpportunityFormFields, {
@@ -41,6 +46,7 @@ import {
   TableShell,
   Badge,
   Pagination,
+  KpiCard,
   type Tone,
 } from '@/components/ui';
 
@@ -58,6 +64,8 @@ type Row = {
   timezone: string | null;
   engagementType: string | null;
   requiredCount: number;
+  currency: string;
+  dealValue: number | null;
   budgetMin: number | null;
   budgetMax: number | null;
   hiringBudgetMin: number | null;
@@ -113,6 +121,10 @@ export default function PipelineClient({
   // TA sees what we can offer a candidate; everyone else sees what the client
   // pays. The other figure is not in the payload at all for that role.
   const showHiringBudget = role === 'ta';
+  // Pipeline value is client-facing money — withheld from TA for the same
+  // reason the client budget is. Their deal values arrive already nulled, so
+  // this only decides whether to render the tiles at all.
+  const showValue = role !== 'ta';
   const [view, setView] = useState<'board' | 'list'>('board');
   const [search, setSearch] = useState('');
   const [showClosed, setShowClosed] = useState(false);
@@ -164,6 +176,23 @@ export default function PipelineClient({
     };
   }, [initial]);
 
+  const value = useMemo(() => {
+    const open = initial.filter((o) => (ACTIVE_STAGES as readonly string[]).includes(o.stage));
+    const won = initial.filter((o) => o.stage === 'won');
+    const summary = valueSummary(open);
+    const priced = open.map(opportunityValue).filter((v): v is number => v !== null);
+    return {
+      open: summary,
+      weighted: valueSummary(open, { weighted: true }),
+      won: valueSummary(won),
+      // Averaged over the priced deals only — dividing by the full count would
+      // report an average dragged toward zero by requirements nobody costed.
+      average: priced.length
+        ? priced.reduce((a, b) => a + b, 0) / priced.length
+        : null,
+    };
+  }, [initial]);
+
   function openCreate() {
     setForm(BLANK_OPPORTUNITY);
     setErrors({});
@@ -203,6 +232,39 @@ export default function PipelineClient({
           ) : null
         }
       />
+
+      {/* Value KPIs — hidden from TA, who see the counts below only */}
+      {showValue && (
+        <div className="grid grid-cols-2 gap-3 px-6 pt-4 lg:grid-cols-4">
+          <KpiCard
+            label="Open Pipeline"
+            value={formatMoneyMulti(value.open.total)}
+            note={coverageNote(value.open.valued, value.open.count) ?? 'per month'}
+          />
+          <KpiCard
+            label="Weighted"
+            value={formatMoneyMulti(value.weighted.total)}
+            note="by stage win probability"
+          />
+          <KpiCard
+            label="Won"
+            value={formatMoneyMulti(value.won.total)}
+            note={coverageNote(value.won.valued, value.won.count) ?? 'closed deals'}
+            tone="good"
+          />
+          <KpiCard
+            label="Average Deal"
+            value={
+              value.average === null ? '—' : `${formatMoneyCompact(value.average, 'INR')}/mo`
+            }
+            note={
+              value.open.valued === 0
+                ? 'nothing valued yet'
+                : `across ${value.open.valued} valued`
+            }
+          />
+        </div>
+      )}
 
       {/* Funnel summary */}
       <div className="grid grid-cols-2 gap-3 px-6 py-4 lg:grid-cols-5">
@@ -331,6 +393,7 @@ export default function PipelineClient({
               ].map((stage) => {
                 const items = filtered.filter((o) => o.stage === stage);
                 const positions = items.reduce((s, o) => s + o.requiredCount, 0);
+                const colValue = valueSummary(items);
                 return (
                   <section key={stage} className="card flex w-64 shrink-0 flex-col">
                     <header className="border-b border-line px-3 py-2.5">
@@ -338,11 +401,29 @@ export default function PipelineClient({
                         <Badge tone={STAGE_TONE[stage]}>{STAGE_LABELS[stage]}</Badge>
                         <span className="tnum text-xs text-ink3">{items.length}</span>
                       </div>
-                      {positions > 0 && (
-                        <div className="tnum mt-1 text-2xs text-ink3">
-                          {positions} position{positions === 1 ? '' : 's'}
-                        </div>
-                      )}
+                      <div className="mt-1 flex items-baseline justify-between gap-2">
+                        {positions > 0 ? (
+                          <span className="tnum text-2xs text-ink3">
+                            {positions} position{positions === 1 ? '' : 's'}
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                        {showValue && colValue.valued > 0 && (
+                          <span
+                            className="tnum text-2xs font-medium text-ink2"
+                            title={
+                              coverageNote(colValue.valued, colValue.count) ??
+                              'every deal valued'
+                            }
+                          >
+                            {formatMoneyMulti(colValue.total)}
+                            {colValue.valued < colValue.count && (
+                              <span className="ml-0.5 text-ink3">*</span>
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </header>
                     <ul className="flex-1 space-y-2 p-2">
                       {items.map((o) => (
@@ -374,6 +455,16 @@ export default function PipelineClient({
                                 </span>
                               )}
                             </div>
+
+                            {showValue && (
+                              <div className="tnum mt-1.5 text-xs font-semibold text-ink">
+                                {/* "—" not "₹0": an unpriced requirement is not a
+                                    worthless one, and 0 would read as a dead deal. */}
+                                {opportunityValue(o) === null
+                                  ? <span className="font-normal text-ink3">Not valued</span>
+                                  : `${formatMoneyCompact(opportunityValue(o), o.currency)}/mo`}
+                              </div>
+                            )}
 
                             <div className="mt-2 flex flex-wrap gap-1">
                               {o.primarySkill && (

@@ -307,8 +307,11 @@ export const opportunitySchema = z
       .int()
       .min(1, 'At least one position is required')
       .max(999),
+    currency,
     budgetMin: optionalMoney,
     budgetMax: optionalMoney,
+    /** Overrides budget × positions. Blank falls back to the derivation. */
+    dealValue: optionalMoney,
     // What we can offer a candidate, as distinct from what the client pays.
     // TA sees this in place of the client budget.
     hiringBudgetMin: optionalMoney,
