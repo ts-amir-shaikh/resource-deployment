@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { opportunities, opportunityComments } from '@/lib/schema';
-import { commentSchema } from '@/lib/validations';
+import { shareCommentSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
@@ -74,7 +74,7 @@ export async function POST(req: Request, { params }: Ctx) {
       return fail('This requirement is closed and no longer accepting suggestions.', 409);
     }
 
-    const { data, error } = await parseBody(req, commentSchema);
+    const { data, error } = await parseBody(req, shareCommentSchema);
     if (error) return error;
 
     // Stakeholder comments never set the internal next step.

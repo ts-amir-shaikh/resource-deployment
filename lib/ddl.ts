@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS opportunities (
   stage TEXT NOT NULL DEFAULT 'requirement',
   priority TEXT DEFAULT 'medium',
   owner TEXT,
+  owner_user_id INTEGER,
   next_step TEXT,
   next_step_date TEXT,
   closed_reason TEXT,
@@ -192,6 +193,8 @@ CREATE TABLE IF NOT EXISTS opportunity_candidates (
   interview_date TEXT,
   feedback TEXT,
   expected_billing REAL,
+  user_id INTEGER,
+  updated_by_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(opportunity_id, candidate_id)
 );
@@ -203,6 +206,7 @@ CREATE TABLE IF NOT EXISTS opportunity_comments (
   opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
   author TEXT NOT NULL,
   author_role TEXT NOT NULL DEFAULT 'internal',
+  user_id INTEGER,
   body TEXT NOT NULL,
   is_followup INTEGER NOT NULL DEFAULT 0,
   follow_up_date TEXT,
@@ -216,6 +220,7 @@ CREATE TABLE IF NOT EXISTS opportunity_stage_history (
   from_stage TEXT,
   to_stage TEXT NOT NULL,
   note TEXT,
+  user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS oppstage_opp_idx ON opportunity_stage_history(opportunity_id);
@@ -227,6 +232,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   password_salt TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'admin',
+  is_team_lead INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -249,11 +255,39 @@ CREATE TABLE IF NOT EXISTS referrals (
   kind TEXT NOT NULL DEFAULT 'referral',
   status TEXT NOT NULL DEFAULT 'new',
   converted_candidate_id INTEGER REFERENCES candidates(id),
+  decided_by_user_id INTEGER,
+  referred_by_resource_id INTEGER REFERENCES resources(id),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS referral_opportunity_idx ON referrals(opportunity_id);
 CREATE INDEX IF NOT EXISTS referral_status_idx ON referrals(status);
 CREATE INDEX IF NOT EXISTS opp_listed_idx ON opportunities(is_listed);
+
+CREATE TABLE IF NOT EXISTS rating_criteria (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  description TEXT,
+  scope TEXT NOT NULL DEFAULT 'global',
+  opportunity_id INTEGER REFERENCES opportunities(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS crit_scope_idx ON rating_criteria(scope);
+CREATE INDEX IF NOT EXISTS crit_opportunity_idx ON rating_criteria(opportunity_id);
+
+CREATE TABLE IF NOT EXISTS candidate_ratings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  opportunity_candidate_id INTEGER NOT NULL REFERENCES opportunity_candidates(id) ON DELETE CASCADE,
+  criterion_id INTEGER NOT NULL REFERENCES rating_criteria(id),
+  score INTEGER NOT NULL,
+  note TEXT,
+  rated_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS rating_mapping_idx ON candidate_ratings(opportunity_candidate_id);
+CREATE INDEX IF NOT EXISTS rating_criterion_idx ON candidate_ratings(criterion_id);
 
 CREATE TABLE IF NOT EXISTS agent_runs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

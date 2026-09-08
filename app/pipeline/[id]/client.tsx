@@ -252,11 +252,7 @@ export default function OpportunityDetailClient({
   // control it: TA lives closest to these roles and keeps the board current.
   const canManageListing = role === 'admin' || role === 'ta';
   const [listingOpen, setListingOpen] = useState(false);
-  const [listingForm, setListingForm] = useState({
-    publicTitle: o.publicTitle ?? '',
-    publicCompanyLabel: o.publicCompanyLabel ?? '',
-    showClientName: o.showClientName,
-  });
+  const [listingForm, setListingForm] = useState({ publicTitle: o.publicTitle ?? '' });
   const [listingBusy, setListingBusy] = useState(false);
   const [listingError, setListingError] = useState<string | null>(null);
   const isClosed = ['won', 'lost'].includes(o.stage);
@@ -319,7 +315,6 @@ export default function OpportunityDetailClient({
   const [editingMap, setEditingMap] = useState<Mapped | null>(null);
 
   const [commentBody, setCommentBody] = useState('');
-  const [commentAuthor, setCommentAuthor] = useState('');
   const [isFollowup, setIsFollowup] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
   const [commentError, setCommentError] = useState<string | null>(null);
@@ -429,7 +424,6 @@ export default function OpportunityDetailClient({
       await api(`/api/opportunities/${o.id}/comments`, {
         method: 'POST',
         json: {
-          author: commentAuthor,
           body: commentBody,
           isFollowup,
           followUpDate: isFollowup ? followUpDate : undefined,
@@ -554,11 +548,7 @@ export default function OpportunityDetailClient({
               <button
                 className="btn-ghost"
                 onClick={() => {
-                  setListingForm({
-                    publicTitle: o.publicTitle ?? '',
-                    publicCompanyLabel: o.publicCompanyLabel ?? '',
-                    showClientName: o.showClientName,
-                  });
+                  setListingForm({ publicTitle: o.publicTitle ?? '' });
                   setListingError(null);
                   setListingOpen(true);
                 }}
@@ -946,12 +936,6 @@ export default function OpportunityDetailClient({
               {commentError && (
                 <p className="text-xs text-rose-600 dark:text-rose-400">{commentError}</p>
               )}
-              <input
-                className="input"
-                placeholder="Your name"
-                value={commentAuthor}
-                onChange={(e) => setCommentAuthor(e.target.value)}
-              />
               <textarea
                 className="input min-h-20 resize-y"
                 placeholder="Add an update, or note what happens next…"
@@ -979,7 +963,7 @@ export default function OpportunityDetailClient({
               <button
                 className="btn-primary w-full"
                 onClick={postComment}
-                disabled={busy || !commentBody.trim() || !commentAuthor.trim()}
+                disabled={busy || !commentBody.trim()}
               >
                 Post
               </button>
@@ -1074,36 +1058,22 @@ export default function OpportunityDetailClient({
             />
           </Field>
 
-          <Field
-            label="Client shown as"
-            hint="Stands in for the client name, e.g. “A leading retail group”"
-          >
-            <input
-              className="input"
-              placeholder="A Techstalwarts client"
-              disabled={listingForm.showClientName}
-              value={listingForm.publicCompanyLabel}
-              onChange={(e) =>
-                setListingForm({ ...listingForm, publicCompanyLabel: e.target.value })
-              }
-            />
-          </Field>
-
-          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-            <input
-              type="checkbox"
-              checked={listingForm.showClientName}
-              onChange={(e) =>
-                setListingForm({ ...listingForm, showClientName: e.target.checked })
-              }
-              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-line accent-[rgb(var(--accent))]"
-            />
-            <span>
-              Name <strong>{o.companyName}</strong> publicly. Only tick this if the
-              client has agreed — a job board is read by competitors, and candidates
-              can approach them directly.
-            </span>
-          </label>
+          <div className="rounded-md border border-line bg-surface2 px-3 py-2">
+            <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
+              Client shown as
+            </div>
+            <div className="mt-0.5 text-sm text-ink">
+              {o.showClientName ? o.companyName : (o.publicCompanyLabel || 'A Techstalwarts client')}
+              {o.showClientName && (
+                <Badge tone="amber">named publicly</Badge>
+              )}
+            </div>
+            <p className="mt-1 text-2xs text-ink3">
+              {canEditRequirement
+                ? 'Change this on Edit requirement — how a client is described publicly is an Admin decision.'
+                : 'Set by Admin on the requirement itself.'}
+            </p>
+          </div>
 
           <div className="rounded-md border border-line bg-surface2 px-3 py-2 text-2xs text-ink3">
             Never published: budget, hiring budget, pipeline stage, owner, next step

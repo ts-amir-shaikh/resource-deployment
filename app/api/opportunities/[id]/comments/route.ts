@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { opportunities, opportunityComments } from '@/lib/schema';
 import { commentSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
+import { requireSession } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 
 export async function POST(req: Request, { params }: Ctx) {
   return handle(async () => {
+    const session = await requireSession();
     const id = parseId(params.id);
     if (!id) return fail('Invalid opportunity id', 400);
 
@@ -44,7 +46,10 @@ export async function POST(req: Request, { params }: Ctx) {
         .insert(opportunityComments)
         .values({
           opportunityId: id,
-          author: data.author,
+          // From the session, not the payload: the browser does not get to
+          // decide whose name goes on a comment.
+          author: session.name,
+          userId: session.uid || null,
           authorRole: 'internal',
           body: data.body,
           isFollowup: data.isFollowup,

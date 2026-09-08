@@ -158,6 +158,8 @@ export async function PUT(req: Request, { params }: Ctx) {
         hiringBudgetMin: data.hiringBudgetMin,
         hiringBudgetMax: data.hiringBudgetMax,
         jdContent: data.jdContent,
+        publicCompanyLabel: data.publicCompanyLabel,
+        showClientName: data.showClientName,
         workingDays: data.workingDays,
         workingHours: data.workingHours,
         priority: data.priority,

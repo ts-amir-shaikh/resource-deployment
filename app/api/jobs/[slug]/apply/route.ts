@@ -40,11 +40,14 @@ export async function POST(req: Request, { params }: { params: { slug: string } 
     await db.insert(referrals).values({
       opportunityId: job.id,
       kind: 'application',
-      // On an application the applicant is their own referrer; the columns are
-      // NOT NULL and the inbox renders both, so they are filled consistently.
-      referrerName: data.candidateName,
-      referrerEmail: data.candidateEmail ?? null,
-      referrerMobile: data.candidateMobile ?? null,
+      // When somebody internal referred them, that person goes in the referrer
+      // columns. Otherwise the applicant is their own referrer — those columns
+      // are NOT NULL and the review inbox renders both.
+      referrerName: data.referrerName || data.candidateName,
+      referrerEmail: data.referrerName
+        ? (data.referrerEmail ?? null)
+        : (data.candidateEmail ?? null),
+      referrerMobile: data.referrerName ? null : (data.candidateMobile ?? null),
       candidateName: data.candidateName,
       candidateEmail: data.candidateEmail ?? null,
       candidateMobile: data.candidateMobile ?? null,

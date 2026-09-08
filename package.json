@@ -11,7 +11,8 @@
     "db:migrate": "node --env-file=.env --import tsx scripts/migrate.ts",
     "db:import": "node --env-file=.env --import tsx scripts/import.ts",
     "db:clean": "node --env-file=.env --import tsx scripts/clean.ts",
-    "db:user": "node --env-file=.env --import tsx scripts/user.ts"
+    "db:user": "node --env-file=.env --import tsx scripts/user.ts",
+    "db:backfill-attribution": "node --env-file=.env --import tsx scripts/backfill-attribution.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

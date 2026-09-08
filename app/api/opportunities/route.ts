@@ -143,6 +143,8 @@ export async function POST(req: Request) {
           hiringBudgetMin: data.hiringBudgetMin,
           hiringBudgetMax: data.hiringBudgetMax,
           jdContent: data.jdContent,
+          publicCompanyLabel: data.publicCompanyLabel,
+          showClientName: data.showClientName,
           workingDays: data.workingDays,
           workingHours: data.workingHours,
           stage: 'requirement',

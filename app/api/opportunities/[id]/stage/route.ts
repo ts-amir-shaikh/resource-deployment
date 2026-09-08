@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { opportunities, opportunityStageHistory } from '@/lib/schema';
 import { stageMoveSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
+import { requireSession } from '@/lib/session';
 import { getStageBeforeHold } from '@/lib/queries';
 import { STAGE_LABELS } from '@/lib/utils';
 
@@ -21,6 +22,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   return handle(async () => {
+    const session = await requireSession();
     const id = parseId(params.id);
     if (!id) return fail('Invalid opportunity id', 400);
 
@@ -76,6 +78,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           fromStage: existing.stage,
           toStage: data.toStage,
           note: data.note ?? data.closedReason ?? null,
+          userId: session.uid || null,
         })
         .run();
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { referrals, candidates, opportunityCandidates } from '@/lib/schema';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
+import { requireSession } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ const actionSchema = z.object({
  */
 export async function PATCH(req: Request, { params }: Ctx) {
   return handle(async () => {
+    const session = await requireSession();
     const id = parseId(params.id);
     if (id === null) return fail('Invalid referral', 400);
 
@@ -41,7 +43,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     }
 
     if (data.action === 'dismiss') {
-      await db.update(referrals).set({ status: 'dismissed' }).where(eq(referrals.id, id));
+      await db
+        .update(referrals)
+        .set({ status: 'dismissed', decidedByUserId: session.uid || null })
+        .where(eq(referrals.id, id));
       return ok({ id, status: 'dismissed' });
     }
 
@@ -68,7 +73,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
       await tx
         .update(referrals)
-        .set({ status: 'accepted', convertedCandidateId: candidate.id })
+        .set({
+          status: 'accepted',
+          convertedCandidateId: candidate.id,
+          decidedByUserId: session.uid || null,
+        })
         .where(eq(referrals.id, id));
 
       if (data.mapToOpportunity) {

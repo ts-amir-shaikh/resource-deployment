@@ -353,7 +353,14 @@ export const opportunities = sqliteTable(
 
     stage: text('stage', { enum: OPPORTUNITY_STAGES }).notNull().default('requirement'),
     priority: text('priority', { enum: PRIORITIES }).default('medium'),
+    /**
+     * Free-text owner, kept as-is. It is the only record of who owned things
+     * before accounts existed, and two names in live data ('Rakesh Samal',
+     * 'Yogini Patil') match no account at all — dropping it would lose them.
+     */
     owner: text('owner'),
+    /** The account that owns this requirement. Null where the name matched none. */
+    ownerUserId: integer('owner_user_id'),
 
     nextStep: text('next_step'),
     nextStepDate: text('next_step_date'),
@@ -465,6 +472,9 @@ export const opportunityCandidates = sqliteTable(
     interviewDate: text('interview_date'),
     feedback: text('feedback'),
     expectedBilling: real('expected_billing'),
+    /** Who mapped this candidate, and who last moved its interview state. */
+    userId: integer('user_id'),
+    updatedByUserId: integer('updated_by_user_id'),
     ...timestamps,
   },
   (t) => ({
@@ -484,6 +494,8 @@ export const opportunityComments = sqliteTable(
       .notNull()
       .references(() => opportunities.id, { onDelete: 'cascade' }),
     author: text('author').notNull(),
+    /** Written from the session, never typed. Null on rows predating M21. */
+    userId: integer('user_id'),
     authorRole: text('author_role', { enum: COMMENT_AUTHOR_ROLES })
       .notNull()
       .default('internal'),
@@ -508,10 +520,78 @@ export const opportunityStageHistory = sqliteTable(
     fromStage: text('from_stage'),
     toStage: text('to_stage').notNull(),
     note: text('note'),
+    /** Who moved it. Null on rows predating M21. */
+    userId: integer('user_id'),
     ...timestamps,
   },
   (t) => ({
     oppIdx: index('oppstage_opp_idx').on(t.opportunityId),
+  }),
+);
+
+/* ── M22: Candidate rating criteria ────────────────────────── */
+
+export const CRITERION_SCOPES = ['global', 'opportunity'] as const;
+
+/**
+ * The pointers a recruiter scores a candidate against.
+ *
+ * A library rather than a fixed form: a criterion added while evaluating one
+ * candidate joins the set offered for the next, so the team converges on a
+ * shared vocabulary instead of each recruiter inventing their own.
+ */
+export const ratingCriteria = sqliteTable(
+  'rating_criteria',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    label: text('label').notNull(),
+    description: text('description'),
+    /** 'global' applies everywhere; 'opportunity' is specific to one requirement. */
+    scope: text('scope', { enum: CRITERION_SCOPES }).notNull().default('global'),
+    opportunityId: integer('opportunity_id').references(() => opportunities.id, {
+      onDelete: 'cascade',
+    }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    /**
+     * Retired criteria are deactivated, never deleted: scores already given
+     * against one must stay readable, which they would not be if the row went.
+     */
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    createdByUserId: integer('created_by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    scopeIdx: index('crit_scope_idx').on(t.scope),
+    opportunityIdx: index('crit_opportunity_idx').on(t.opportunityId),
+  }),
+);
+
+/**
+ * One score per criterion per evaluation.
+ *
+ * Keyed on the candidate-to-opportunity mapping, not the candidate: the same
+ * person can be strong for one requirement and weak for another, and a single
+ * profile score could never say that.
+ */
+export const candidateRatings = sqliteTable(
+  'candidate_ratings',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    opportunityCandidateId: integer('opportunity_candidate_id')
+      .notNull()
+      .references(() => opportunityCandidates.id, { onDelete: 'cascade' }),
+    criterionId: integer('criterion_id')
+      .notNull()
+      .references(() => ratingCriteria.id),
+    /** 1–5. Unweighted; weighting waits for real hiring data. */
+    score: integer('score').notNull(),
+    note: text('note'),
+    ratedByUserId: integer('rated_by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    mappingIdx: index('rating_mapping_idx').on(t.opportunityCandidateId),
+    criterionIdx: index('rating_criterion_idx').on(t.criterionId),
   }),
 );
 
@@ -529,6 +609,13 @@ export const users = sqliteTable(
     passwordHash: text('password_hash').notNull(),
     passwordSalt: text('password_salt').notNull(),
     role: text('role', { enum: USER_ROLES }).notNull().default('admin'),
+    /**
+     * A TA who also sees the team roll-up. Deliberately a flag rather than a
+     * fourth role: a lead is a working recruiter with the same access and the
+     * same commercial restrictions, so the role table stays at three and
+     * middleware needs no new rules. It only changes what their dashboard shows.
+     */
+    isTeamLead: integer('is_team_lead', { mode: 'boolean' }).notNull().default(false),
     active: integer('active', { mode: 'boolean' }).notNull().default(true),
     ...timestamps,
   },
@@ -582,6 +669,14 @@ export const referrals = sqliteTable(
     status: text('status', { enum: REFERRAL_STATUSES }).notNull().default('new'),
     /** Set when accepted into the candidate pool. */
     convertedCandidateId: integer('converted_candidate_id').references(() => candidates.id),
+    /** Who accepted or dismissed it. */
+    decidedByUserId: integer('decided_by_user_id'),
+    /**
+     * The employee who referred this applicant, once someone internal confirms
+     * the match. The public form takes a typed name — offering a searchable
+     * staff list there would hand out the employee directory.
+     */
+    referredByResourceId: integer('referred_by_resource_id').references(() => resources.id),
     ...timestamps,
   },
   (t) => ({

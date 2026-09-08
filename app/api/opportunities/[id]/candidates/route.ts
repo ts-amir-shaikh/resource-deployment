@@ -6,6 +6,7 @@ import {
   candidateMappingUpdateSchema,
 } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
+import { requireSession } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ type Ctx = { params: { id: string } };
 /** Map a candidate onto this opportunity. */
 export async function POST(req: Request, { params }: Ctx) {
   return handle(async () => {
+    const session = await requireSession();
     const id = parseId(params.id);
     if (!id) return fail('Invalid opportunity id', 400);
 
@@ -53,6 +55,8 @@ export async function POST(req: Request, { params }: Ctx) {
       .values({
         opportunityId: id,
         candidateId: data.candidateId,
+        userId: session.uid || null,
+        updatedByUserId: session.uid || null,
         status: data.status,
         interviewRound: data.interviewRound,
         interviewDate: data.interviewDate,
@@ -69,6 +73,7 @@ export async function POST(req: Request, { params }: Ctx) {
 /** Update one mapping's interview progress. `?mapping_id=` selects the row. */
 export async function PUT(req: Request, { params }: Ctx) {
   return handle(async () => {
+    const session = await requireSession();
     const id = parseId(params.id);
     if (!id) return fail('Invalid opportunity id', 400);
 
@@ -95,6 +100,7 @@ export async function PUT(req: Request, { params }: Ctx) {
     const row = await db
       .update(opportunityCandidates)
       .set({
+        updatedByUserId: session.uid || null,
         status: data.status,
         interviewRound: data.interviewRound,
         interviewDate: data.interviewDate,
@@ -111,6 +117,7 @@ export async function PUT(req: Request, { params }: Ctx) {
 
 export async function DELETE(req: Request, { params }: Ctx) {
   return handle(async () => {
+    const session = await requireSession();
     const id = parseId(params.id);
     if (!id) return fail('Invalid opportunity id', 400);
 

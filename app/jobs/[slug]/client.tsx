@@ -16,6 +16,8 @@ import { Badge, Field } from '@/components/ui';
 
 const BLANK = {
   candidateName: '',
+  referrerName: '',
+  referrerEmail: '',
   candidateEmail: '',
   candidateMobile: '',
   experienceYears: '',
@@ -207,6 +209,33 @@ export default function JobDetailClient({ job }: { job: PublicJob }) {
                 />
               </Field>
             </div>
+
+            <fieldset className="rounded-md border border-line p-3">
+              <legend className="px-1 text-2xs font-medium uppercase tracking-wider text-ink3">
+                Referred by someone at Techstalwarts? — optional
+              </legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Their name" error={fieldErrors.referrerName}>
+                  <input
+                    className="input"
+                    value={form.referrerName}
+                    onChange={(e) => setForm({ ...form, referrerName: e.target.value })}
+                  />
+                </Field>
+                <Field
+                  label="Their email"
+                  error={fieldErrors.referrerEmail}
+                  hint="Helps us credit the right person"
+                >
+                  <input
+                    className="input"
+                    type="email"
+                    value={form.referrerEmail}
+                    onChange={(e) => setForm({ ...form, referrerEmail: e.target.value })}
+                  />
+                </Field>
+              </div>
+            </fieldset>
 
             <Field label="Anything else" error={fieldErrors.notes}>
               <textarea

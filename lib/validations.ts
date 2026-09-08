@@ -321,6 +321,15 @@ export const opportunitySchema = z
     workingDays: optionalStr,
     workingHours: optionalStr,
 
+    /**
+     * How the client is described on the public job board, and whether to name
+     * them outright. On the requirement form because that form is Admin-only —
+     * how a client is described publicly is a commercial decision, and the
+     * listing modal that TA can open only shows these read-only.
+     */
+    publicCompanyLabel: optionalStr,
+    showClientName: z.coerce.boolean().default(false),
+
     priority: z.enum(['low', 'medium', 'high']).default('medium'),
     owner: optionalStr,
     nextStep: optionalStr,
@@ -370,13 +379,25 @@ export const stageMoveSchema = z
     path: ['closedReason'],
   });
 
-export const commentSchema = z
-  .object({
-    author: z.string().trim().min(1, 'Your name is required'),
-    body: z.string().trim().min(1, 'Comment cannot be empty'),
-    isFollowup: z.coerce.boolean().default(false),
-    followUpDate: optionalDate,
-  })
+const commentBase = z.object({
+  body: z.string().trim().min(1, 'Comment cannot be empty'),
+  isFollowup: z.coerce.boolean().default(false),
+  followUpDate: optionalDate,
+});
+
+/**
+ * Internal comments carry NO author field. The name comes from the session, so
+ * a signed-in user cannot post under someone else's name — which matters now
+ * that these rows drive per-recruiter dashboards.
+ */
+export const commentSchema = commentBase.refine(
+  (d) => !d.isFollowup || Boolean(d.followUpDate),
+  { message: 'Pick a date for the follow-up', path: ['followUpDate'] },
+);
+
+/** The public share route has no session, so a consultant types their name. */
+export const shareCommentSchema = commentBase
+  .extend({ author: z.string().trim().min(1, 'Your name is required') })
   .refine((d) => !d.isFollowup || Boolean(d.followUpDate), {
     message: 'Pick a date for the follow-up',
     path: ['followUpDate'],
@@ -521,6 +542,15 @@ export const referralSchema = z
 export const applicationSchema = z
   .object({
     candidateName: z.string().trim().min(1, 'Your name is required'),
+    /**
+     * Optional: an employee who pointed this person at the role.
+     *
+     * Free text, and matched to a resource internally. A public form offering a
+     * searchable staff list would hand the employee directory to anyone who
+     * opened it.
+     */
+    referrerName: optionalStr,
+    referrerEmail: optionalEmail,
     candidateEmail: optionalEmail,
     candidateMobile: optionalStr,
     experienceYears: optionalYears,

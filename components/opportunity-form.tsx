@@ -33,6 +33,8 @@ export type OpportunityFormValues = {
   hiringBudgetMin: string;
   hiringBudgetMax: string;
   jdContent: string;
+  publicCompanyLabel: string;
+  showClientName: boolean;
   workingDays: string;
   workingHours: string;
   priority: string;
@@ -64,6 +66,8 @@ export const BLANK_OPPORTUNITY: OpportunityFormValues = {
   hiringBudgetMin: '',
   hiringBudgetMax: '',
   jdContent: '',
+  publicCompanyLabel: '',
+  showClientName: false,
   workingDays: '',
   workingHours: '',
   priority: 'medium',
@@ -97,6 +101,8 @@ export function toFormValues(o: {
   hiringBudgetMin: number | null;
   hiringBudgetMax: number | null;
   jdContent?: string | null;
+  publicCompanyLabel?: string | null;
+  showClientName?: boolean | null;
   workingDays?: string | null;
   workingHours?: string | null;
   priority: string | null;
@@ -133,6 +139,8 @@ export function toFormValues(o: {
     hiringBudgetMin: str(o.hiringBudgetMin),
     hiringBudgetMax: str(o.hiringBudgetMax),
     jdContent: str(o.jdContent),
+    publicCompanyLabel: str(o.publicCompanyLabel),
+    showClientName: Boolean(o.showClientName),
     workingDays: str(o.workingDays),
     workingHours: str(o.workingHours),
     priority: o.priority ?? 'medium',
@@ -456,6 +464,38 @@ export default function OpportunityFormFields({
             />
           </Field>
         </div>
+      </FormSection>
+
+      <FormSection title="Public Job Board">
+        <p className="mb-3 text-2xs text-ink3">
+          Used only if this requirement is published to the job board. Set here
+          rather than at publish time so the wording is an Admin decision.
+        </p>
+        <Field
+          label="Client shown as"
+          error={errors.publicCompanyLabel}
+          hint="Stands in for the client name publicly, e.g. “A leading retail group”"
+        >
+          <input
+            className="input"
+            placeholder="A Techstalwarts client"
+            disabled={form.showClientName}
+            value={form.publicCompanyLabel}
+            onChange={(e) => setForm({ ...form, publicCompanyLabel: e.target.value })}
+          />
+        </Field>
+        <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+          <input
+            type="checkbox"
+            checked={form.showClientName}
+            onChange={(e) => setForm({ ...form, showClientName: e.target.checked })}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-line accent-[rgb(var(--accent))]"
+          />
+          <span>
+            Name the client publicly. Only tick this if they have agreed — a job
+            board is read by competitors, and candidates can approach them directly.
+          </span>
+        </label>
       </FormSection>
 
       <FormSection title="Job Description">

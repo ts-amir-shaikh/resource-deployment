@@ -109,6 +109,49 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'deal_value',
     ddl: 'ALTER TABLE opportunities ADD COLUMN deal_value REAL',
   },
+  // Phase 8 — attribution, ratings and the referrer link. Every one is
+  // nullable: rows written before this simply have no actor, which the
+  // dashboards report as "unassigned" rather than guessing at.
+  {
+    table: 'users',
+    column: 'is_team_lead',
+    ddl: 'ALTER TABLE users ADD COLUMN is_team_lead INTEGER NOT NULL DEFAULT 0',
+  },
+  {
+    table: 'opportunities',
+    column: 'owner_user_id',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN owner_user_id INTEGER',
+  },
+  {
+    table: 'opportunity_comments',
+    column: 'user_id',
+    ddl: 'ALTER TABLE opportunity_comments ADD COLUMN user_id INTEGER',
+  },
+  {
+    table: 'opportunity_stage_history',
+    column: 'user_id',
+    ddl: 'ALTER TABLE opportunity_stage_history ADD COLUMN user_id INTEGER',
+  },
+  {
+    table: 'opportunity_candidates',
+    column: 'user_id',
+    ddl: 'ALTER TABLE opportunity_candidates ADD COLUMN user_id INTEGER',
+  },
+  {
+    table: 'opportunity_candidates',
+    column: 'updated_by_user_id',
+    ddl: 'ALTER TABLE opportunity_candidates ADD COLUMN updated_by_user_id INTEGER',
+  },
+  {
+    table: 'referrals',
+    column: 'decided_by_user_id',
+    ddl: 'ALTER TABLE referrals ADD COLUMN decided_by_user_id INTEGER',
+  },
+  {
+    table: 'referrals',
+    column: 'referred_by_resource_id',
+    ddl: 'ALTER TABLE referrals ADD COLUMN referred_by_resource_id INTEGER REFERENCES resources(id)',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

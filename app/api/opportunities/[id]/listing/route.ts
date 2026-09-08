@@ -6,18 +6,17 @@ import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Publishing controls only. The client label and the name-them-publicly flag
+ * moved to the requirement form, which is Admin-only — TA can publish a role
+ * but not decide how the client is described to the world.
+ */
 const listingSchema = z
   .object({
     isListed: z.coerce.boolean(),
     publicTitle: z.string().trim().max(120).optional(),
-    publicCompanyLabel: z.string().trim().max(120).optional(),
-    showClientName: z.coerce.boolean().default(false),
   })
-  .transform((d) => ({
-    ...d,
-    publicTitle: d.publicTitle || undefined,
-    publicCompanyLabel: d.publicCompanyLabel || undefined,
-  }));
+  .transform((d) => ({ ...d, publicTitle: d.publicTitle || undefined }));
 
 /**
  * Publishes a requirement to the public board, or withdraws it.
@@ -62,8 +61,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         // amending advert copy does not push an old role back to the top.
         listedAt: data.isListed ? (existing.listedAt ?? new Date().toISOString()) : null,
         publicTitle: data.publicTitle ?? null,
-        publicCompanyLabel: data.publicCompanyLabel ?? null,
-        showClientName: data.showClientName,
       })
       .where(eq(opportunities.id, id))
       .returning()
@@ -74,8 +71,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       isListed: row.isListed,
       listedAt: row.listedAt,
       publicTitle: row.publicTitle,
-      publicCompanyLabel: row.publicCompanyLabel,
-      showClientName: row.showClientName,
     });
   });
 }
