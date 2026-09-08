@@ -12,6 +12,7 @@ import {
   ReceiptIndianRupee,
   Target,
   UserSearch,
+  ClipboardList,
   Sparkles,
   LogOut,
   Eye,
@@ -28,6 +29,7 @@ import { ROLE_LABELS, type Session } from '@/lib/auth';
  */
 const ICONS: Record<string, LucideIcon> = {
   '/': LayoutDashboard,
+  '/my': ClipboardList,
   '/pipeline': Target,
   '/candidates': UserSearch,
   '/agents': Sparkles,

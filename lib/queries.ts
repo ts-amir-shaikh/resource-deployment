@@ -13,6 +13,8 @@ import {
   candidates,
   opportunityCandidates,
   opportunityStageHistory,
+  referrals,
+  users,
   PIPELINE_STAGES,
 } from './schema';
 import {
@@ -726,4 +728,120 @@ export async function getPipelineValue() {
     conversionRate: decided > 0 ? Math.round((wonRows.length / decided) * 100) : null,
     decidedThisMonth: decided,
   };
+}
+
+/* ── M25: recruiter dashboards ─────────────────────────────── */
+
+/**
+ * One recruiter's working picture, or the whole team's when userId is null.
+ *
+ * Everything keys on the attribution added in M21. Records written before that
+ * carry no actor, so they surface under "unassigned" rather than being silently
+ * attributed to whoever happens to be looking.
+ */
+export async function getRecruiterBoard(userId: number | null) {
+  const mine = userId === null ? undefined : userId;
+
+  const opps = await db
+    .select({
+      id: opportunities.id,
+      title: opportunities.title,
+      stage: opportunities.stage,
+      requiredCount: opportunities.requiredCount,
+      nextStep: opportunities.nextStep,
+      nextStepDate: opportunities.nextStepDate,
+      ownerUserId: opportunities.ownerUserId,
+      owner: opportunities.owner,
+    })
+    .from(opportunities)
+    .where(inArray(opportunities.stage, [...PIPELINE_STAGES]))
+    .all();
+
+  const owned = mine === undefined ? opps : opps.filter((o) => o.ownerUserId === mine);
+
+  const mappings = await db
+    .select({
+      id: opportunityCandidates.id,
+      opportunityId: opportunityCandidates.opportunityId,
+      status: opportunityCandidates.status,
+      interviewDate: opportunityCandidates.interviewDate,
+      feedback: opportunityCandidates.feedback,
+      userId: opportunityCandidates.userId,
+      candidateName: candidates.name,
+      title: opportunities.title,
+    })
+    .from(opportunityCandidates)
+    .innerJoin(candidates, eq(opportunityCandidates.candidateId, candidates.id))
+    .innerJoin(opportunities, eq(opportunityCandidates.opportunityId, opportunities.id))
+    .all();
+
+  const ownedIds = new Set(owned.map((o) => o.id));
+  const myMappings =
+    mine === undefined
+      ? mappings
+      : mappings.filter((m) => m.userId === mine || ownedIds.has(m.opportunityId));
+
+  const pendingReferrals = await db
+    .select({
+      id: referrals.id,
+      opportunityId: referrals.opportunityId,
+      candidateName: referrals.candidateName,
+      kind: referrals.kind,
+      title: opportunities.title,
+      ownerUserId: opportunities.ownerUserId,
+    })
+    .from(referrals)
+    .innerJoin(opportunities, eq(referrals.opportunityId, opportunities.id))
+    .where(eq(referrals.status, 'new'))
+    .all();
+
+  const today_ = today();
+
+  return {
+    requirements: owned,
+    // The morning list: things with a name on them that nobody has moved.
+    followUpsDue: owned.filter((o) => o.nextStepDate && o.nextStepDate <= today_),
+    // Mapped but never put in front of the client.
+    notSubmitted: myMappings.filter((m) => m.status === 'mapped'),
+    // Interviewed with nothing written down — the most commonly dropped step.
+    interviewsUnlogged: myMappings.filter(
+      (m) => m.status === 'interview' && m.interviewDate && !m.feedback,
+    ),
+    inboxWaiting:
+      mine === undefined
+        ? pendingReferrals
+        : pendingReferrals.filter((r) => r.ownerUserId === mine),
+    counts: {
+      submitted: myMappings.filter((m) =>
+        ['submitted', 'interview', 'selected', 'offered', 'joined'].includes(m.status),
+      ).length,
+      interviewing: myMappings.filter((m) => m.status === 'interview').length,
+      offered: myMappings.filter((m) => ['offered', 'joined'].includes(m.status)).length,
+      joined: myMappings.filter((m) => m.status === 'joined').length,
+      positions: owned.reduce((n, o) => n + o.requiredCount, 0),
+    },
+  };
+}
+
+/** Per-recruiter roll-up for a team lead, plus what nobody owns. */
+export async function getTeamBoard() {
+  const team = await db
+    .select({ id: users.id, name: users.name, isTeamLead: users.isTeamLead })
+    .from(users)
+    .where(and(eq(users.role, 'ta'), eq(users.active, true)))
+    .orderBy(users.name)
+    .all();
+
+  const perPerson = await Promise.all(
+    team.map(async (u) => ({ user: u, board: await getRecruiterBoard(u.id) })),
+  );
+
+  // Work that predates attribution, or belongs to a name with no account.
+  const all = await getRecruiterBoard(null);
+  const ownedByTeam = new Set(
+    perPerson.flatMap((p) => p.board.requirements.map((r) => r.id)),
+  );
+  const unassigned = all.requirements.filter((r) => !ownedByTeam.has(r.id));
+
+  return { perPerson, unassigned, totals: all.counts };
 }

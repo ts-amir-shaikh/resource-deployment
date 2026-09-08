@@ -19,10 +19,12 @@ export type NavItem = {
 };
 
 const ALL: readonly Role[] = ['admin', 'management', 'ta'];
+const TA_ONLY: readonly Role[] = ['ta'];
 const BACK_OFFICE: readonly Role[] = ['admin', 'management'];
 
 export const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', roles: BACK_OFFICE },
+  { href: '/my', label: 'My Work', roles: TA_ONLY },
   { href: '/pipeline', label: 'Pipeline', roles: ALL },
   { href: '/candidates', label: 'Candidates', roles: ALL },
   { href: '/agents', label: 'Agents', roles: ALL },
@@ -38,9 +40,9 @@ export function navFor(role: Role): NavItem[] {
   return NAV.filter((item) => item.roles.includes(role));
 }
 
-/** Where a role lands after login. TA has no dashboard, so it starts on work. */
+/** Where a role lands after login — a recruiter starts on their own board. */
 export function landingPath(role: Role): string {
-  return role === 'ta' ? '/pipeline' : '/';
+  return role === 'ta' ? '/my' : '/';
 }
 
 /**
@@ -50,6 +52,7 @@ export function landingPath(role: Role): string {
  * existing bench resource). Everything commercial is absent by omission.
  */
 const TA_READ_PREFIXES = [
+  '/my',
   '/pipeline',
   '/candidates',
   '/agents',
@@ -59,6 +62,8 @@ const TA_READ_PREFIXES = [
   '/api/clients',
   '/api/resources',
   '/api/referrals',
+  '/api/rating-criteria',
+  '/api/ratings',
   '/api/dashboard/pipeline',
 ];
 
@@ -91,6 +96,11 @@ type WriteRule = { test: (p: string) => boolean; allow: boolean };
 const TA_WRITE_RULES: WriteRule[] = [
   // Converting a won opportunity into a project + deployments is commercial.
   { test: (p) => /^\/api\/opportunities\/\d+\/convert$/.test(p), allow: false },
+  // So is onboarding a prospect as a client. Note the rule above ends in $ and
+  // does NOT cover this path — without its own denial it fell through to the
+  // broad "anything nested under an opportunity" allowance below and TA could
+  // create client records.
+  { test: (p) => /^\/api\/opportunities\/\d+\/convert-client$/.test(p), allow: false },
   // Creating an opportunity, or editing the requirement itself (M12: admin).
   { test: (p) => p === '/api/opportunities', allow: false },
   { test: (p) => /^\/api\/opportunities\/\d+$/.test(p), allow: false },
@@ -99,6 +109,9 @@ const TA_WRITE_RULES: WriteRule[] = [
   { test: (p) => /^\/api\/opportunities\/\d+\//.test(p), allow: true },
   { test: (p) => p.startsWith('/api/candidates'), allow: true },
   { test: (p) => p.startsWith('/api/referrals'), allow: true },
+  // Rating candidates and defining new pointers is core TA work.
+  { test: (p) => p.startsWith('/api/rating-criteria'), allow: true },
+  { test: (p) => p.startsWith('/api/ratings'), allow: true },
   // Running agents is TA's daily work — JD analysis, resume vetting, formatting.
   { test: (p) => p.startsWith('/api/agents'), allow: true },
 ];

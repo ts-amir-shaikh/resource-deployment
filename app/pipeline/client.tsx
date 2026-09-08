@@ -185,6 +185,7 @@ export default function PipelineClient({
       open: summary,
       weighted: valueSummary(open, { weighted: true }),
       won: valueSummary(won),
+      lost: valueSummary(initial.filter((o) => o.stage === 'lost')),
       // Averaged over the priced deals only — dividing by the full count would
       // report an average dragged toward zero by requirements nobody costed.
       average: priced.length
@@ -235,7 +236,7 @@ export default function PipelineClient({
 
       {/* Value KPIs — hidden from TA, who see the counts below only */}
       {showValue && (
-        <div className="grid grid-cols-2 gap-3 px-6 pt-4 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 px-6 pt-4 lg:grid-cols-5">
           <KpiCard
             label="Open Pipeline"
             value={formatMoneyMulti(value.open.total)}
@@ -251,6 +252,12 @@ export default function PipelineClient({
             value={formatMoneyMulti(value.won.total)}
             note={coverageNote(value.won.valued, value.won.count) ?? 'closed deals'}
             tone="good"
+          />
+          <KpiCard
+            label="Lost"
+            value={formatMoneyMulti(value.lost.total)}
+            note={coverageNote(value.lost.valued, value.lost.count) ?? 'closed out'}
+            tone={value.lost.valued > 0 ? 'bad' : 'default'}
           />
           <KpiCard
             label="Average Deal"

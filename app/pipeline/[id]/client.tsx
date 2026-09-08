@@ -16,6 +16,8 @@ import {
   CalendarClock,
   Inbox,
   UserPlus,
+  Star,
+  Building2,
   X,
   Globe,
 } from 'lucide-react';
@@ -139,6 +141,13 @@ type Suggestion = {
   status: string;
   convertedCandidateId: number | null;
   createdAt: string;
+};
+
+type Criterion = {
+  id: number;
+  label: string;
+  description: string | null;
+  scope: string;
 };
 
 type PoolCandidate = {
@@ -271,6 +280,98 @@ export default function OpportunityDetailClient({
       setListingError(errorMessage(e));
     } finally {
       setListingBusy(false);
+    }
+  }
+
+  /* ── M22: recruiter evaluation ─────────────────────────────
+   * Ratings hang off the candidate-to-opportunity mapping, not the candidate:
+   * the same person can be strong for one requirement and weak for another,
+   * and one profile score could never say that. */
+  const [ratingFor, setRatingFor] = useState<Mapped | null>(null);
+  const [criteria, setCriteria] = useState<Criterion[]>([]);
+  const [scores, setScores] = useState<Record<number, number>>({});
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [ratingError, setRatingError] = useState<string | null>(null);
+  const [newPointer, setNewPointer] = useState('');
+  const [addingPointer, setAddingPointer] = useState(false);
+
+  async function openRating(m: Mapped) {
+    setRatingFor(m);
+    setRatingError(null);
+    setNewPointer('');
+    setScores({});
+    setCriteria([]);
+    try {
+      const [list, existing] = await Promise.all([
+        api<Criterion[]>(`/api/rating-criteria?opportunity_id=${o.id}`),
+        api<{ criterionId: number; score: number }[]>(`/api/ratings/${m.id}`),
+      ]);
+      setCriteria(list);
+      setScores(Object.fromEntries(existing.map((r) => [r.criterionId, r.score])));
+    } catch (e) {
+      setRatingError(errorMessage(e));
+    }
+  }
+
+  async function addPointer() {
+    const label = newPointer.trim();
+    if (!label) return;
+    setAddingPointer(true);
+    setRatingError(null);
+    try {
+      // Global by default — a pointer one recruiter adds is offered on every
+      // future evaluation, which is what makes this a library not a form.
+      const created = await api<Criterion>('/api/rating-criteria', {
+        method: 'POST',
+        json: { label, scope: 'global' },
+      });
+      setCriteria((c) => [...c, created]);
+      setNewPointer('');
+    } catch (e) {
+      setRatingError(errorMessage(e));
+    } finally {
+      setAddingPointer(false);
+    }
+  }
+
+  async function saveRating() {
+    if (!ratingFor) return;
+    setRatingBusy(true);
+    setRatingError(null);
+    try {
+      await api(`/api/ratings/${ratingFor.id}`, {
+        method: 'PUT',
+        json: {
+          scores: Object.entries(scores)
+            .filter(([, v]) => v > 0)
+            .map(([criterionId, score]) => ({ criterionId: Number(criterionId), score })),
+        },
+      });
+      setRatingFor(null);
+      router.refresh();
+    } catch (e) {
+      setRatingError(errorMessage(e));
+    } finally {
+      setRatingBusy(false);
+    }
+  }
+
+  const given = Object.values(scores).filter((v) => v > 0);
+  const rated = given.length;
+  const average = rated ? given.reduce((a, b) => a + b, 0) / rated : 0;
+
+  // A prospect is a company we are talking to that has no client record yet.
+  // Onboarding is a commercial act, so Admin only.
+  const [onboarding, setOnboarding] = useState(false);
+  async function convertToClient() {
+    setOnboarding(true);
+    try {
+      await api(`/api/opportunities/${o.id}/convert-client`, { method: 'POST' });
+      router.refresh();
+    } catch (e) {
+      setStageError(errorMessage(e));
+    } finally {
+      setOnboarding(false);
     }
   }
 
@@ -544,6 +645,12 @@ export default function OpportunityDetailClient({
                 <Globe className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Listed
               </a>
             )}
+            {o.isProspect && canEditRequirement && (
+              <button className="btn-ghost" onClick={convertToClient} disabled={onboarding}>
+                <Building2 className="h-4 w-4" />
+                {onboarding ? 'Onboarding…' : 'Onboard as client'}
+              </button>
+            )}
             {canManageListing && !isClosed && (
               <button
                 className="btn-ghost"
@@ -761,6 +868,14 @@ export default function OpportunityDetailClient({
                       </td>
                       <td className="td text-right">
                         <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => openRating(m)}
+                            className="rounded p-1.5 text-ink3 hover:bg-surface2 hover:text-amber-500"
+                            aria-label={`Rate ${m.name}`}
+                            title="Recruiter evaluation"
+                          >
+                            <Star className="h-3.5 w-3.5" />
+                          </button>
                           <button
                             onClick={() => openMapEdit(m)}
                             className="rounded p-1.5 text-ink3 hover:bg-surface2 hover:text-ink"
@@ -1030,6 +1145,117 @@ export default function OpportunityDetailClient({
       </div>
 
       {/* Move stage */}
+      {/* Recruiter evaluation */}
+      <Modal
+        open={Boolean(ratingFor)}
+        onClose={() => setRatingFor(null)}
+        title={ratingFor ? `Evaluate ${ratingFor.name}` : 'Evaluate'}
+        description="Scored against this requirement — the same candidate can rate differently elsewhere"
+      >
+        {ratingError && (
+          <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+            {ratingError}
+          </div>
+        )}
+
+        {criteria.length === 0 ? (
+          <p className="py-6 text-center text-sm text-ink3">Loading pointers…</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {criteria.map((c) => (
+              <li key={c.id} className="py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-ink">{c.label}</div>
+                    {c.description && (
+                      <div className="text-2xs text-ink3">{c.description}</div>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() =>
+                          setScores((prev) => ({
+                            ...prev,
+                            // Clicking the current score clears it — a blank
+                            // pointer means "not assessed", which is different
+                            // from a 1 and should stay expressible.
+                            [c.id]: prev[c.id] === n ? 0 : n,
+                          }))
+                        }
+                        aria-label={`${c.label}: ${n} of 5`}
+                        className={`h-7 w-7 rounded text-xs font-medium transition-colors ${
+                          (scores[c.id] ?? 0) >= n
+                            ? 'bg-amber-400 text-amber-950'
+                            : 'border border-line text-ink3 hover:border-amber-300'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-4 rounded-md border border-line bg-surface2 p-3">
+          <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
+            Add a pointer
+          </div>
+          <p className="mt-0.5 text-2xs text-ink3">
+            It joins the set offered on every future evaluation, so the team
+            scores against the same things.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <input
+              className="input"
+              placeholder="e.g. Domain knowledge — BFSI"
+              value={newPointer}
+              onChange={(e) => setNewPointer(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void addPointer();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn-ghost shrink-0"
+              onClick={addPointer}
+              disabled={addingPointer || !newPointer.trim()}
+            >
+              Add
+            </button>
+          </div>
+        </div>
+
+        {rated > 0 && (
+          <div className="mt-3 flex items-baseline justify-between rounded-md border border-line px-3 py-2">
+            <span className="text-xs text-ink2">
+              Average across {rated} scored pointer{rated === 1 ? '' : 's'}
+            </span>
+            <span className="tnum text-lg font-semibold text-ink">
+              {average.toFixed(1)}
+              <span className="text-xs font-normal text-ink3"> / 5</span>
+            </span>
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+          <button className="btn-ghost" onClick={() => setRatingFor(null)}>
+            Cancel
+          </button>
+          <button className="btn-primary" onClick={saveRating} disabled={ratingBusy}>
+            {ratingBusy ? 'Saving…' : 'Save evaluation'}
+          </button>
+        </div>
+      </Modal>
+
       {/* Public job board listing */}
       <Modal
         open={listingOpen}

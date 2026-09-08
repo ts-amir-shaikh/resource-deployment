@@ -187,6 +187,30 @@ async function main() {
 
   await client.executeMultiple(DDL);
 
+  // Reference data, not user data: the generic rating pointers every position
+  // is scored against. Seeded only when the table is empty, so it arrives with
+  // the feature instead of needing a separate manual step — and re-running
+  // never duplicates or resurrects a pointer someone deactivated.
+  const { rows: critCount } = await client.execute('select count(*) c from rating_criteria');
+  if (Number(critCount[0].c) === 0) {
+    const defaults: [string, string][] = [
+      ['Technical skill match', 'Depth against the mandatory skills on the JD'],
+      ['Relevant experience', 'Has done this kind of work, at this kind of scale'],
+      ['Communication', 'Clarity in the screening call; client-facing readiness'],
+      ['Stability', 'Tenure pattern and reasons for moving'],
+      ['Notice period fit', 'Availability against when the client needs someone'],
+      ['Compensation fit', 'Expectation against the hiring budget'],
+    ];
+    for (let i = 0; i < defaults.length; i++) {
+      await client.execute({
+        sql: `insert into rating_criteria (label, description, scope, sort_order, active)
+              values (?, ?, 'global', ?, 1)`,
+        args: [defaults[i][0], defaults[i][1], i],
+      });
+    }
+    console.log(`  seeded ${defaults.length} global rating pointers`);
+  }
+
   const { rows } = await client.execute(
     "select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name",
   );
