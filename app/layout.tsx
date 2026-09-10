@@ -4,6 +4,7 @@ import './globals.css';
 import Sidebar from '@/components/sidebar';
 import { getSession } from '@/lib/session';
 import ViewOnlyBanner from '@/components/view-only-banner';
+import { Analytics } from '@vercel/analytics/next';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -35,6 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {children}
           </main>
         </div>
+        <Analytics />
       </body>
     </html>
   );
