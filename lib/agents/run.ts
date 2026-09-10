@@ -58,6 +58,8 @@ export type AgentInputs = {
   referenceTemplate?: string;
   roleDetails?: string;
   notes?: string;
+  /** The rating pointers this requirement is scored against (M28). */
+  ratingCriteria?: string;
 };
 
 /** Assembles the user turn from whatever the agent's form supplied. */
@@ -68,6 +70,7 @@ function buildPrompt(agent: AgentKind, inputs: AgentInputs): string {
   };
 
   section('Job Description', inputs.jd);
+  section('Rating pointers (group the questions under these)', inputs.ratingCriteria);
   section('Role and commercial details', inputs.roleDetails);
   section('Candidate Resume', inputs.resumeText);
   section('Reference template (structure only — never copy its content)', inputs.referenceTemplate);

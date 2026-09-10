@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import {
   opportunities,
@@ -9,6 +9,8 @@ import {
   candidates,
   clients,
   referrals,
+  candidateInterviews,
+  agentRuns,
 } from '@/lib/schema';
 import { getStageBeforeHold } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
@@ -31,8 +33,18 @@ export default async function OpportunityDetailPage({
   // Every query here is keyed only on `id` from the route params — none
   // depends on another's result — so they run concurrently instead of as a
   // string of sequential round trips.
-  const [row, mapped, comments, history, pool, suggestions, clientOptions, resumeTo] =
-    await Promise.all([
+  const [
+    row,
+    mapped,
+    comments,
+    history,
+    pool,
+    suggestions,
+    clientOptions,
+    resumeTo,
+    roundCounts,
+    questionSets,
+  ] = await Promise.all([
     db
       .select({
         id: opportunities.id,
@@ -56,6 +68,7 @@ export default async function OpportunityDetailPage({
         hiringBudgetMax: opportunities.hiringBudgetMax,
         dealValue: opportunities.dealValue,
         jdContent: opportunities.jdContent,
+        jdUpdatedAt: opportunities.jdUpdatedAt,
         workingDays: opportunities.workingDays,
         workingHours: opportunities.workingHours,
         stage: opportunities.stage,
@@ -137,6 +150,43 @@ export default async function OpportunityDetailPage({
       .orderBy(clients.companyName)
       .all(),
     getStageBeforeHold(id),
+    // How many rounds each mapped candidate has sat. One grouped query rather
+    // than a per-row count, so the table cost does not grow with the shortlist.
+    db
+      .select({
+        mappingId: candidateInterviews.opportunityCandidateId,
+        rounds: sql<number>`count(*)`,
+      })
+      .from(candidateInterviews)
+      .innerJoin(
+        opportunityCandidates,
+        eq(candidateInterviews.opportunityCandidateId, opportunityCandidates.id),
+      )
+      .where(eq(opportunityCandidates.opportunityId, id))
+      .groupBy(candidateInterviews.opportunityCandidateId)
+      .all(),
+    // M28 — question sets already generated for this requirement, so they are
+    // reread rather than regenerated. Only completed runs: a failed one has no
+    // output to show and re-offering it as a document would be a lie.
+    db
+      .select({
+        id: agentRuns.id,
+        title: agentRuns.title,
+        output: agentRuns.output,
+        userName: agentRuns.userName,
+        createdAt: agentRuns.createdAt,
+      })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.opportunityId, id),
+          eq(agentRuns.agent, 'interview_questions'),
+          eq(agentRuns.status, 'complete'),
+        ),
+      )
+      .orderBy(desc(agentRuns.id))
+      .limit(10)
+      .all(),
   ]);
 
   if (!row) notFound();
@@ -156,6 +206,18 @@ export default async function OpportunityDetailPage({
       suggestions={suggestions}
       clients={clientOptions}
       resumeTo={resumeTo ?? 'requirement'}
+      roundCounts={Object.fromEntries(
+        roundCounts.map((r) => [r.mappingId, Number(r.rounds)]),
+      )}
+      questionSets={questionSets.map((q) => ({
+        ...q,
+        output: q.output ?? '',
+        // A set generated before the JD last changed no longer describes the
+        // role it was written for. Comparing against a JD-specific timestamp,
+        // not a general updated_at, so fixing a typo in the next step does not
+        // mark every question set stale.
+        stale: Boolean(row.jdUpdatedAt && q.createdAt < row.jdUpdatedAt),
+      }))}
     />
   );
 }

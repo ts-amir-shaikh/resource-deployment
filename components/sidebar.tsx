@@ -41,7 +41,16 @@ const ICONS: Record<string, LucideIcon> = {
   '/invoices': ReceiptIndianRupee,
 };
 
-export default function Sidebar({ session }: { session: Session | null }) {
+/** M27 — the pending/new counts the Candidates link carries. */
+type Applicants = { pending: number; fresh: number; uncalled: number };
+
+export default function Sidebar({
+  session,
+  applicants,
+}: {
+  session: Session | null;
+  applicants?: Applicants | null;
+}) {
   // Both hooks run before any early return, per the rules of hooks.
   const pathname = usePathname();
   const router = useRouter();
@@ -75,11 +84,20 @@ export default function Sidebar({ session }: { session: Session | null }) {
         {items.map(({ href, label }) => {
           const Icon = ICONS[href] ?? LayoutDashboard;
           const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+          // Anything new since this person last opened the queue is worth
+          // interrupting them for; a backlog they have already seen is not, so
+          // a count with nothing fresh in it stays quiet.
+          const badge =
+            href === '/candidates' && applicants?.fresh ? applicants.fresh : 0;
           return (
             <li key={href}>
               <Link
-                href={href}
-                title={label}
+                href={badge ? '/candidates?tab=applicants' : href}
+                title={
+                  badge
+                    ? `${label} · ${badge} new applicant${badge === 1 ? '' : 's'}`
+                    : label
+                }
                 className={cn(
                   'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
                   active
@@ -87,8 +105,22 @@ export default function Sidebar({ session }: { session: Session | null }) {
                     : 'text-ink2 hover:bg-surface2 hover:text-ink',
                 )}
               >
-                <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />
+                <span className="relative shrink-0">
+                  <Icon className="h-4 w-4" strokeWidth={2} />
+                  {/* On the collapsed rail the label is hidden, so the count
+                      rides the icon instead of sitting beside nothing. */}
+                  {badge > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white md:hidden">
+                      {badge > 9 ? '9+' : badge}
+                    </span>
+                  )}
+                </span>
                 <span className="hidden md:inline">{label}</span>
+                {badge > 0 && (
+                  <span className="ml-auto hidden rounded-full bg-amber-100 px-1.5 text-2xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300 md:inline">
+                    {badge}
+                  </span>
+                )}
               </Link>
             </li>
           );

@@ -1,5 +1,6 @@
 import 'server-only';
 import { and, eq, ne, sql, desc, inArray } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import { db, type Executor } from './db';
 import {
   deployments,
@@ -844,4 +845,171 @@ export async function getTeamBoard() {
   const unassigned = all.requirements.filter((r) => !ownedByTeam.has(r.id));
 
   return { perPerson, unassigned, totals: all.counts };
+}
+
+/* ── M26/M27: the applicant queue ──────────────────────────── */
+
+export type ApplicationRow = {
+  id: number;
+  opportunityId: number;
+  requirementTitle: string;
+  companyName: string;
+  ownerUserId: number | null;
+  ownerName: string | null;
+  kind: 'referral' | 'application';
+  status: 'new' | 'accepted' | 'dismissed';
+  candidateName: string;
+  candidateEmail: string | null;
+  candidateMobile: string | null;
+  referrerName: string;
+  referrerEmail: string | null;
+  experienceYears: number | null;
+  noticePeriodDays: number | null;
+  currentCtc: number | null;
+  expectedCtc: number | null;
+  notes: string | null;
+  contactStatus: 'not_contacted' | 'attempted' | 'reached' | 'unreachable';
+  contactNote: string | null;
+  lastContactedAt: string | null;
+  contactedByName: string | null;
+  convertedCandidateId: number | null;
+  createdAt: string;
+  /** Duplicate signals, computed below rather than stored. */
+  alreadyInPool: boolean;
+  otherApplications: number;
+};
+
+/**
+ * Everything the public job page has brought in, as one queue.
+ *
+ * The rows live in `referrals` — the staging table an unauthenticated form is
+ * allowed to write to — and this is the only place they are read as a list
+ * rather than one requirement at a time.
+ *
+ * The duplicate flags are computed here, in one pass over two small extra
+ * queries, rather than per row in the UI: cold-calling someone a colleague
+ * placed last month is the failure mode this exists to prevent, and it only
+ * prevents it if the flag is on screen before anybody dials.
+ */
+export async function getApplicationQueue(): Promise<ApplicationRow[]> {
+  const owner = alias(users, 'owner_user');
+  const caller = alias(users, 'caller_user');
+
+  const rows = await db
+    .select({
+      id: referrals.id,
+      opportunityId: referrals.opportunityId,
+      requirementTitle: opportunities.title,
+      companyName: opportunities.companyName,
+      ownerUserId: opportunities.ownerUserId,
+      ownerName: owner.name,
+      kind: referrals.kind,
+      status: referrals.status,
+      candidateName: referrals.candidateName,
+      candidateEmail: referrals.candidateEmail,
+      candidateMobile: referrals.candidateMobile,
+      referrerName: referrals.referrerName,
+      referrerEmail: referrals.referrerEmail,
+      experienceYears: referrals.experienceYears,
+      noticePeriodDays: referrals.noticePeriodDays,
+      currentCtc: referrals.currentCtc,
+      expectedCtc: referrals.expectedCtc,
+      notes: referrals.notes,
+      contactStatus: referrals.contactStatus,
+      contactNote: referrals.contactNote,
+      lastContactedAt: referrals.lastContactedAt,
+      contactedByName: caller.name,
+      convertedCandidateId: referrals.convertedCandidateId,
+      createdAt: referrals.createdAt,
+    })
+    .from(referrals)
+    .innerJoin(opportunities, eq(referrals.opportunityId, opportunities.id))
+    .leftJoin(owner, eq(opportunities.ownerUserId, owner.id))
+    .leftJoin(caller, eq(referrals.contactedByUserId, caller.id))
+    .orderBy(desc(referrals.id))
+    .all();
+
+  // Matched on email and mobile, lowercased and stripped of formatting — the
+  // same person rarely types their number the same way twice.
+  const pool = await db
+    .select({ email: candidates.email, mobile: candidates.mobile })
+    .from(candidates)
+    .all();
+
+  const poolKeys = new Set<string>();
+  for (const c of pool) {
+    for (const k of contactKeys(c.email, c.mobile)) poolKeys.add(k);
+  }
+
+  const seenElsewhere = new Map<string, number>();
+  for (const r of rows) {
+    for (const k of contactKeys(r.candidateEmail, r.candidateMobile)) {
+      seenElsewhere.set(k, (seenElsewhere.get(k) ?? 0) + 1);
+    }
+  }
+
+  return rows.map((r) => {
+    const keys = contactKeys(r.candidateEmail, r.candidateMobile);
+    // Every key counts this row itself, so "elsewhere" is the max minus one.
+    const others = keys.reduce((n, k) => Math.max(n, seenElsewhere.get(k) ?? 0), 0);
+    return {
+      ...r,
+      alreadyInPool: keys.some((k) => poolKeys.has(k)),
+      otherApplications: Math.max(0, others - 1),
+    };
+  });
+}
+
+/** Normalised contact keys for duplicate matching. Blank fields yield none. */
+function contactKeys(email: string | null, mobile: string | null): string[] {
+  const keys: string[] = [];
+  const e = (email ?? '').trim().toLowerCase();
+  if (e) keys.push(`e:${e}`);
+  // Last 10 digits: tolerates +91, 0-prefixes, spaces and hyphens.
+  const digits = (mobile ?? '').replace(/\D/g, '');
+  if (digits.length >= 10) keys.push(`m:${digits.slice(-10)}`);
+  return keys;
+}
+
+export type ApplicantAlert = {
+  /** Awaiting a decision, in this user's scope. */
+  pending: number;
+  /** Of those, arrived since they last opened the queue. */
+  fresh: number;
+  /** Awaiting a decision and nobody has called yet. */
+  uncalled: number;
+};
+
+/**
+ * The badge. Scoped to what this user is responsible for, so a recruiter is
+ * not nagged about somebody else's requirement.
+ *
+ * `mine === undefined` means no scoping — admin, management, and a team lead
+ * looking at the whole team.
+ */
+export async function getApplicantAlert(
+  mine: number | undefined,
+  seenAt: string | null,
+): Promise<ApplicantAlert> {
+  const rows = await db
+    .select({
+      ownerUserId: opportunities.ownerUserId,
+      createdAt: referrals.createdAt,
+      contactStatus: referrals.contactStatus,
+    })
+    .from(referrals)
+    .innerJoin(opportunities, eq(referrals.opportunityId, opportunities.id))
+    .where(eq(referrals.status, 'new'))
+    .all();
+
+  const scoped = mine === undefined ? rows : rows.filter((r) => r.ownerUserId === mine);
+
+  return {
+    pending: scoped.length,
+    // A null watermark means this person has never opened the queue, so
+    // everything waiting is new to them — which is the truthful answer, not
+    // merely the convenient one.
+    fresh: scoped.filter((r) => seenAt === null || r.createdAt > seenAt).length,
+    uncalled: scoped.filter((r) => r.contactStatus === 'not_contacted').length,
+  };
 }

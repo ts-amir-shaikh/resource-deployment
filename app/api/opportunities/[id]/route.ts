@@ -158,6 +158,12 @@ export async function PUT(req: Request, { params }: Ctx) {
         hiringBudgetMin: data.hiringBudgetMin,
         hiringBudgetMax: data.hiringBudgetMax,
         jdContent: data.jdContent,
+        // Stamped only when the JD text itself differs, so editing a priority
+        // or a next step does not mark a generated question set stale.
+        jdUpdatedAt:
+          (data.jdContent ?? null) === (existing.jdContent ?? null)
+            ? existing.jdUpdatedAt
+            : new Date().toISOString().replace('T', ' ').slice(0, 19),
         publicCompanyLabel: data.publicCompanyLabel,
         showClientName: data.showClientName,
         workingDays: data.workingDays,

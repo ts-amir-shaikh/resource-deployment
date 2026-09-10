@@ -384,6 +384,15 @@ export const opportunities = sqliteTable(
      * and candidates would approach the client directly.
      */
     publicCompanyLabel: text('public_company_label'),
+    /**
+     * When the JD text last changed (M28).
+     *
+     * Exists so a generated question set can say whether it is still describing
+     * the current requirement. `createdAt` cannot answer that, and the table has
+     * no updated_at — and adding a blanket one would mark the questions stale
+     * every time somebody corrected a priority or a next-step date.
+     */
+    jdUpdatedAt: text('jd_updated_at'),
     /** Per-requirement opt-in to naming the client outright. */
     showClientName: integer('show_client_name', { mode: 'boolean' })
       .notNull()
@@ -583,6 +592,14 @@ export const candidateRatings = sqliteTable(
     criterionId: integer('criterion_id')
       .notNull()
       .references(() => ratingCriteria.id),
+    /**
+     * Which round produced this score. Null means the profile-level screening
+     * score — which is every row written before M29, so nothing already
+     * recorded changes meaning.
+     */
+    interviewId: integer('interview_id').references(() => candidateInterviews.id, {
+      onDelete: 'cascade',
+    }),
     /** 1–5. Unweighted; weighting waits for real hiring data. */
     score: integer('score').notNull(),
     note: text('note'),
@@ -592,6 +609,85 @@ export const candidateRatings = sqliteTable(
   (t) => ({
     mappingIdx: index('rating_mapping_idx').on(t.opportunityCandidateId),
     criterionIdx: index('rating_criterion_idx').on(t.criterionId),
+  }),
+);
+
+/* ── M29: Interview rounds and panel ───────────────────────── */
+
+export const INTERVIEW_MODES = ['internal_screening', 'client_round', 'final'] as const;
+
+/** Null until the round has actually been held. */
+export const INTERVIEW_OUTCOMES = ['pass', 'fail', 'hold', 'no_show'] as const;
+
+/**
+ * One row per interview round, per candidate, per requirement.
+ *
+ * Replaces a single `feedback` column on the mapping that the next round
+ * overwrote — so a candidate rejected in round three had the reason they were
+ * advanced in round one silently destroyed. History is the whole point of this
+ * table; nothing here is ever edited away by a later round.
+ *
+ * The client-facing round lives here too, distinguished by `mode`, rather than
+ * in a table of its own: split across two places, a candidate's history stops
+ * being readable in one pass.
+ */
+export const candidateInterviews = sqliteTable(
+  'candidate_interviews',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    opportunityCandidateId: integer('opportunity_candidate_id')
+      .notNull()
+      .references(() => opportunityCandidates.id, { onDelete: 'cascade' }),
+    round: integer('round').notNull().default(1),
+    mode: text('mode', { enum: INTERVIEW_MODES }).notNull().default('internal_screening'),
+
+    scheduledAt: text('scheduled_at'),
+    heldAt: text('held_at'),
+    /** Null while the round is only scheduled — that is how "upcoming" is found. */
+    outcome: text('outcome', { enum: INTERVIEW_OUTCOMES }),
+
+    feedback: text('feedback'),
+    recommendation: text('recommendation'),
+    /**
+     * What the panel actually asked. Captured as its own field rather than
+     * buried in feedback so it can eventually be set against the question sets
+     * the generator produces — see M31.
+     */
+    questionsAsked: text('questions_asked'),
+
+    loggedByUserId: integer('logged_by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    mappingIdx: index('interview_mapping_idx').on(t.opportunityCandidateId),
+    scheduledIdx: index('interview_scheduled_idx').on(t.scheduledAt),
+  }),
+);
+
+/**
+ * Who sat on the panel for one round.
+ *
+ * `userId` is nullable and, today, always null: no interviewer has a login.
+ * It exists anyway because the alternative — adding it once interviewers get
+ * accounts — means matching historical free-text names to users by string
+ * comparison, exactly the guesswork the attribution backfill already has to
+ * do elsewhere. See M31 in the plan.
+ */
+export const interviewPanel = sqliteTable(
+  'interview_panel',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    interviewId: integer('interview_id')
+      .notNull()
+      .references(() => candidateInterviews.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    designation: text('designation'),
+    /** Reserved for M31. Null for every row written today. */
+    userId: integer('user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    interviewIdx: index('panel_interview_idx').on(t.interviewId),
   }),
 );
 
@@ -616,6 +712,13 @@ export const users = sqliteTable(
      * middleware needs no new rules. It only changes what their dashboard shows.
      */
     isTeamLead: integer('is_team_lead', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * When this user last opened the applicant queue. A watermark rather than
+     * a notifications table with a read/unread lifecycle to maintain — the
+     * question being asked is only ever "anything new since I looked?", and
+     * one column answers it.
+     */
+    applicationsSeenAt: text('applications_seen_at'),
     active: integer('active', { mode: 'boolean' }).notNull().default(true),
     ...timestamps,
   },
@@ -634,6 +737,14 @@ export const REFERRAL_STATUSES = ['new', 'accepted', 'dismissed'] as const;
  * referral where the referrer and the candidate are the same person.
  */
 export const REFERRAL_KINDS = ['referral', 'application'] as const;
+
+/** How far the reviewer got when they picked up the phone. */
+export const CONTACT_STATUSES = [
+  'not_contacted',
+  'attempted',
+  'reached',
+  'unreachable',
+] as const;
 
 /**
  * A candidate recommendation submitted through the public share link.
@@ -677,11 +788,26 @@ export const referrals = sqliteTable(
      * staff list there would hand out the employee directory.
      */
     referredByResourceId: integer('referred_by_resource_id').references(() => resources.id),
+
+    /* ── M26: the call that happens before a decision ──────── */
+    /**
+     * Approve/dismiss is binary; ringing somebody is not. Without this, two
+     * recruiters call the same applicant and "tried twice, no answer" lives
+     * in one person's head. Deliberately separate from `status`: having
+     * spoken to someone is not the same as admitting them to the pool.
+     */
+    contactStatus: text('contact_status', { enum: CONTACT_STATUSES })
+      .notNull()
+      .default('not_contacted'),
+    contactNote: text('contact_note'),
+    lastContactedAt: text('last_contacted_at'),
+    contactedByUserId: integer('contacted_by_user_id'),
     ...timestamps,
   },
   (t) => ({
     opportunityIdx: index('referral_opportunity_idx').on(t.opportunityId),
     statusIdx: index('referral_status_idx').on(t.status),
+    kindIdx: index('referral_kind_idx').on(t.kind),
   }),
 );
 
@@ -692,6 +818,7 @@ export const AGENT_KINDS = [
   'budgeting',
   'resume_validation',
   'resume_formatting',
+  'interview_questions',
 ] as const;
 
 export const AGENT_RUN_STATUSES = ['running', 'complete', 'failed'] as const;
@@ -887,6 +1014,8 @@ export type NewOpportunity = typeof opportunities.$inferInsert;
 export type Candidate = typeof candidates.$inferSelect;
 export type NewCandidate = typeof candidates.$inferInsert;
 export type OpportunityCandidate = typeof opportunityCandidates.$inferSelect;
+export type CandidateInterview = typeof candidateInterviews.$inferSelect;
+export type InterviewPanelMember = typeof interviewPanel.$inferSelect;
 export type OpportunityComment = typeof opportunityComments.$inferSelect;
 
 export type OpportunityStage = (typeof OPPORTUNITY_STAGES)[number];

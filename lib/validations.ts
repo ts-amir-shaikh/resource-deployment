@@ -563,3 +563,84 @@ export const applicationSchema = z
     message: 'Add your email or mobile so we can reach you',
     path: ['candidateEmail'],
   });
+
+/* ── M26: logging the call to an applicant ─────────────────── */
+
+/**
+ * Recording a phone call, which is not the same as deciding anything. The
+ * accept/dismiss decision stays on its own route — somebody who has spoken to
+ * an applicant has not thereby admitted them to the candidate pool.
+ */
+export const contactLogSchema = z.object({
+  contactStatus: z.enum(['not_contacted', 'attempted', 'reached', 'unreachable']),
+  contactNote: optionalStr,
+});
+
+/* ── M29: interview rounds ─────────────────────────────────── */
+
+/**
+ * One panel member. A typed name, because no interviewer has a login today —
+ * see M31 in the plan for where that changes. `name` is required: "the panel"
+ * as an anonymous collective is how feedback ends up attributable to nobody.
+ */
+const panelMemberSchema = z.object({
+  name: z.string().trim().min(1, 'Name the interviewer'),
+  designation: optionalStr,
+});
+
+const interviewBase = z.object({
+  round: z.coerce.number().int().min(1, 'Rounds start at 1').max(20),
+  mode: z.enum(['internal_screening', 'client_round', 'final']).default('internal_screening'),
+  scheduledAt: optionalDate,
+  heldAt: optionalDate,
+  /**
+   * Absent means the round is scheduled but has not happened — that is how
+   * upcoming interviews are found, so it must stay distinguishable from a
+   * round that happened and went badly.
+   */
+  outcome: z
+    .union([z.literal(''), z.enum(['pass', 'fail', 'hold', 'no_show'])])
+    .optional()
+    .transform((v) => (v === '' || v === undefined ? undefined : v)),
+  feedback: optionalStr,
+  recommendation: optionalStr,
+  questionsAsked: optionalStr,
+  panel: z.array(panelMemberSchema).max(8, 'Eight interviewers is plenty').default([]),
+  /**
+   * The stage to move the candidate to in the same request.
+   *
+   * The whole point of M29: logging an outcome and moving the candidate were
+   * two separate edits, which is why the second one often did not happen. A
+   * suggested value, never a forced one — a recruiter can log a pass and still
+   * hold the candidate, so this is optional rather than derived from outcome.
+   */
+  moveStatus: z
+    .union([
+      z.literal(''),
+      z.enum([
+        'mapped',
+        'screening',
+        'submitted',
+        'interview',
+        'selected',
+        'offered',
+        'joined',
+        'rejected',
+        'withdrawn',
+      ]),
+    ])
+    .optional()
+    .transform((v) => (v === '' || v === undefined ? undefined : v)),
+});
+
+export const interviewSchema = interviewBase.refine(
+  (d) => d.outcome === undefined || Boolean(d.feedback),
+  {
+    message: 'An outcome needs feedback behind it — say why',
+    path: ['feedback'],
+  },
+);
+
+export const interviewUpdateSchema = interviewSchema;
+
+export type InterviewInput = z.input<typeof interviewSchema>;

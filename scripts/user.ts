@@ -135,7 +135,10 @@ function assertTaBeforeLead(role: string, username: string): void {
 
 async function main() {
   const client = createClient({ url, authToken });
-  const target = url.startsWith('file:') ? 'local file (data/deployment.db)' : 'Turso (remote)';
+  // Name the file actually in use rather than assuming the default path. This
+  // line is how somebody confirms they are not about to create an account in
+  // production, so it has to be the truth and not a plausible guess.
+  const target = url.startsWith('file:') ? `local file (${url.slice(5)})` : 'Turso (remote)';
 
   const { rows: tables } = await client.execute(
     "select 1 from sqlite_master where type='table' and name='users'",

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { CalendarClock, Inbox, Send, MessageSquareWarning } from 'lucide-react';
-import { getRecruiterBoard, getTeamBoard } from '@/lib/queries';
+import { getRecruiterBoard, getTeamBoard, getApplicantAlert } from '@/lib/queries';
 import { requireSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/schema';
@@ -29,7 +29,7 @@ export default async function MyWorkPage() {
 
   const me = session.uid
     ? await db
-        .select({ isTeamLead: users.isTeamLead })
+        .select({ isTeamLead: users.isTeamLead, seenAt: users.applicationsSeenAt })
         .from(users)
         .where(eq(users.id, session.uid))
         .get()
@@ -38,10 +38,16 @@ export default async function MyWorkPage() {
 
   const board = await getRecruiterBoard(session.uid || -1);
   const team = isLead ? await getTeamBoard() : null;
+  // A lead's scope is the team, so they are not filtered to their own rows.
+  const alert = await getApplicantAlert(
+    isLead ? undefined : session.uid || -1,
+    me?.seenAt ?? null,
+  );
 
   const actions = [
     {
       key: 'follow',
+      hint: undefined as string | undefined,
       icon: CalendarClock,
       label: 'Follow-ups due',
       items: board.followUpsDue.map((o) => ({
@@ -53,6 +59,7 @@ export default async function MyWorkPage() {
     },
     {
       key: 'submit',
+      hint: undefined as string | undefined,
       icon: Send,
       label: 'Mapped, not submitted',
       items: board.notSubmitted.map((m) => ({
@@ -64,6 +71,7 @@ export default async function MyWorkPage() {
     },
     {
       key: 'feedback',
+      hint: undefined as string | undefined,
       icon: MessageSquareWarning,
       label: 'Interviews with no feedback',
       items: board.interviewsUnlogged.map((m) => ({
@@ -77,14 +85,27 @@ export default async function MyWorkPage() {
       key: 'inbox',
       icon: Inbox,
       label: 'Profiles waiting for review',
+      hint:
+        alert.fresh > 0
+          ? `${alert.fresh} arrived since you last looked`
+          : alert.uncalled > 0
+            ? `${alert.uncalled} nobody has called yet`
+            : undefined,
       items: board.inboxWaiting.map((r) => ({
         id: r.id,
-        href: `/pipeline/${r.opportunityId}`,
+        href: '/candidates?tab=applicants',
         primary: r.candidateName,
         secondary: `${r.kind === 'application' ? 'Applied' : 'Referred'} · ${r.title}`,
       })),
     },
   ];
+
+  // Somebody applied while this recruiter was elsewhere — that goes first.
+  // Otherwise the order stays as written: the morning list, then the inbox.
+  if (alert.fresh > 0) {
+    const i = actions.findIndex((a) => a.key === 'inbox');
+    actions.unshift(...actions.splice(i, 1));
+  }
 
   const pendingTotal = actions.reduce((n, a) => n + a.items.length, 0);
 
@@ -95,7 +116,10 @@ export default async function MyWorkPage() {
         subtitle={
           pendingTotal === 0
             ? 'Nothing waiting on you right now.'
-            : `${pendingTotal} thing${pendingTotal === 1 ? '' : 's'} waiting on you.`
+            : `${pendingTotal} thing${pendingTotal === 1 ? '' : 's'} waiting on you` +
+              (alert.fresh > 0
+                ? `, including ${alert.fresh} new applicant${alert.fresh === 1 ? '' : 's'}.`
+                : '.')
         }
       />
 
@@ -109,7 +133,7 @@ export default async function MyWorkPage() {
 
       <div className="grid gap-6 px-6 py-6 lg:grid-cols-2">
         {actions.map((a) => (
-          <DetailSection key={a.key} title={a.label} count={a.items.length}>
+          <DetailSection key={a.key} title={a.label} count={a.items.length} hint={a.hint}>
             {a.items.length === 0 ? (
               <DetailEmpty>Nothing here — good.</DetailEmpty>
             ) : (

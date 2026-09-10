@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { candidateRatings, opportunityCandidates, ratingCriteria } from '@/lib/schema';
@@ -84,9 +84,17 @@ export async function PUT(req: Request, { params }: Ctx) {
     }
 
     await db.transaction(async (tx) => {
+      // Scoped to profile-level scores. Since M29 a score can belong to a
+      // specific interview round, and replacing this mapping's screening
+      // evaluation must not delete what a panel recorded in round two.
       await tx
         .delete(candidateRatings)
-        .where(eq(candidateRatings.opportunityCandidateId, id))
+        .where(
+          and(
+            eq(candidateRatings.opportunityCandidateId, id),
+            isNull(candidateRatings.interviewId),
+          ),
+        )
         .run();
       for (const s of data.scores) {
         await tx

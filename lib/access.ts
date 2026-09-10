@@ -64,6 +64,8 @@ const TA_READ_PREFIXES = [
   '/api/referrals',
   '/api/rating-criteria',
   '/api/ratings',
+  '/api/applications',
+  '/api/interviews',
   '/api/dashboard/pipeline',
 ];
 
@@ -112,6 +114,11 @@ const TA_WRITE_RULES: WriteRule[] = [
   // Rating candidates and defining new pointers is core TA work.
   { test: (p) => p.startsWith('/api/rating-criteria'), allow: true },
   { test: (p) => p.startsWith('/api/ratings'), allow: true },
+  // Logging interview rounds and panel feedback, and marking the applicant
+  // queue as seen. Reviewing inbound profiles is the job these accounts exist
+  // to do, so both the call log and the round history are theirs to write.
+  { test: (p) => p.startsWith('/api/interviews'), allow: true },
+  { test: (p) => p.startsWith('/api/applications'), allow: true },
   // Running agents is TA's daily work — JD analysis, resume vetting, formatting.
   { test: (p) => p.startsWith('/api/agents'), allow: true },
 ];

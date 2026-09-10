@@ -17,6 +17,9 @@ import {
   Inbox,
   UserPlus,
   Star,
+  ClipboardList,
+  Sparkles,
+  RefreshCw,
   Building2,
   X,
   Globe,
@@ -73,6 +76,7 @@ type Opportunity = {
   publicCompanyLabel: string | null;
   showClientName: boolean;
   jdContent: string | null;
+  jdUpdatedAt: string | null;
   workingDays: string | null;
   workingHours: string | null;
   stage: string;
@@ -150,6 +154,65 @@ type Criterion = {
   scope: string;
 };
 
+/** M28 — a question set already generated for this requirement. */
+type QuestionSet = {
+  id: number;
+  title: string;
+  output: string;
+  userName: string;
+  createdAt: string;
+  stale: boolean;
+};
+
+/** M29 — one interview round, with the panel that sat on it. */
+type Round = {
+  id: number;
+  round: number;
+  mode: 'internal_screening' | 'client_round' | 'final';
+  scheduledAt: string | null;
+  heldAt: string | null;
+  outcome: 'pass' | 'fail' | 'hold' | 'no_show' | null;
+  feedback: string | null;
+  recommendation: string | null;
+  questionsAsked: string | null;
+  createdAt: string;
+  panel: { name: string; designation: string | null }[];
+};
+
+type PanelDraft = { name: string; designation: string };
+
+const MODE_LABELS: Record<Round['mode'], string> = {
+  internal_screening: 'Internal screening',
+  client_round: 'Client round',
+  final: 'Final round',
+};
+
+const OUTCOME_LABELS: Record<string, string> = {
+  pass: 'Pass',
+  fail: 'Fail',
+  hold: 'On hold',
+  no_show: 'No show',
+};
+
+const OUTCOME_TONE: Record<string, Tone> = {
+  pass: 'green',
+  fail: 'rose',
+  hold: 'amber',
+  no_show: 'neutral',
+};
+
+/**
+ * What the form pre-selects when an outcome is chosen. A suggestion, never a
+ * rule — a recruiter can log a pass and still hold the candidate, so this only
+ * sets the dropdown's initial value and never overrides a manual choice.
+ */
+const OUTCOME_SUGGESTS: Record<string, string> = {
+  pass: 'submitted',
+  fail: 'rejected',
+  hold: 'interview',
+  no_show: 'interview',
+};
+
 type PoolCandidate = {
   id: number;
   name: string;
@@ -194,6 +257,8 @@ export default function OpportunityDetailClient({
   clients,
   resumeTo,
   role,
+  roundCounts,
+  questionSets,
 }: {
   opportunity: Opportunity;
   mapped: Mapped[];
@@ -204,6 +269,8 @@ export default function OpportunityDetailClient({
   clients: ClientOption[];
   resumeTo: string;
   role: Role;
+  roundCounts: Record<number, number>;
+  questionSets: QuestionSet[];
 }) {
   const router = useRouter();
   // Mirrors the policy middleware enforces, so the UI never offers an action
@@ -359,6 +426,167 @@ export default function OpportunityDetailClient({
   const given = Object.values(scores).filter((v) => v > 0);
   const rated = given.length;
   const average = rated ? given.reduce((a, b) => a + b, 0) / rated : 0;
+
+  /* ── M29: interview rounds ─────────────────────────────────
+   * The mapping's own feedback column held one round and the next one erased
+   * it. Rounds now live in their own table; the mapping keeps mirroring the
+   * latest so every existing screen still reads correctly. */
+  const [roundsFor, setRoundsFor] = useState<Mapped | null>(null);
+  const [rounds, setRounds] = useState<Round[]>([]);
+  const [roundsLoading, setRoundsLoading] = useState(false);
+  const [roundBusy, setRoundBusy] = useState(false);
+  const [roundError, setRoundError] = useState<string | null>(null);
+  const [roundErrors, setRoundErrors] = useState<Record<string, string>>({});
+  const [editingRound, setEditingRound] = useState<number | null>(null);
+  const [showRoundForm, setShowRoundForm] = useState(false);
+  const [panel, setPanel] = useState<PanelDraft[]>([{ name: '', designation: '' }]);
+  const [roundForm, setRoundForm] = useState({
+    round: '1',
+    mode: 'internal_screening',
+    scheduledAt: '',
+    heldAt: '',
+    outcome: '',
+    feedback: '',
+    recommendation: '',
+    questionsAsked: '',
+    moveStatus: '',
+  });
+
+  function blankRoundForm(nextRound: number) {
+    setRoundForm({
+      round: String(nextRound),
+      mode: 'internal_screening',
+      scheduledAt: '',
+      heldAt: today(),
+      outcome: '',
+      feedback: '',
+      recommendation: '',
+      questionsAsked: '',
+      moveStatus: '',
+    });
+    setPanel([{ name: '', designation: '' }]);
+    setRoundErrors({});
+  }
+
+  async function openRounds(m: Mapped) {
+    setRoundsFor(m);
+    setRounds([]);
+    setRoundError(null);
+    setEditingRound(null);
+    setShowRoundForm(false);
+    setRoundsLoading(true);
+    try {
+      const res = await api<{ rounds: Round[] }>(`/api/interviews/${m.id}`);
+      setRounds(res.rounds);
+      // Default to the next round rather than making somebody count.
+      const next = res.rounds.reduce((n, r) => Math.max(n, r.round), 0) + 1;
+      blankRoundForm(next);
+      // Nothing recorded yet — open straight into the form rather than showing
+      // an empty history the recruiter has to click past.
+      if (res.rounds.length === 0) setShowRoundForm(true);
+    } catch (e) {
+      setRoundError(errorMessage(e));
+    } finally {
+      setRoundsLoading(false);
+    }
+  }
+
+  function editRound(r: Round) {
+    setEditingRound(r.id);
+    setShowRoundForm(true);
+    setRoundErrors({});
+    setRoundForm({
+      round: String(r.round),
+      mode: r.mode,
+      scheduledAt: r.scheduledAt ?? '',
+      heldAt: r.heldAt ?? '',
+      outcome: r.outcome ?? '',
+      feedback: r.feedback ?? '',
+      recommendation: r.recommendation ?? '',
+      questionsAsked: r.questionsAsked ?? '',
+      moveStatus: '',
+    });
+    setPanel(
+      r.panel.length
+        ? r.panel.map((m) => ({ name: m.name, designation: m.designation ?? '' }))
+        : [{ name: '', designation: '' }],
+    );
+  }
+
+  /** Picking an outcome pre-fills the stage move; a manual choice wins. */
+  function pickOutcome(outcome: string) {
+    setRoundForm((f) => ({
+      ...f,
+      outcome,
+      moveStatus: f.moveStatus || OUTCOME_SUGGESTS[outcome] || '',
+      heldAt: f.heldAt || today(),
+    }));
+  }
+
+  async function saveRound() {
+    if (!roundsFor) return;
+    setRoundBusy(true);
+    setRoundError(null);
+    setRoundErrors({});
+    try {
+      const payload = {
+        ...roundForm,
+        round: Number(roundForm.round),
+        // Blank rows are how somebody leaves the third panel slot alone.
+        panel: panel
+          .filter((p) => p.name.trim())
+          .map((p) => ({ name: p.name.trim(), designation: p.designation.trim() })),
+      };
+      if (editingRound) {
+        await api(`/api/interviews/${roundsFor.id}/${editingRound}`, {
+          method: 'PATCH',
+          json: payload,
+        });
+      } else {
+        await api(`/api/interviews/${roundsFor.id}`, { method: 'POST', json: payload });
+      }
+      const res = await api<{ rounds: Round[] }>(`/api/interviews/${roundsFor.id}`);
+      setRounds(res.rounds);
+      setShowRoundForm(false);
+      setEditingRound(null);
+      blankRoundForm(res.rounds.reduce((n, r) => Math.max(n, r.round), 0) + 1);
+      // The mapping's status and latest-round mirror both changed behind this.
+      router.refresh();
+    } catch (e) {
+      if (isApiError(e) && e.fields) setRoundErrors(e.fields);
+      setRoundError(errorMessage(e));
+    } finally {
+      setRoundBusy(false);
+    }
+  }
+
+  /* ── M28: interview questions for this requirement ─────────
+   * Generated on demand rather than on every JD save: an automatic run would
+   * spend money on a typo fix. A stale set says so and offers the button. */
+  const [questionsBusy, setQuestionsBusy] = useState(false);
+  const [questionsError, setQuestionsError] = useState<string | null>(null);
+  const [openSet, setOpenSet] = useState<number | null>(questionSets[0]?.id ?? null);
+  const latestSet = questionSets[0] ?? null;
+
+  async function generateQuestions() {
+    setQuestionsBusy(true);
+    setQuestionsError(null);
+    try {
+      const body = new FormData();
+      body.set('agent', 'interview_questions');
+      body.set('opportunityId', String(o.id));
+      body.set('title', `Interview questions · ${o.title}`);
+      const res = await fetch('/api/agents/run', { method: 'POST', body });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error ?? 'The agent could not be run');
+      setOpenSet(payload.id);
+      router.refresh();
+    } catch (e) {
+      setQuestionsError(errorMessage(e));
+    } finally {
+      setQuestionsBusy(false);
+    }
+  }
 
   // A prospect is a company we are talking to that has no client record yet.
   // Onboarding is a commercial act, so Admin only.
@@ -794,6 +1022,91 @@ export default function OpportunityDetailClient({
             </section>
           )}
 
+          {/* M28 — interview questions for this requirement */}
+          <section className="card">
+            <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                  <Sparkles className="h-4 w-4 text-brand" /> Interview Questions
+                </h2>
+                <p className="mt-0.5 text-2xs text-ink3">
+                  Grouped by the rating pointers this candidate will be scored against
+                </p>
+              </div>
+              {!readOnly && (
+                <button
+                  className="btn-ghost"
+                  onClick={generateQuestions}
+                  disabled={questionsBusy}
+                >
+                  {questionsBusy ? (
+                    <>
+                      <CalendarClock className="h-3.5 w-3.5 animate-pulse" /> Generating…
+                    </>
+                  ) : (
+                    <>
+                      {latestSet ? (
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      {latestSet ? 'Regenerate' : 'Generate questions'}
+                    </>
+                  )}
+                </button>
+              )}
+            </header>
+
+            {questionsError && (
+              <p className="border-b border-line px-4 py-2 text-xs text-rose-600 dark:text-rose-400">
+                {questionsError}
+              </p>
+            )}
+
+            {latestSet?.stale && (
+              <p className="border-b border-line bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                The job description has changed since these questions were written — they
+                may no longer describe the role. Regenerate when you need them.
+              </p>
+            )}
+
+            {questionSets.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-ink3">
+                {o.jdContent
+                  ? 'No question set yet. Generating one reads this requirement and its rating pointers.'
+                  : 'Add a job description to this requirement first — the questions are written from it.'}
+              </p>
+            ) : (
+              <ul className="divide-y divide-line">
+                {questionSets.map((q) => (
+                  <li key={q.id}>
+                    <button
+                      onClick={() => setOpenSet(openSet === q.id ? null : q.id)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-surface2/50"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-medium text-ink">
+                          {q.title}
+                        </span>
+                        <span className="tnum block text-2xs text-ink3">
+                          {q.userName} · {formatDate(q.createdAt.slice(0, 10))}
+                        </span>
+                      </span>
+                      {q.stale && <Badge tone="amber">JD changed since</Badge>}
+                    </button>
+                    {openSet === q.id && (
+                      <div className="max-h-[32rem] overflow-y-auto border-t border-line bg-surface2/40 px-4 py-3">
+                        <pre className="whitespace-pre-wrap font-sans text-xs leading-relaxed text-ink2">
+                          {q.output}
+                        </pre>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           {/* Candidates */}
           <section className="card overflow-hidden">
             <header className="flex items-center justify-between border-b border-line px-4 py-3">
@@ -860,6 +1173,14 @@ export default function OpportunityDetailClient({
                             {m.feedback}
                           </div>
                         )}
+                        {(roundCounts[m.id] ?? 0) > 1 && (
+                          <button
+                            onClick={() => openRounds(m)}
+                            className="mt-1 text-2xs text-brand hover:underline"
+                          >
+                            {roundCounts[m.id]} rounds recorded
+                          </button>
+                        )}
                       </td>
                       <td className="td text-right">
                         <span className="tnum text-ink">
@@ -868,6 +1189,19 @@ export default function OpportunityDetailClient({
                       </td>
                       <td className="td text-right">
                         <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => openRounds(m)}
+                            className="relative rounded p-1.5 text-ink3 hover:bg-surface2 hover:text-brand"
+                            aria-label={`Interview feedback for ${m.name}`}
+                            title="Interview rounds and panel feedback"
+                          >
+                            <ClipboardList className="h-3.5 w-3.5" />
+                            {(roundCounts[m.id] ?? 0) > 0 && (
+                              <span className="absolute -right-0.5 -top-0.5 rounded-full bg-brand px-1 text-[9px] font-semibold leading-4 text-white">
+                                {roundCounts[m.id]}
+                              </span>
+                            )}
+                          </button>
                           <button
                             onClick={() => openRating(m)}
                             className="rounded p-1.5 text-ink3 hover:bg-surface2 hover:text-amber-500"
@@ -1689,6 +2023,285 @@ export default function OpportunityDetailClient({
             Convert
           </button>
         </div>
+      </Modal>
+
+      {/* M29 — interview rounds and panel feedback */}
+      <Modal
+        open={roundsFor !== null}
+        onClose={() => setRoundsFor(null)}
+        title={roundsFor ? `Interviews · ${roundsFor.name}` : 'Interviews'}
+        description="Every round is kept. Recording an outcome can move the candidate in the same step."
+        wide
+      >
+        {roundError && (
+          <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+            {roundError}
+          </p>
+        )}
+
+        {roundsLoading ? (
+          <p className="py-6 text-center text-sm text-ink3">Loading rounds…</p>
+        ) : (
+          <>
+            {rounds.length > 0 && (
+              <ul className="mb-4 space-y-2">
+                {rounds.map((r) => (
+                  <li key={r.id} className="rounded-lg border border-line px-3 py-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-ink">Round {r.round}</span>
+                      <Badge tone="neutral">{MODE_LABELS[r.mode]}</Badge>
+                      {r.outcome ? (
+                        <Badge tone={OUTCOME_TONE[r.outcome]}>{OUTCOME_LABELS[r.outcome]}</Badge>
+                      ) : (
+                        <Badge tone="blue">Scheduled</Badge>
+                      )}
+                      <span className="tnum ml-auto text-2xs text-ink3">
+                        {formatDate(r.heldAt ?? r.scheduledAt)}
+                      </span>
+                      {!readOnly && (
+                        <button
+                          onClick={() => editRound(r)}
+                          className="rounded p-1 text-ink3 hover:bg-surface2 hover:text-ink"
+                          aria-label={`Edit round ${r.round}`}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {r.panel.length > 0 && (
+                      <div className="mt-1 text-2xs text-ink3">
+                        Panel:{' '}
+                        {r.panel
+                          .map((m) => m.name + (m.designation ? ` (${m.designation})` : ''))
+                          .join(', ')}
+                      </div>
+                    )}
+                    {r.feedback && (
+                      <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-ink2">
+                        {r.feedback}
+                      </p>
+                    )}
+                    {r.recommendation && (
+                      <p className="mt-1 text-2xs italic text-ink3">
+                        Recommendation: {r.recommendation}
+                      </p>
+                    )}
+                    {r.questionsAsked && (
+                      <p className="mt-1 whitespace-pre-wrap text-2xs text-ink3">
+                        Asked: {r.questionsAsked}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {!showRoundForm && !readOnly && (
+              <button
+                className="btn-ghost"
+                onClick={() => {
+                  setEditingRound(null);
+                  blankRoundForm(rounds.reduce((n, r) => Math.max(n, r.round), 0) + 1);
+                  setShowRoundForm(true);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" /> Log a round
+              </button>
+            )}
+
+            {showRoundForm && !readOnly && (
+              <div className="space-y-4 rounded-lg border border-line p-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Field label="Round" required error={roundErrors.round}>
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      className="input"
+                      value={roundForm.round}
+                      onChange={(e) => setRoundForm({ ...roundForm, round: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Type">
+                    <select
+                      className="input"
+                      value={roundForm.mode}
+                      onChange={(e) => setRoundForm({ ...roundForm, mode: e.target.value })}
+                    >
+                      {(['internal_screening', 'client_round', 'final'] as const).map((m) => (
+                        <option key={m} value={m}>
+                          {MODE_LABELS[m]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field
+                    label="Held on"
+                    hint="Leave blank if it has not happened yet"
+                    error={roundErrors.heldAt}
+                  >
+                    <input
+                      type="date"
+                      className="input"
+                      value={roundForm.heldAt}
+                      onChange={(e) => setRoundForm({ ...roundForm, heldAt: e.target.value })}
+                    />
+                  </Field>
+                </div>
+
+                <Field label="Scheduled for" error={roundErrors.scheduledAt}>
+                  <input
+                    type="date"
+                    className="input"
+                    value={roundForm.scheduledAt}
+                    onChange={(e) => setRoundForm({ ...roundForm, scheduledAt: e.target.value })}
+                  />
+                </Field>
+
+                {/* Typed names — no interviewer has a login yet (M31). */}
+                <div>
+                  <div className="label">Interview panel</div>
+                  <div className="space-y-2">
+                    {panel.map((member, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input
+                          className="input flex-1"
+                          placeholder="Interviewer name"
+                          value={member.name}
+                          onChange={(e) => {
+                            const next = [...panel];
+                            next[i] = { ...next[i], name: e.target.value };
+                            setPanel(next);
+                          }}
+                        />
+                        <input
+                          className="input flex-1"
+                          placeholder="Designation (optional)"
+                          value={member.designation}
+                          onChange={(e) => {
+                            const next = [...panel];
+                            next[i] = { ...next[i], designation: e.target.value };
+                            setPanel(next);
+                          }}
+                        />
+                        <button
+                          onClick={() => setPanel(panel.filter((_, j) => j !== i))}
+                          className="rounded p-2 text-ink3 hover:bg-surface2 hover:text-rose-600 disabled:opacity-40"
+                          aria-label="Remove interviewer"
+                          disabled={panel.length === 1}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {panel.length < 8 && (
+                    <button
+                      className="mt-2 text-xs text-brand hover:underline"
+                      onClick={() => setPanel([...panel, { name: '', designation: '' }])}
+                    >
+                      + Add interviewer
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Outcome" hint="Leave blank while the round is only scheduled">
+                    <select
+                      className="input"
+                      value={roundForm.outcome}
+                      onChange={(e) => pickOutcome(e.target.value)}
+                    >
+                      <option value="">Not held yet</option>
+                      {(['pass', 'fail', 'hold', 'no_show'] as const).map((v) => (
+                        <option key={v} value={v}>
+                          {OUTCOME_LABELS[v]}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field
+                    label="Then move the candidate to"
+                    hint="Suggested from the outcome — change it or leave it alone"
+                  >
+                    <select
+                      className="input"
+                      value={roundForm.moveStatus}
+                      onChange={(e) => setRoundForm({ ...roundForm, moveStatus: e.target.value })}
+                    >
+                      <option value="">Leave the status unchanged</option>
+                      {Object.entries(CANDIDATE_STATUS_LABELS).map(([v, label]) => (
+                        <option key={v} value={v}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+
+                <Field
+                  label="Feedback"
+                  required={roundForm.outcome !== ''}
+                  error={roundErrors.feedback}
+                >
+                  <textarea
+                    rows={4}
+                    className="input"
+                    placeholder="What the panel said — strengths, gaps, and why this outcome."
+                    value={roundForm.feedback}
+                    onChange={(e) => setRoundForm({ ...roundForm, feedback: e.target.value })}
+                  />
+                </Field>
+
+                <Field label="Recommendation" hint="Optional one-liner">
+                  <input
+                    className="input"
+                    value={roundForm.recommendation}
+                    onChange={(e) =>
+                      setRoundForm({ ...roundForm, recommendation: e.target.value })
+                    }
+                  />
+                </Field>
+
+                <Field
+                  label="Questions asked"
+                  hint="Optional. Worth recording — it is what makes a question set improvable."
+                >
+                  <textarea
+                    rows={3}
+                    className="input"
+                    value={roundForm.questionsAsked}
+                    onChange={(e) =>
+                      setRoundForm({ ...roundForm, questionsAsked: e.target.value })
+                    }
+                  />
+                </Field>
+
+                <div className="flex justify-end gap-2 border-t border-line pt-3">
+                  <button
+                    className="btn-ghost"
+                    onClick={() => {
+                      setShowRoundForm(false);
+                      setEditingRound(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button className="btn-primary" onClick={saveRound} disabled={roundBusy}>
+                    {editingRound ? 'Save round' : 'Log round'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {rounds.length === 0 && readOnly && (
+              <p className="py-6 text-center text-sm text-ink3">
+                No interview rounds recorded for this candidate.
+              </p>
+            )}
+          </>
+        )}
       </Modal>
     </div>
   );

@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import Sidebar from '@/components/sidebar';
 import { getSession } from '@/lib/session';
+import { applicantBadge } from '@/lib/badges';
 import ViewOnlyBanner from '@/components/view-only-banner';
 import { Analytics } from '@vercel/analytics/next';
 
@@ -23,6 +24,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // links this role has, and who is signed in.
   const session = await getSession();
 
+  // M27 — the applicant badge. Computed in the layout so a recruiter working
+  // the pipeline all morning still finds out that somebody applied, rather
+  // than only learning it if they happen to open the right screen.
+  const applicants = session ? await applicantBadge(session) : null;
+
   return (
     <html lang="en" className={inter.variable}>
       <body
@@ -30,7 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         data-readonly={session?.role === 'management' ? 'true' : undefined}
       >
         <div className="flex min-h-screen">
-          <Sidebar session={session} />
+          <Sidebar session={session} applicants={applicants} />
           <main className="min-w-0 flex-1">
             <ViewOnlyBanner role={session?.role ?? null} />
             {children}

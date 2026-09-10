@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  Sparkles, FileText, Calculator, ClipboardCheck, FileEdit,
+  Sparkles, FileText, Calculator, ClipboardCheck, FileEdit, MessageSquareQuote,
   Upload, X, Play, AlertTriangle, Clock,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -13,7 +13,12 @@ import { formatDate } from '@/lib/utils';
 import type { Role } from '@/lib/auth';
 import { Badge, PageHeader, Field, EmptyState } from '@/components/ui';
 
-type AgentKind = 'jd_evaluator' | 'budgeting' | 'resume_validation' | 'resume_formatting';
+type AgentKind =
+  | 'jd_evaluator'
+  | 'budgeting'
+  | 'resume_validation'
+  | 'resume_formatting'
+  | 'interview_questions';
 
 type Run = {
   id: number; agent: string; status: string; title: string; userName: string;
@@ -24,18 +29,28 @@ type Run = {
 type Requirement = { id: number; title: string; companyName: string };
 type Cap = { cap: number; spent: number; blocked: boolean };
 
+/**
+ * `retired` keeps an agent's label for the run history while removing it from
+ * the picker. The list is not the gate — /api/agents/run refuses a retired
+ * kind whatever the form sends.
+ */
 const AGENTS: {
   kind: AgentKind; label: string; blurb: string; icon: LucideIcon;
-  needsResume: boolean; needsJd: boolean; model: string;
+  needsResume: boolean; needsJd: boolean; model: string; retired?: boolean;
 }[] = [
   {
-    kind: 'jd_evaluator', label: 'JD Evaluator', icon: FileText, model: 'Sonnet',
+    kind: 'interview_questions', label: 'Interview Questions', icon: MessageSquareQuote, model: 'Opus',
     needsResume: false, needsJd: true,
+    blurb: 'A question set grouped by the rating pointers the candidate will be scored against, with the signals to listen for in a strong answer.',
+  },
+  {
+    kind: 'jd_evaluator', label: 'JD Evaluator', icon: FileText, model: 'Sonnet',
+    needsResume: false, needsJd: true, retired: true,
     blurb: 'Structures a job description, separates mandatory from preferred, and flags what is missing or unrealistic.',
   },
   {
     kind: 'budgeting', label: 'Budgeting', icon: Calculator, model: 'Opus',
-    needsResume: false, needsJd: false,
+    needsResume: false, needsJd: false, retired: true,
     blurb: 'Hiring budget and client billing rate, with the employer-cost build-up shown rather than asserted.',
   },
   {
@@ -61,9 +76,7 @@ export default function AgentsClient({
 }) {
   const router = useRouter();
   const canRun = role !== 'management';
-  // The client-billing half of budgeting is commercial, so TA gets the
-  // hiring-budget half only — the same rule that hides client budget from them.
-  const visibleAgents = useMemo(() => AGENTS, []);
+  const visibleAgents = useMemo(() => AGENTS.filter((a) => !a.retired), []);
 
   const [active, setActive] = useState<AgentKind | null>(null);
   const [form, setForm] = useState({

@@ -152,6 +152,54 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'referred_by_resource_id',
     ddl: 'ALTER TABLE referrals ADD COLUMN referred_by_resource_id INTEGER REFERENCES resources(id)',
   },
+  // Phase 9 — the applicant loop. The triage columns default to a value that
+  // means "nothing has happened yet", so every application already sitting in
+  // the inbox reads correctly as un-called rather than as un-migrated.
+  {
+    table: 'referrals',
+    column: 'contact_status',
+    ddl: "ALTER TABLE referrals ADD COLUMN contact_status TEXT NOT NULL DEFAULT 'not_contacted'",
+  },
+  {
+    table: 'referrals',
+    column: 'contact_note',
+    ddl: 'ALTER TABLE referrals ADD COLUMN contact_note TEXT',
+  },
+  {
+    table: 'referrals',
+    column: 'last_contacted_at',
+    ddl: 'ALTER TABLE referrals ADD COLUMN last_contacted_at TEXT',
+  },
+  {
+    table: 'referrals',
+    column: 'contacted_by_user_id',
+    ddl: 'ALTER TABLE referrals ADD COLUMN contacted_by_user_id INTEGER',
+  },
+  // Null means "has never opened the queue", which is what everyone's state
+  // genuinely is the moment this ships — so every existing application counts
+  // as new to them, which is the correct answer rather than a convenient one.
+  {
+    table: 'users',
+    column: 'applications_seen_at',
+    ddl: 'ALTER TABLE users ADD COLUMN applications_seen_at TEXT',
+  },
+  // Nullable: scores recorded before rounds existed stay profile-level.
+  // Null means "never recorded a JD change", which is true of every existing
+  // row — so a question set generated against one is not wrongly called stale.
+  {
+    table: 'opportunities',
+    column: 'jd_updated_at',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN jd_updated_at TEXT',
+  },
+  {
+    table: 'candidate_ratings',
+    column: 'interview_id',
+    // No REFERENCES clause: column migrations run before the base DDL, so
+    // candidate_interviews may not exist yet on an established database.
+    // Every other retro-added link column here is a bare INTEGER for the
+    // same reason; the constraint is present in ddl.ts for fresh databases.
+    ddl: 'ALTER TABLE candidate_ratings ADD COLUMN interview_id INTEGER',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {
@@ -209,6 +257,41 @@ async function main() {
       });
     }
     console.log(`  seeded ${defaults.length} global rating pointers`);
+  }
+
+  // Phase 9 — lift each mapping's single feedback field into a round-1 row.
+  //
+  // Those three columns keep being written with the latest round, so this is a
+  // copy rather than a move: nothing that reads them today changes. Guarded on
+  // the mapping having no interview rows yet, so re-running never duplicates
+  // and never resurrects a round somebody deleted.
+  const { rows: lifted } = await client.execute(`
+    insert into candidate_interviews
+      (opportunity_candidate_id, round, mode, scheduled_at, held_at, outcome,
+       feedback, logged_by_user_id, created_at)
+    select oc.id,
+           case when oc.interview_round > 0 then oc.interview_round else 1 end,
+           'internal_screening',
+           oc.interview_date,
+           oc.interview_date,
+           case
+             when oc.status in ('selected', 'offered', 'joined') then 'pass'
+             when oc.status = 'rejected' then 'fail'
+             else null
+           end,
+           oc.feedback,
+           oc.updated_by_user_id,
+           oc.created_at
+      from opportunity_candidates oc
+     where (oc.feedback is not null or oc.interview_round > 0 or oc.interview_date is not null)
+       and not exists (
+         select 1 from candidate_interviews ci
+          where ci.opportunity_candidate_id = oc.id
+       )
+    returning id
+  `);
+  if (lifted.length > 0) {
+    console.log(`  lifted ${lifted.length} existing feedback record(s) into round 1`);
   }
 
   const { rows } = await client.execute(

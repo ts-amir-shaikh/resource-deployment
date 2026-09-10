@@ -32,11 +32,27 @@ export type AgentKind =
   | 'jd_evaluator'
   | 'budgeting'
   | 'resume_validation'
-  | 'resume_formatting';
+  | 'resume_formatting'
+  | 'interview_questions';
 
+/**
+ * `retired` hides an agent from the picker and refuses new runs, without
+ * removing the kind.
+ *
+ * Deleting it would orphan every past run — the label would be gone and the
+ * history would render as a raw enum string. Same reasoning that deactivates a
+ * rating pointer instead of deleting it: work already done has to stay
+ * readable after the thing that produced it is withdrawn.
+ */
 export const AGENT_META: Record<
   AgentKind,
-  { label: string; blurb: string; model: 'sonnet' | 'opus'; needsResume: boolean }
+  {
+    label: string;
+    blurb: string;
+    model: 'sonnet' | 'opus';
+    needsResume: boolean;
+    retired?: boolean;
+  }
 > = {
   jd_evaluator: {
     label: 'JD Evaluator',
@@ -44,11 +60,20 @@ export const AGENT_META: Record<
       'Structures a job description, separates mandatory from preferred, and flags what is missing, contradictory or unrealistic.',
     model: 'sonnet',
     needsResume: false,
+    retired: true,
   },
   budgeting: {
     label: 'Budgeting',
     blurb:
       'Hiring budget (CTC bands) and client billing rate, with the employer-cost build-up shown rather than asserted.',
+    model: 'opus',
+    needsResume: false,
+    retired: true,
+  },
+  interview_questions: {
+    label: 'Interview Questions',
+    blurb:
+      'A question set for one requirement, grouped by the rating pointers it will be scored against, with the signals to listen for in a good answer.',
     model: 'opus',
     needsResume: false,
   },
@@ -79,7 +104,11 @@ export function systemPrompt(agent: AgentKind): string {
 
   // The playbook is procedure for handling a requirement end to end; it is
   // relevant to the two agents that sit inside that flow.
-  if (agent === 'resume_validation' || agent === 'resume_formatting') {
+  if (
+    agent === 'resume_validation' ||
+    agent === 'resume_formatting' ||
+    agent === 'interview_questions'
+  ) {
     parts.push(
       '\n\n---\n\n# Requirement Fulfilment Playbook\n\n' + FULFILMENT_PLAYBOOK(),
     );
@@ -137,6 +166,39 @@ export const TASK_PROMPTS: Record<AgentKind, string> = {
     '',
     'Apply the Critical Override Rule: if a mandatory requirement is not met, say so',
     'explicitly no matter how high the overall score is.',
+  ].join('\n'),
+
+  interview_questions: [
+    'Prepare an interview question set for the requirement below, for the recruiter',
+    'who will screen candidates against it.',
+    '',
+    'The evaluation pointers this candidate will be scored against are listed under',
+    '"Rating pointers". Group your questions under those exact pointer names, in that',
+    'order, so the person asking the questions is probing the things they will later',
+    'score. Add a group of your own ONLY where the job description demands something no',
+    'listed pointer covers, and say why you added it.',
+    '',
+    'For each question give:',
+    '- **The question**, phrased as it would actually be asked out loud.',
+    '- **Listen for** — the concrete keywords, technologies, numbers and specifics a',
+    '  strong answer contains. Be specific to this role; generic virtues are useless here.',
+    '- **Weak answer** — what a rehearsed or second-hand answer sounds like, so the',
+    '  recruiter can tell exposure from experience.',
+    '- **Follow-up** — one probe for when the first answer is thin.',
+    '',
+    'Rules:',
+    '- Mark any question covering a MANDATORY requirement as **[Mandatory]**. A candidate',
+    '  who cannot answer those does not pass regardless of the rest.',
+    '- Six to twelve questions in total. A set nobody can get through in an hour is a set',
+    '  nobody uses.',
+    '- Ask about what the job description actually says. Do not invent requirements, and',
+    '  where the JD is silent on something you would expect, say so at the end under',
+    '  "Not covered by this JD" rather than inventing a question for it.',
+    '- The recruiter conducting this screen may not be a specialist in the technology.',
+    '  Write the "Listen for" notes so a non-specialist can judge the answer.',
+    '',
+    'Finish with a short **Scoring note** mapping the groups back to the pointers, so the',
+    'evaluation form can be filled in straight from the interview notes.',
   ].join('\n'),
 
   resume_formatting: [

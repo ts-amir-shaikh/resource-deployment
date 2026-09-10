@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS opportunities (
   listed_at TEXT,
   public_title TEXT,
   public_company_label TEXT,
+  jd_updated_at TEXT,
   show_client_name INTEGER NOT NULL DEFAULT 0,
   share_token TEXT NOT NULL UNIQUE,
   converted_project_id INTEGER REFERENCES projects(id),
@@ -233,6 +234,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_salt TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'admin',
   is_team_lead INTEGER NOT NULL DEFAULT 0,
+  applications_seen_at TEXT,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -257,10 +259,15 @@ CREATE TABLE IF NOT EXISTS referrals (
   converted_candidate_id INTEGER REFERENCES candidates(id),
   decided_by_user_id INTEGER,
   referred_by_resource_id INTEGER REFERENCES resources(id),
+  contact_status TEXT NOT NULL DEFAULT 'not_contacted',
+  contact_note TEXT,
+  last_contacted_at TEXT,
+  contacted_by_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS referral_opportunity_idx ON referrals(opportunity_id);
 CREATE INDEX IF NOT EXISTS referral_status_idx ON referrals(status);
+CREATE INDEX IF NOT EXISTS referral_kind_idx ON referrals(kind);
 CREATE INDEX IF NOT EXISTS opp_listed_idx ON opportunities(is_listed);
 
 CREATE TABLE IF NOT EXISTS rating_criteria (
@@ -277,10 +284,38 @@ CREATE TABLE IF NOT EXISTS rating_criteria (
 CREATE INDEX IF NOT EXISTS crit_scope_idx ON rating_criteria(scope);
 CREATE INDEX IF NOT EXISTS crit_opportunity_idx ON rating_criteria(opportunity_id);
 
+CREATE TABLE IF NOT EXISTS candidate_interviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  opportunity_candidate_id INTEGER NOT NULL REFERENCES opportunity_candidates(id) ON DELETE CASCADE,
+  round INTEGER NOT NULL DEFAULT 1,
+  mode TEXT NOT NULL DEFAULT 'internal_screening',
+  scheduled_at TEXT,
+  held_at TEXT,
+  outcome TEXT,
+  feedback TEXT,
+  recommendation TEXT,
+  questions_asked TEXT,
+  logged_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS interview_mapping_idx ON candidate_interviews(opportunity_candidate_id);
+CREATE INDEX IF NOT EXISTS interview_scheduled_idx ON candidate_interviews(scheduled_at);
+
+CREATE TABLE IF NOT EXISTS interview_panel (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  interview_id INTEGER NOT NULL REFERENCES candidate_interviews(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  designation TEXT,
+  user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS panel_interview_idx ON interview_panel(interview_id);
+
 CREATE TABLE IF NOT EXISTS candidate_ratings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   opportunity_candidate_id INTEGER NOT NULL REFERENCES opportunity_candidates(id) ON DELETE CASCADE,
   criterion_id INTEGER NOT NULL REFERENCES rating_criteria(id),
+  interview_id INTEGER REFERENCES candidate_interviews(id) ON DELETE CASCADE,
   score INTEGER NOT NULL,
   note TEXT,
   rated_by_user_id INTEGER,

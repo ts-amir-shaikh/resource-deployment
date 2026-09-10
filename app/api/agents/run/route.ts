@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
-import { opportunities } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import { opportunities, ratingCriteria } from '@/lib/schema';
+import { and, eq, or } from 'drizzle-orm';
 import { handle, ok, fail } from '@/lib/api';
 import { getSession } from '@/lib/session';
 import { startRun, prepareFile, capState, type AgentInputs } from '@/lib/agents/run';
@@ -22,16 +22,28 @@ export async function POST(req: Request) {
     if (session.role === 'management') {
       return fail('Management access is view-only.', 403);
     }
+    // What is being asked for is settled before whether anything can run at
+    // all. Answering "agents are not configured" to a request for a withdrawn
+    // agent would send somebody off to check an API key over a decision that
+    // has nothing to do with one.
+    const form = await req.formData();
+    const agent = String(form.get('agent') ?? '') as AgentKind;
+    if (!AGENTS.includes(agent)) return fail('Unknown agent', 400);
+    // A retired agent is gone from the picker, but the picker is not the
+    // security boundary — a POST can name any kind, and each run costs money.
+    if (AGENT_META[agent].retired) {
+      return fail(
+        `${AGENT_META[agent].label} has been retired. Past runs are still readable in the history below.`,
+        410,
+      );
+    }
+
     if (!isConfigured()) {
       return fail(
         'Agents are not configured yet. An ANTHROPIC_API_KEY must be set in the deployment environment.',
         503,
       );
     }
-
-    const form = await req.formData();
-    const agent = String(form.get('agent') ?? '') as AgentKind;
-    if (!AGENTS.includes(agent)) return fail('Unknown agent', 400);
 
     const cap = await capState();
     if (cap.blocked) {
@@ -79,6 +91,43 @@ export async function POST(req: Request) {
           opp.jdContent ?? '',
         ]
           .filter(Boolean)
+          .join('\n');
+      }
+    }
+
+    // The pointers the candidate will be scored against, so the questions are
+    // grouped by the same headings the evaluation form uses. Global pointers
+    // plus anything this requirement added — the identical set the rating
+    // screen offers, rather than a second list that could drift from it.
+    if (agent === 'interview_questions') {
+      const pointers = await db
+        .select({
+          label: ratingCriteria.label,
+          description: ratingCriteria.description,
+          scope: ratingCriteria.scope,
+        })
+        .from(ratingCriteria)
+        .where(
+          and(
+            eq(ratingCriteria.active, true),
+            opportunityId
+              ? or(
+                  eq(ratingCriteria.scope, 'global'),
+                  eq(ratingCriteria.opportunityId, opportunityId),
+                )
+              : eq(ratingCriteria.scope, 'global'),
+          ),
+        )
+        .orderBy(ratingCriteria.sortOrder, ratingCriteria.id)
+        .all();
+
+      if (pointers.length) {
+        inputs.ratingCriteria = pointers
+          .map(
+            (c) =>
+              `- ${c.label}${c.scope === 'opportunity' ? ' (specific to this requirement)' : ''}` +
+              (c.description ? ` — ${c.description}` : ''),
+          )
           .join('\n');
       }
     }
