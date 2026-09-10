@@ -4,6 +4,7 @@ import './globals.css';
 import Sidebar from '@/components/sidebar';
 import { getSession } from '@/lib/session';
 import ViewOnlyBanner from '@/components/view-only-banner';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -35,6 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {children}
           </main>
         </div>
+        <SpeedInsights />
       </body>
     </html>
   );
