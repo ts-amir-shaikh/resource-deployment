@@ -215,7 +215,38 @@ export const SOURCE_LABELS: Record<string, string> = {
   partner: 'Partner',
   agency: 'Agency',
   referral: 'Referral',
+  self: 'Self-sourced',
 };
+
+/** Every source, in the order the form and the filter strip offer them. */
+export const CANDIDATE_SOURCE_VALUES = [
+  'in_house',
+  'partner',
+  'agency',
+  'referral',
+  'self',
+] as const;
+
+/**
+ * Sources that involve no third party — nothing to name, nobody to credit.
+ *
+ * A set, deliberately, rather than the `source === 'in_house'` comparisons this
+ * replaces. Those are how adding a source silently inherits the wrong rule:
+ * 'self' would have started demanding the name of a partner it does not have,
+ * the same shape as the access regex that once let TA create client records.
+ * Lives here rather than in schema.ts so the form and the API share one
+ * definition without the client bundle pulling in Drizzle.
+ */
+export const SOURCES_WITHOUT_PARTNER: readonly string[] = ['in_house', 'self'];
+
+/** Only an in-house candidate can be linked to a bench resource. */
+export function sourceAllowsBenchLink(source: string): boolean {
+  return source === 'in_house';
+}
+
+export function sourceNeedsPartnerName(source: string): boolean {
+  return !SOURCES_WITHOUT_PARTNER.includes(source);
+}
 
 export const WORK_MODE_LABELS: Record<string, string> = {
   onsite: 'Onsite',
@@ -339,4 +370,23 @@ export function valueSummary(
 export function coverageNote(valued: number, count: number): string | null {
   if (count === 0 || valued === count) return null;
   return `${valued} of ${count} valued`;
+}
+
+/**
+ * When a candidate can actually start, as a short label.
+ *
+ * The last working date wins when present: a day count is an estimate from
+ * whenever somebody typed it and quietly rots, a date does not. A date already
+ * past means available now — information, not an error, so it is never
+ * rejected upstream and reads as such here.
+ */
+export function availabilityLabel(
+  lastWorkingDate: string | null | undefined,
+  noticePeriodDays: number | null | undefined,
+): string {
+  if (lastWorkingDate) {
+    return lastWorkingDate <= today() ? 'Available now' : `LWD ${formatDate(lastWorkingDate)}`;
+  }
+  if (noticePeriodDays == null) return '—';
+  return noticePeriodDays === 0 ? 'Immediate' : `${noticePeriodDays}d notice`;
 }

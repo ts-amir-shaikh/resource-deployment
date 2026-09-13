@@ -414,7 +414,15 @@ export const opportunities = sqliteTable(
 
 /* ── M9: Candidates ────────────────────────────────────────── */
 
-export const CANDIDATE_SOURCES = ['in_house', 'partner', 'agency', 'referral'] as const;
+export const CANDIDATE_SOURCES = [
+  'in_house',
+  'partner',
+  'agency',
+  'referral',
+  /** M35: the recruiter found this person themselves — job board, network, own search. */
+  'self',
+] as const;
+
 
 export const candidates = sqliteTable(
   'candidates',
@@ -436,11 +444,41 @@ export const candidates = sqliteTable(
     currentCtc: real('current_ctc'),
     expectedCtc: real('expected_ctc'),
     noticePeriodDays: integer('notice_period_days'),
+    /**
+     * M34: the date they are actually free.
+     *
+     * Supersedes `noticePeriodDays` where both exist — a day count is an
+     * estimate from whenever it was typed and rots silently, a date does not.
+     * A date already past means available now, which is information rather than
+     * an error, so nothing validates it against today.
+     */
+    lastWorkingDate: text('last_working_date'),
     location: text('location'),
 
     source: text('source', { enum: CANDIDATE_SOURCES }).notNull().default('in_house'),
-    /** Required for partner/agency; null for in-house. */
+    /** Required for partner/agency/referral; null for in-house and self. */
     sourceName: text('source_name'),
+
+    /**
+     * M32: a link to the CV wherever it already lives — Drive, SharePoint, the
+     * agency's portal.
+     *
+     * A reference, not a copy. Storing the document itself would build an
+     * archive of third-party personal data with its own retention problem,
+     * which is the reason the agents have never persisted an upload either.
+     * Validated to http/https on the way in: rendered as an anchor, this field
+     * would otherwise accept `javascript:`.
+     */
+    resumeUrl: text('resume_url'),
+
+    /**
+     * M35: who added this profile. From the session, never the payload.
+     *
+     * Needed for source 'self' to mean anything — "a recruiter found them" and
+     * not which recruiter is a fact nobody can act on. Recorded for every
+     * source, since "who added this" is worth having regardless.
+     */
+    createdByUserId: integer('created_by_user_id'),
 
     notes: text('notes'),
     ...timestamps,

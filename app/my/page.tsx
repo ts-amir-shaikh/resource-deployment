@@ -1,7 +1,13 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { CalendarClock, Inbox, Send, MessageSquareWarning } from 'lucide-react';
-import { getRecruiterBoard, getTeamBoard, getApplicantAlert } from '@/lib/queries';
+import {
+  getRecruiterBoard,
+  getTeamBoard,
+  getTeamMembers,
+  getApplicantAlert,
+} from '@/lib/queries';
+import MemberSelect from './member-select';
 import { requireSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/schema';
@@ -22,7 +28,11 @@ export const metadata = { title: 'My Work · Resource Deployment' };
  * exactly as they are on every other TA screen. A lead manages recruiters, not
  * margins, so the flag widens who is visible without widening what is visible.
  */
-export default async function MyWorkPage() {
+export default async function MyWorkPage({
+  searchParams,
+}: {
+  searchParams: { member?: string };
+}) {
   const session = await requireSession();
   // Back-office roles have the main Dashboard; this page is the TA surface.
   if (session.role !== 'ta') redirect('/');
@@ -36,11 +46,23 @@ export default async function MyWorkPage() {
     : undefined;
   const isLead = Boolean(me?.isTeamLead);
 
-  const board = await getRecruiterBoard(session.uid || -1);
-  const team = isLead ? await getTeamBoard() : null;
-  // A lead's scope is the team, so they are not filtered to their own rows.
+  // M38 — a lead may open any one recruiter's board in full. The selection is
+  // validated against the live member list: an id in the URL that is not an
+  // active TA falls back to the whole-team view rather than rendering someone
+  // else's — or nobody's — data.
+  const members = isLead ? await getTeamMembers() : [];
+  const requested = Number(searchParams.member);
+  const viewing =
+    isLead && Number.isInteger(requested) ? members.find((m) => m.id === requested) ?? null : null;
+
+  const board = await getRecruiterBoard(viewing ? viewing.id : session.uid || -1);
+  // The roll-up is the whole-team view; with one person selected it is not
+  // computed at all, so the common case does less work than before.
+  const team = isLead && !viewing ? await getTeamBoard() : null;
+  // A lead looking at the whole team is unscoped; looking at one person, or
+  // being a plain recruiter, scopes to that one person's requirements.
   const alert = await getApplicantAlert(
-    isLead ? undefined : session.uid || -1,
+    viewing ? viewing.id : isLead ? undefined : session.uid || -1,
     me?.seenAt ?? null,
   );
 
@@ -112,15 +134,18 @@ export default async function MyWorkPage() {
   return (
     <div className="pb-12">
       <PageHeader
-        title={`Hello, ${session.name.split(' ')[0]}`}
+        title={viewing ? `${viewing.name}'s board` : `Hello, ${session.name.split(' ')[0]}`}
         subtitle={
           pendingTotal === 0
-            ? 'Nothing waiting on you right now.'
-            : `${pendingTotal} thing${pendingTotal === 1 ? '' : 's'} waiting on you` +
+            ? viewing
+              ? 'Nothing waiting on them right now.'
+              : 'Nothing waiting on you right now.'
+            : `${pendingTotal} thing${pendingTotal === 1 ? '' : 's'} waiting on ${viewing ? 'them' : 'you'}` +
               (alert.fresh > 0
                 ? `, including ${alert.fresh} new applicant${alert.fresh === 1 ? '' : 's'}.`
                 : '.')
         }
+        action={isLead ? <MemberSelect members={members} selected={viewing?.id ?? null} /> : undefined}
       />
 
       <div className="grid grid-cols-2 gap-3 px-6 pt-4 lg:grid-cols-5">
@@ -164,8 +189,9 @@ export default async function MyWorkPage() {
         <DetailSection title="My Requirements" count={board.requirements.length}>
           {board.requirements.length === 0 ? (
             <DetailEmpty>
-              Nothing is assigned to you yet. Requirements show here once an
-              owner is set on them.
+              {viewing
+                ? `Nothing is assigned to ${viewing.name} yet. Requirements show here once an owner is set on them.`
+                : 'Nothing is assigned to you yet. Requirements show here once an owner is set on them.'}
             </DetailEmpty>
           ) : (
             <ul className="divide-y divide-line">
@@ -201,12 +227,15 @@ export default async function MyWorkPage() {
                 return (
                   <li key={user.id} className="px-4 py-3">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="text-sm font-medium text-ink">
+                      <Link
+                        href={`/my?member=${user.id}`}
+                        className="text-sm font-medium text-ink hover:text-brand"
+                      >
                         {user.name}
                         {user.isTeamLead && (
                           <span className="ml-1.5 text-2xs font-normal text-ink3">lead</span>
                         )}
-                      </span>
+                      </Link>
                       <span className="tnum text-2xs text-ink3">
                         {b.requirements.length} req · {b.counts.submitted} submitted ·{' '}
                         {b.counts.interviewing} interviewing · {b.counts.joined} joined

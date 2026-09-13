@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import Sidebar from '@/components/sidebar';
+import { SIDEBAR_COOKIE } from '@/lib/prefs';
+import { cookies } from 'next/headers';
 import { getSession } from '@/lib/session';
 import { applicantBadge } from '@/lib/badges';
 import ViewOnlyBanner from '@/components/view-only-banner';
@@ -29,6 +31,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // than only learning it if they happen to open the right screen.
   const applicants = session ? await applicantBadge(session) : null;
 
+  // M37 — read here so the first paint is already the width the user chose.
+  const sidebarCollapsed = cookies().get(SIDEBAR_COOKIE)?.value === 'collapsed';
+
   return (
     <html lang="en" className={inter.variable}>
       <body
@@ -36,7 +41,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         data-readonly={session?.role === 'management' ? 'true' : undefined}
       >
         <div className="flex min-h-screen">
-          <Sidebar session={session} applicants={applicants} />
+          <Sidebar
+            session={session}
+            applicants={applicants}
+            initialCollapsed={sidebarCollapsed}
+          />
           <main className="min-w-0 flex-1">
             <ViewOnlyBanner role={session?.role ?? null} />
             {children}

@@ -191,6 +191,24 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'jd_updated_at',
     ddl: 'ALTER TABLE opportunities ADD COLUMN jd_updated_at TEXT',
   },
+  // Phase 10 — the candidate record. All nullable: an existing profile simply
+  // has no resume link, no last working date and no recorded author, which is
+  // the truth about it rather than a gap to be filled in with a guess.
+  {
+    table: 'candidates',
+    column: 'resume_url',
+    ddl: 'ALTER TABLE candidates ADD COLUMN resume_url TEXT',
+  },
+  {
+    table: 'candidates',
+    column: 'last_working_date',
+    ddl: 'ALTER TABLE candidates ADD COLUMN last_working_date TEXT',
+  },
+  {
+    table: 'candidates',
+    column: 'created_by_user_id',
+    ddl: 'ALTER TABLE candidates ADD COLUMN created_by_user_id INTEGER',
+  },
   {
     table: 'candidate_ratings',
     column: 'interview_id',

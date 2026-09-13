@@ -18,6 +18,7 @@ import {
   UserPlus,
   Star,
   ClipboardList,
+  FileText,
   Sparkles,
   RefreshCw,
   Building2,
@@ -31,6 +32,7 @@ import {
   formatDate,
   formatExperience,
   formatBudget,
+  availabilityLabel,
   parseSkills,
   today,
   STAGE_LABELS,
@@ -108,6 +110,8 @@ type Mapped = {
   sourceName: string | null;
   expectedCtc: number | null;
   noticePeriodDays: number | null;
+  lastWorkingDate: string | null;
+  resumeUrl: string | null;
 };
 
 type Comment = {
@@ -1140,10 +1144,31 @@ export default function OpportunityDetailClient({
                   {mapped.map((m) => (
                     <tr key={m.id} className="hover:bg-surface2/50">
                       <td className="td">
-                        <div className="font-medium text-ink">{m.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          <Link
+                            href={`/candidates/${m.candidateId}`}
+                            className="font-medium text-ink hover:text-brand"
+                          >
+                            {m.name}
+                          </Link>
+                          {m.resumeUrl && (
+                            <a
+                              href={m.resumeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Open resume"
+                              aria-label={`Resume for ${m.name}`}
+                              className="text-ink3 hover:text-brand"
+                            >
+                              <FileText className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
                         <div className="text-2xs text-ink3">
                           {m.currentDesignation ?? '—'}
                           {m.experienceYears != null && ` · ${m.experienceYears} yrs`}
+                          {' · '}
+                          {availabilityLabel(m.lastWorkingDate, m.noticePeriodDays)}
                         </div>
                         <div className="mt-1">
                           <Badge tone="neutral">

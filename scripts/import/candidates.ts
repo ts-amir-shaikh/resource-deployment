@@ -56,7 +56,9 @@ export async function importCandidates(
       currentCtc: cleanNumber(raw.currentCtc),
       expectedCtc: cleanNumber(raw.expectedCtc),
       noticePeriodDays: cleanNumber(raw.noticePeriodDays),
+      lastWorkingDate: raw.lastWorkingDate,
       location: raw.location,
+      resumeUrl: raw.resumeUrl,
       source: raw.source,
       sourceName: raw.sourceName,
       resourceId,
@@ -98,8 +100,9 @@ export async function importCandidates(
         sql: `INSERT INTO candidates
                 (resource_id, name, email, mobile, current_designation, experience_years,
                  primary_skill, secondary_skill, other_skills, current_ctc, expected_ctc,
-                 notice_period_days, location, source, source_name, notes)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                 notice_period_days, last_working_date, location, resume_url,
+                 source, source_name, notes)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           d.resourceId ?? null,
           d.name,
@@ -113,7 +116,9 @@ export async function importCandidates(
           d.currentCtc ?? null,
           d.expectedCtc ?? null,
           d.noticePeriodDays ?? null,
+          d.lastWorkingDate ?? null,
           d.location ?? null,
+          d.resumeUrl ?? null,
           d.source,
           d.sourceName ?? null,
           d.notes ?? null,
@@ -124,8 +129,8 @@ export async function importCandidates(
         sql: `UPDATE candidates SET
                 resource_id = ?, mobile = ?, current_designation = ?, experience_years = ?,
                 primary_skill = ?, secondary_skill = ?, other_skills = ?, current_ctc = ?,
-                expected_ctc = ?, notice_period_days = ?, location = ?, source = ?,
-                source_name = ?, notes = ?
+                expected_ctc = ?, notice_period_days = ?, last_working_date = ?,
+                location = ?, resume_url = ?, source = ?, source_name = ?, notes = ?
               WHERE id = ?`,
         args: [
           d.resourceId ?? null,
@@ -138,7 +143,9 @@ export async function importCandidates(
           d.currentCtc ?? null,
           d.expectedCtc ?? null,
           d.noticePeriodDays ?? null,
+          d.lastWorkingDate ?? null,
           d.location ?? null,
+          d.resumeUrl ?? null,
           d.source,
           d.sourceName ?? null,
           d.notes ?? null,

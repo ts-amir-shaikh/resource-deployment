@@ -4,6 +4,8 @@ import { candidates, resources } from '@/lib/schema';
 import { candidateSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
 import { getCandidateOpportunityCounts } from '@/lib/queries';
+import { requireSession } from '@/lib/session';
+import { CANDIDATE_SOURCE_VALUES } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +28,11 @@ export async function GET(req: Request) {
         ),
       );
     }
-    if (source === 'in_house' || source === 'partner' || source === 'agency') {
-      filters.push(eq(candidates.source, source));
+    // Checked against the enum rather than a hand-typed list. The list this
+    // replaces omitted 'referral', so ?source=referral silently returned
+    // everything — and would have done the same for 'self'.
+    if (source && (CANDIDATE_SOURCE_VALUES as readonly string[]).includes(source)) {
+      filters.push(eq(candidates.source, source as (typeof CANDIDATE_SOURCE_VALUES)[number]));
     }
     if (skill) {
       filters.push(
@@ -63,6 +68,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   return handle(async () => {
+    const session = await requireSession();
     const { data, error } = await parseBody(req, candidateSchema);
     if (error) return error;
 
@@ -90,9 +96,14 @@ export async function POST(req: Request) {
         currentCtc: data.currentCtc,
         expectedCtc: data.expectedCtc,
         noticePeriodDays: data.noticePeriodDays,
+        lastWorkingDate: data.lastWorkingDate,
         location: data.location,
+        resumeUrl: data.resumeUrl,
         source: data.source,
         sourceName: data.sourceName,
+        // From the session, never the payload — the same rule as every other
+        // attribution column. This is what makes source 'self' mean somebody.
+        createdByUserId: session.uid || null,
         notes: data.notes,
       })
       .returning()

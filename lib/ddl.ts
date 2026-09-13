@@ -176,8 +176,11 @@ CREATE TABLE IF NOT EXISTS candidates (
   expected_ctc REAL,
   notice_period_days INTEGER,
   location TEXT,
+  last_working_date TEXT,
   source TEXT NOT NULL DEFAULT 'in_house',
   source_name TEXT,
+  resume_url TEXT,
+  created_by_user_id INTEGER,
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

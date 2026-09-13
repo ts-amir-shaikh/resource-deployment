@@ -2,9 +2,19 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pencil, Trash2, Search, UserSearch, X, Link2 } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Pencil, Trash2, Search, UserSearch, X, Link2, FileText } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatMoney, parseSkills, SOURCE_LABELS, LIST_PAGE_SIZE } from '@/lib/utils';
+import {
+  formatMoney,
+  availabilityLabel,
+  parseSkills,
+  SOURCE_LABELS,
+  CANDIDATE_SOURCE_VALUES,
+  sourceNeedsPartnerName,
+  sourceAllowsBenchLink,
+  LIST_PAGE_SIZE,
+} from '@/lib/utils';
 import {
   PageHeader,
   Modal,
@@ -31,8 +41,10 @@ type Row = {
   currentCtc: number | null;
   expectedCtc: number | null;
   noticePeriodDays: number | null;
+  lastWorkingDate: string | null;
   location: string | null;
-  source: 'in_house' | 'partner' | 'agency' | 'referral';
+  resumeUrl: string | null;
+  source: (typeof CANDIDATE_SOURCE_VALUES)[number];
   sourceName: string | null;
   notes: string | null;
   mappedCount: number;
@@ -55,6 +67,7 @@ const SOURCE_TONE: Record<Row['source'], Tone> = {
   partner: 'violet',
   agency: 'amber',
   referral: 'green',
+  self: 'rose',
 };
 
 const BLANK = {
@@ -69,7 +82,9 @@ const BLANK = {
   currentCtc: '',
   expectedCtc: '',
   noticePeriodDays: '',
+  lastWorkingDate: '',
   location: '',
+  resumeUrl: '',
   source: 'in_house' as Row['source'],
   sourceName: '',
   resourceId: '',
@@ -126,16 +141,15 @@ export default function CandidatesClient({
     [filtered, page],
   );
 
-  const counts = useMemo(
-    () => ({
-      all: initial.length,
-      in_house: initial.filter((c) => c.source === 'in_house').length,
-      partner: initial.filter((c) => c.source === 'partner').length,
-      agency: initial.filter((c) => c.source === 'agency').length,
-      referral: initial.filter((c) => c.source === 'referral').length,
-    }),
-    [initial],
-  );
+  // Derived from the source list rather than one line per source, so a new
+  // source shows up in the filter strip without anybody remembering to add it.
+  const counts = useMemo(() => {
+    const out: Record<string, number> = { all: initial.length };
+    for (const src of CANDIDATE_SOURCE_VALUES) {
+      out[src] = initial.filter((c) => c.source === src).length;
+    }
+    return out;
+  }, [initial]);
 
   function openCreate() {
     setEditing(null);
@@ -160,7 +174,9 @@ export default function CandidatesClient({
       currentCtc: c.currentCtc?.toString() ?? '',
       expectedCtc: c.expectedCtc?.toString() ?? '',
       noticePeriodDays: c.noticePeriodDays?.toString() ?? '',
+      lastWorkingDate: c.lastWorkingDate ?? '',
       location: c.location ?? '',
+      resumeUrl: c.resumeUrl ?? '',
       source: c.source,
       sourceName: c.sourceName ?? '',
       resourceId: c.resourceId ? String(c.resourceId) : '',
@@ -213,7 +229,7 @@ export default function CandidatesClient({
         noticePeriodDays:
           form.noticePeriodDays === '' ? undefined : Number(form.noticePeriodDays),
         // Only in-house candidates carry a bench link.
-        resourceId: form.source === 'in_house' ? form.resourceId : '',
+        resourceId: sourceAllowsBenchLink(form.source) ? form.resourceId : '',
       };
       if (editing) {
         await api(`/api/candidates/${editing.id}`, { method: 'PUT', json: payload });
@@ -240,7 +256,8 @@ export default function CandidatesClient({
     }
   }
 
-  const isInHouse = form.source === 'in_house';
+  const isInHouse = sourceAllowsBenchLink(form.source);
+  const needsPartner = sourceNeedsPartnerName(form.source);
 
   return (
     <div className="pb-12">
@@ -265,7 +282,7 @@ export default function CandidatesClient({
           />
         </div>
         <div className="flex rounded-md border border-line bg-surface p-0.5">
-          {(['all', 'in_house', 'partner', 'agency', 'referral'] as const).map((s) => (
+          {(['all', ...CANDIDATE_SOURCE_VALUES] as const).map((s) => (
             <button
               key={s}
               onClick={() => setSourceFilter(s)}
@@ -330,7 +347,7 @@ export default function CandidatesClient({
                   <th className="th">Skills</th>
                   <th className="th">Source</th>
                   <th className="th text-right">Expected CTC</th>
-                  <th className="th text-right">Notice</th>
+                  <th className="th text-right">Availability</th>
                   <th className="th text-right">Mapped</th>
                   <th className="th w-20 text-right">Actions</th>
                 </tr>
@@ -340,11 +357,28 @@ export default function CandidatesClient({
                   <tr key={c.id} className="hover:bg-surface2/50">
                     <td className="td">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-ink">{c.name}</span>
+                        <Link
+                          href={`/candidates/${c.id}`}
+                          className="font-medium text-ink hover:text-brand"
+                        >
+                          {c.name}
+                        </Link>
                         {c.resourceId && (
                           <span title="Linked to a bench resource">
                             <Link2 className="h-3 w-3 text-brand" />
                           </span>
+                        )}
+                        {c.resumeUrl && (
+                          <a
+                            href={c.resumeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open resume"
+                            aria-label={`Resume for ${c.name}`}
+                            className="text-ink3 hover:text-brand"
+                          >
+                            <FileText className="h-3 w-3" />
+                          </a>
                         )}
                       </div>
                       <div className="text-2xs text-ink3">
@@ -378,11 +412,7 @@ export default function CandidatesClient({
                     </td>
                     <td className="td text-right">
                       <span className="tnum text-ink2">
-                        {c.noticePeriodDays == null
-                          ? '—'
-                          : c.noticePeriodDays === 0
-                            ? 'Immediate'
-                            : `${c.noticePeriodDays}d`}
+                        {availabilityLabel(c.lastWorkingDate, c.noticePeriodDays)}
                       </span>
                     </td>
                     <td className="td text-right">
@@ -446,7 +476,7 @@ export default function CandidatesClient({
         <div className="space-y-5">
           <FormSection title="Source">
             <div className="flex rounded-md border border-line bg-surface p-0.5">
-              {(['in_house', 'partner', 'agency', 'referral'] as const).map((s) => (
+              {CANDIDATE_SOURCE_VALUES.map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -454,9 +484,10 @@ export default function CandidatesClient({
                     setForm({
                       ...form,
                       source: s,
-                      // Bench link and source name are mutually exclusive.
-                      sourceName: s === 'in_house' ? '' : form.sourceName,
-                      resourceId: s === 'in_house' ? form.resourceId : '',
+                      // A source with no third party has no name to keep; only
+                      // in-house keeps a bench link.
+                      sourceName: sourceNeedsPartnerName(s) ? form.sourceName : '',
+                      resourceId: sourceAllowsBenchLink(s) ? form.resourceId : '',
                     })
                   }
                   className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -489,9 +520,15 @@ export default function CandidatesClient({
                     ))}
                   </select>
                 </Field>
-              ) : (
+              ) : needsPartner ? (
                 <Field
-                  label={form.source === 'partner' ? 'Partner Name' : 'Agency Name'}
+                  label={
+                    form.source === 'partner'
+                      ? 'Partner Name'
+                      : form.source === 'referral'
+                        ? 'Referred by'
+                        : 'Agency Name'
+                  }
                   required
                   error={errors.sourceName}
                 >
@@ -500,12 +537,19 @@ export default function CandidatesClient({
                     placeholder={
                       form.source === 'partner'
                         ? 'e.g. Sattva Tech Partners'
-                        : 'e.g. Zenith Recruitment'
+                        : form.source === 'referral'
+                          ? 'The person who recommended them'
+                          : 'e.g. Zenith Recruitment'
                     }
                     value={form.sourceName}
                     onChange={(e) => setForm({ ...form, sourceName: e.target.value })}
                   />
                 </Field>
+              ) : (
+                <p className="text-xs text-ink3">
+                  Found by you directly — a job board, your network, your own search.
+                  Nothing else to name; the profile is credited to your account.
+                </p>
               )}
             </div>
           </FormSection>
@@ -627,8 +671,8 @@ export default function CandidatesClient({
             </div>
           </FormSection>
 
-          <FormSection title="Commercials">
-            <div className="grid gap-3 sm:grid-cols-3">
+          <FormSection title="Commercials & Availability">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Current CTC (₹/yr)" error={errors.currentCtc}>
                 <input
                   className="input"
@@ -660,6 +704,35 @@ export default function CandidatesClient({
                   onChange={(e) =>
                     setForm({ ...form, noticePeriodDays: e.target.value })
                   }
+                />
+              </Field>
+              <Field
+                label="Last Working Date"
+                error={errors.lastWorkingDate}
+                hint="If known — a date beats a day count"
+              >
+                <input
+                  className="input"
+                  type="date"
+                  value={form.lastWorkingDate}
+                  onChange={(e) =>
+                    setForm({ ...form, lastWorkingDate: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+            <div className="mt-3">
+              <Field
+                label="Resume link"
+                error={errors.resumeUrl}
+                hint="Where the CV already lives — Drive, SharePoint, the agency portal. A link, not an upload."
+              >
+                <input
+                  className="input"
+                  type="url"
+                  placeholder="https://"
+                  value={form.resumeUrl}
+                  onChange={(e) => setForm({ ...form, resumeUrl: e.target.value })}
                 />
               </Field>
             </div>

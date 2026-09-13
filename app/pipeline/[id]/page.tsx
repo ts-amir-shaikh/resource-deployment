@@ -108,6 +108,8 @@ export default async function OpportunityDetailPage({
         sourceName: candidates.sourceName,
         expectedCtc: candidates.expectedCtc,
         noticePeriodDays: candidates.noticePeriodDays,
+        lastWorkingDate: candidates.lastWorkingDate,
+        resumeUrl: candidates.resumeUrl,
       })
       .from(opportunityCandidates)
       .innerJoin(candidates, eq(opportunityCandidates.candidateId, candidates.id))

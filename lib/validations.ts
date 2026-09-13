@@ -1,4 +1,31 @@
 import { z } from 'zod';
+import { CANDIDATE_SOURCE_VALUES, sourceNeedsPartnerName, sourceAllowsBenchLink } from './utils';
+
+/**
+ * A link to a document that lives somewhere else.
+ *
+ * Scheme-restricted because this value is rendered as an anchor: left open,
+ * `javascript:alert(1)` is a perfectly good string that becomes a script when a
+ * colleague clicks the row. Parsed rather than pattern-matched, so oddities
+ * like `HTTPS://` or a leading space resolve properly instead of slipping past
+ * a regex.
+ */
+const optionalUrl = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v === '' ? undefined : v))
+  .refine(
+    (v) => {
+      if (v === undefined) return true;
+      try {
+        return ['http:', 'https:'].includes(new URL(v).protocol);
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Enter a full link starting with http:// or https://' },
+  );
 
 const optionalStr = z
   .string()
@@ -423,9 +450,11 @@ export const candidateSchema = z
     currentCtc: optionalMoney,
     expectedCtc: optionalMoney,
     noticePeriodDays: optionalInt,
+    lastWorkingDate: optionalDate,
     location: optionalStr,
+    resumeUrl: optionalUrl,
 
-    source: z.enum(['in_house', 'partner', 'agency', 'referral']),
+    source: z.enum(CANDIDATE_SOURCE_VALUES),
     sourceName: optionalStr,
     resourceId: z
       .union([z.coerce.number().int().positive(), z.literal(''), z.null()])
@@ -435,16 +464,19 @@ export const candidateSchema = z
       ),
     notes: optionalStr,
   })
-  .refine((d) => d.source === 'in_house' || Boolean(d.sourceName), {
+  .refine((d) => !sourceNeedsPartnerName(d.source) || Boolean(d.sourceName), {
     message: 'Name the partner, agency, or person this candidate came from',
     path: ['sourceName'],
   })
-  .refine((d) => d.source === 'in_house' || d.resourceId === undefined, {
+  .refine((d) => sourceAllowsBenchLink(d.source) || d.resourceId === undefined, {
     message: 'Only in-house candidates can be linked to a bench resource',
     path: ['resourceId'],
   })
-  // In-house candidates carry no external source name.
-  .transform((d) => (d.source === 'in_house' ? { ...d, sourceName: undefined } : d));
+  // A source with no third party carries no source name — including 'self',
+  // where the person who found them is recorded as the author instead.
+  .transform((d) =>
+    sourceNeedsPartnerName(d.source) ? d : { ...d, sourceName: undefined },
+  );
 
 export const candidateMappingSchema = z.object({
   candidateId: z.coerce.number().int().positive('Select a candidate'),

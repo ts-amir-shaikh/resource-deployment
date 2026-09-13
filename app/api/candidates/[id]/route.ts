@@ -76,9 +76,13 @@ export async function PUT(req: Request, { params }: Ctx) {
         currentCtc: data.currentCtc,
         expectedCtc: data.expectedCtc,
         noticePeriodDays: data.noticePeriodDays,
+        lastWorkingDate: data.lastWorkingDate,
         location: data.location,
+        resumeUrl: data.resumeUrl,
         source: data.source,
         sourceName: data.sourceName,
+        // createdByUserId is deliberately not here: who added the profile does
+        // not change because somebody else corrected a phone number.
         notes: data.notes,
       })
       .where(eq(candidates.id, id))

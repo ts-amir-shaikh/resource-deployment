@@ -1013,3 +1013,13 @@ export async function getApplicantAlert(
     uncalled: scoped.filter((r) => r.contactStatus === 'not_contacted').length,
   };
 }
+
+/** Active TA accounts, for the lead's member selector. Names only — no boards. */
+export async function getTeamMembers() {
+  return db
+    .select({ id: users.id, name: users.name, isTeamLead: users.isTeamLead })
+    .from(users)
+    .where(and(eq(users.role, 'ta'), eq(users.active, true)))
+    .orderBy(users.name)
+    .all();
+}

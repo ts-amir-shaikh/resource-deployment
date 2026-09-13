@@ -58,7 +58,9 @@ export default function ApplicantsClient({
 
   const [decision, setDecision] = useState<Decision>('new');
   const [kind, setKind] = useState<'all' | 'application' | 'referral'>('all');
-  const [uncalledOnly, setUncalledOnly] = useState(false);
+  // M33 — every call outcome, not only "nobody has called". The useful one is
+  // "tried, no answer": that is the call-back list, and nothing else shows it.
+  const [contact, setContact] = useState<'all' | ApplicationRow['contactStatus']>('all');
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export default function ApplicantsClient({
     return applications.filter((a) => {
       if (decision !== 'all' && a.status !== decision) return false;
       if (kind !== 'all' && a.kind !== kind) return false;
-      if (uncalledOnly && a.contactStatus !== 'not_contacted') return false;
+      if (contact !== 'all' && a.contactStatus !== contact) return false;
       if (!q) return true;
       return (
         a.candidateName.toLowerCase().includes(q) ||
@@ -91,7 +93,20 @@ export default function ApplicantsClient({
         a.requirementTitle.toLowerCase().includes(q)
       );
     });
-  }, [applications, decision, kind, uncalledOnly, search]);
+  }, [applications, decision, kind, contact, search]);
+
+  // Counts follow the decision and kind filters, so the dropdown describes the
+  // rows currently in front of you rather than the whole table.
+  const contactCounts = useMemo(() => {
+    const base = applications.filter(
+      (a) => (decision === 'all' || a.status === decision) && (kind === 'all' || a.kind === kind),
+    );
+    const out: Record<string, number> = { all: base.length };
+    for (const k of Object.keys(CONTACT_LABELS)) {
+      out[k] = base.filter((a) => a.contactStatus === k).length;
+    }
+    return out;
+  }, [applications, decision, kind]);
 
   async function decide(a: ApplicationRow, action: 'accept' | 'dismiss') {
     setBusy(a.id);
@@ -184,16 +199,22 @@ export default function ApplicantsClient({
           ))}
         </div>
 
-        <button
-          onClick={() => setUncalledOnly(!uncalledOnly)}
-          className={`chip border transition-colors ${
-            uncalledOnly
-              ? 'border-brand bg-brandbg text-brand'
-              : 'border-line bg-surface text-ink2 hover:bg-surface2'
-          }`}
-        >
-          <Phone className="h-3 w-3" /> Nobody has called yet
-        </button>
+        <label className="flex items-center gap-1.5 text-xs text-ink2">
+          <Phone className="h-3.5 w-3.5 text-ink3" />
+          <select
+            className="input w-auto py-1.5 text-xs"
+            value={contact}
+            onChange={(e) => setContact(e.target.value as typeof contact)}
+            aria-label="Filter by call status"
+          >
+            <option value="all">Any call status ({contactCounts.all})</option>
+            {(Object.keys(CONTACT_LABELS) as ApplicationRow['contactStatus'][]).map((k) => (
+              <option key={k} value={k}>
+                {CONTACT_LABELS[k]} ({contactCounts[k]})
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {error && (
@@ -222,9 +243,18 @@ export default function ApplicantsClient({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-sm font-semibold text-ink">
-                        {a.candidateName}
-                      </span>
+                      {a.convertedCandidateId ? (
+                        <Link
+                          href={`/candidates/${a.convertedCandidateId}`}
+                          className="text-sm font-semibold text-ink hover:text-brand"
+                        >
+                          {a.candidateName}
+                        </Link>
+                      ) : (
+                        <span className="text-sm font-semibold text-ink">
+                          {a.candidateName}
+                        </span>
+                      )}
                       {a.kind === 'application' ? (
                         <Badge tone="blue">Applied</Badge>
                       ) : (
