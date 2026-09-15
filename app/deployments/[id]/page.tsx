@@ -10,8 +10,8 @@ import {
   agreements,
   agreementResources,
 } from '@/lib/schema';
-import { deploymentBilling, getResourceAllocation } from '@/lib/queries';
-import { formatMoney, formatDate } from '@/lib/utils';
+import { getResourceAllocation } from '@/lib/queries';
+import { formatMoney, formatDate, deploymentMoney, effectiveCtc, monthlyOf } from '@/lib/utils';
 import { Badge, AllocationBar } from '@/components/ui';
 import { DetailHeader, DetailSection, DetailFacts } from '@/components/detail';
 
@@ -46,9 +46,15 @@ export default async function DeploymentDetailPage({
       currency: deployments.currency,
       billingAmount: deployments.billingAmount,
       commissionAmount: deployments.commissionAmount,
+      operationsOverhead: deployments.operationsOverhead,
       gstApplicable: deployments.gstApplicable,
       status: deployments.status,
       createdAt: deployments.createdAt,
+      // The salary side of the margin. Revised CTC applies once its date has
+      // passed — see effectiveCtc().
+      currentCtc: resources.currentCtc,
+      revisedCtc: resources.revisedCtc,
+      revisedEffectiveFrom: resources.revisedEffectiveFrom,
     })
     .from(deployments)
     .innerJoin(resources, eq(deployments.resourceId, resources.id))
@@ -79,7 +85,8 @@ export default async function DeploymentDetailPage({
     getResourceAllocation(row.resourceId),
   ]);
 
-  const money = deploymentBilling(row);
+  const annualCtc = effectiveCtc(row);
+  const money = deploymentMoney({ ...row, annualCtc });
   const isShadow = row.deploymentType === 'shadow';
   const rateMismatch =
     cardRate !== undefined && cardRate.billingAmount !== row.billingAmount;
@@ -130,31 +137,63 @@ export default async function DeploymentDetailPage({
           </DetailSection>
 
           <DetailSection
-            title="Billing"
-            hint={isShadow ? 'Shadow deployments are not billed' : undefined}
+            title={isShadow ? 'Cost' : 'Billing & Margin'}
+            hint={
+              isShadow
+                ? 'A shadow bills nothing, so what it costs is the whole story'
+                : 'Margin = billing − (monthly CTC × allocation + commission + overhead)'
+            }
           >
             {isShadow ? (
-              <p className="px-4 py-6 text-center text-sm text-ink3">
-                This is a shadow deployment — no billing, commission or GST applies.
-              </p>
+              <div className="px-4 py-4">
+                <CostLines money={money} row={row} annualCtc={annualCtc} />
+                <div className="mt-3 flex items-baseline justify-between border-t border-line pt-3">
+                  <span className="text-xs text-ink2">Monthly cost of this shadow</span>
+                  <span className="tnum text-sm font-semibold text-rose-600 dark:text-rose-400">
+                    {money.ctcCost == null ? '—' : formatMoney(money.ctcCost, 'INR')}
+                  </span>
+                </div>
+                {money.ctcCost == null && (
+                  <p className="mt-1.5 text-2xs text-ink3">
+                    No CTC recorded on the resource, so the cost cannot be stated.
+                  </p>
+                )}
+              </div>
             ) : (
               <>
                 <DetailFacts
-                  columns={4}
+                  columns={3}
                   facts={[
-                    ['Base', formatMoney(money.base, row.currency)],
+                    ['Base billing', formatMoney(money.base, row.currency)],
                     ['GST', formatMoney(money.gst, row.currency)],
-                    ['Total', formatMoney(money.total, row.currency)],
-                    ['Commission', formatMoney(row.commissionAmount, row.currency)],
+                    ['Invoice total', formatMoney(money.total, row.currency)],
                   ]}
                 />
                 <div className="border-t border-line px-4 py-3">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-xs text-ink2">Margin after commission</span>
-                    <span className="tnum text-sm font-semibold text-ink">
-                      {formatMoney(money.margin, row.currency)}
+                  <CostLines money={money} row={row} annualCtc={annualCtc} />
+                  <div className="mt-3 flex items-baseline justify-between border-t border-line pt-3">
+                    <span className="text-xs text-ink2">Margin</span>
+                    <span
+                      className={`tnum text-sm font-semibold ${
+                        money.margin != null && money.margin < 0
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : 'text-ink'
+                      }`}
+                    >
+                      {money.margin == null ? '—' : formatMoney(money.margin, row.currency)}
                     </span>
                   </div>
+                  {money.marginNote === 'needs-rate' && (
+                    <p className="mt-1.5 text-2xs text-ink3">
+                      Billing is in {row.currency} and salary is in rupees. The application does
+                      not convert, so the deductions are listed but not subtracted.
+                    </p>
+                  )}
+                  {money.marginNote === 'no-ctc' && (
+                    <p className="mt-1.5 text-2xs text-ink3">
+                      No CTC is recorded on the resource, so salary cannot be deducted.
+                    </p>
+                  )}
                   {!row.gstApplicable && (
                     <p className="mt-1.5 text-2xs text-ink3">
                       GST not applied
@@ -228,5 +267,47 @@ export default async function DeploymentDetailPage({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The deductions, each on its own line. A thin margin should be readable for
+ * *why* — which is impossible from one net figure.
+ */
+function CostLines({
+  money,
+  row,
+  annualCtc,
+}: {
+  money: ReturnType<typeof deploymentMoney>;
+  row: { allocationPercentage: number; currency: string; deploymentType: string };
+  annualCtc: number | null;
+}) {
+  const monthly = monthlyOf(annualCtc);
+  const lines: [string, string][] = [
+    [
+      `Monthly CTC${row.allocationPercentage < 100 ? ` × ${row.allocationPercentage}%` : ''}`,
+      money.ctcCost == null
+        ? '—'
+        : `${formatMoney(money.ctcCost, 'INR')}${
+            monthly != null && row.allocationPercentage < 100
+              ? ` (of ${formatMoney(monthly, 'INR')})`
+              : ''
+          }`,
+    ],
+  ];
+  if (row.deploymentType !== 'shadow') {
+    lines.push(['Commission', formatMoney(money.commission, row.currency)]);
+    lines.push(['Operations overhead', formatMoney(money.overhead, row.currency)]);
+  }
+  return (
+    <dl className="space-y-1.5 text-xs">
+      {lines.map(([k, v]) => (
+        <div key={k} className="flex items-baseline justify-between">
+          <dt className="text-ink3">{k}</dt>
+          <dd className="tnum text-ink2">{v}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq, ne, sql, desc, inArray } from 'drizzle-orm';
+import { and, eq, ne, sql, desc, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import { db, type Executor } from './db';
 import {
@@ -16,6 +16,7 @@ import {
   opportunityStageHistory,
   referrals,
   users,
+  candidateInterviews,
   PIPELINE_STAGES,
 } from './schema';
 import {
@@ -23,8 +24,15 @@ import {
   today,
   sumByCurrency,
   valueSummary,
+  deploymentMoney,
+  effectiveCtc,
+  addDays,
+  daysBetween,
   type MoneyByCurrency,
 } from './utils';
+
+/** M30-3: a live mapping untouched this long is flagged as stalled. */
+export const STALL_DAYS = 14;
 import crypto from 'node:crypto';
 
 /* ── Allocation ────────────────────────────────────────────── */
@@ -135,18 +143,14 @@ export async function assertAllocationHeadroom(
 
 /* ── Deployment billing maths ──────────────────────────────── */
 
-export function deploymentBilling(d: {
-  billingAmount: number;
-  commissionAmount: number;
-  gstApplicable: boolean;
-}) {
+/**
+ * Superseded by `deploymentMoney()` in lib/utils — kept as a thin adapter so
+ * the GST arithmetic has one home. Note what it no longer returns: a margin.
+ * The old `billing − commission` figure ignored salary and is not a margin.
+ */
+export function deploymentBilling(d: { billingAmount: number; gstApplicable: boolean }) {
   const gst = d.gstApplicable ? d.billingAmount * GST_RATE : 0;
-  return {
-    base: d.billingAmount,
-    gst,
-    total: d.billingAmount + gst,
-    margin: d.billingAmount - d.commissionAmount,
-  };
+  return { base: d.billingAmount, gst, total: d.billingAmount + gst };
 }
 
 /* ── Agreements ────────────────────────────────────────────── */
@@ -288,7 +292,66 @@ export async function getDashboardSummary() {
     monthlyGst: sumByCurrency(
       billableRows.map((r) => ({ currency: r.currency, amount: r.gst })),
     ),
+    margin: await getMonthlyMargin(),
   };
+}
+
+export type MonthlyMargin = {
+  /** INR margin across every active billable INR deployment with a CTC. */
+  amount: number;
+  /** Deployments the figure rests on, and the ones it could not include. */
+  covered: number;
+  needsRate: number;
+  noCtc: number;
+  /** What the active shadows cost each month, in INR. */
+  shadowCost: number;
+};
+
+/**
+ * The headline margin, computed per deployment with the shared formula and
+ * summed — never from grouped totals, because allocation and the effective
+ * CTC are per row.
+ *
+ * Rupees only. A deployment billing in AED or USD contributes nothing here
+ * and is counted in `needsRate` so the screen can say how much of the book
+ * the figure actually rests on, the same way pipeline value carries a
+ * coverage caveat.
+ */
+export async function getMonthlyMargin(): Promise<MonthlyMargin> {
+  const rows = await db
+    .select({
+      billingAmount: deployments.billingAmount,
+      commissionAmount: deployments.commissionAmount,
+      operationsOverhead: deployments.operationsOverhead,
+      gstApplicable: deployments.gstApplicable,
+      allocationPercentage: deployments.allocationPercentage,
+      currency: deployments.currency,
+      deploymentType: deployments.deploymentType,
+      currentCtc: resources.currentCtc,
+      revisedCtc: resources.revisedCtc,
+      revisedEffectiveFrom: resources.revisedEffectiveFrom,
+    })
+    .from(deployments)
+    .innerJoin(resources, eq(deployments.resourceId, resources.id))
+    .where(eq(deployments.status, 'active'))
+    .all();
+
+  const out: MonthlyMargin = { amount: 0, covered: 0, needsRate: 0, noCtc: 0, shadowCost: 0 };
+  for (const r of rows) {
+    const m = deploymentMoney({ ...r, annualCtc: effectiveCtc(r) });
+    if (m.isCost) {
+      out.shadowCost += m.ctcCost ?? 0;
+      continue;
+    }
+    if (m.margin == null) {
+      if (m.marginNote === 'needs-rate') out.needsRate++;
+      else out.noCtc++;
+      continue;
+    }
+    out.amount += m.margin;
+    out.covered++;
+  }
+  return out;
 }
 
 export async function getInvoiceSummary() {
@@ -346,7 +409,16 @@ export async function getInvoiceSummary() {
 
 export async function getResourceUtilisation() {
   const all = await db
-    .select({ id: resources.id, name: resources.name, designation: resources.designation })
+    .select({
+      id: resources.id,
+      name: resources.name,
+      designation: resources.designation,
+      // For the deployment form's margin preview. The effective figure is
+      // resolved client-side with the same helper the detail page uses.
+      currentCtc: resources.currentCtc,
+      revisedCtc: resources.revisedCtc,
+      revisedEffectiveFrom: resources.revisedEffectiveFrom,
+    })
     .from(resources)
     .orderBy(resources.name)
     .all();
@@ -768,12 +840,30 @@ export async function getRecruiterBoard(userId: number | null) {
       interviewDate: opportunityCandidates.interviewDate,
       feedback: opportunityCandidates.feedback,
       userId: opportunityCandidates.userId,
+      statusChangedAt: opportunityCandidates.statusChangedAt,
+      offeredAt: opportunityCandidates.offeredAt,
+      expectedJoinDate: opportunityCandidates.expectedJoinDate,
       candidateName: candidates.name,
       title: opportunities.title,
     })
     .from(opportunityCandidates)
     .innerJoin(candidates, eq(opportunityCandidates.candidateId, candidates.id))
     .innerJoin(opportunities, eq(opportunityCandidates.opportunityId, opportunities.id))
+    .all();
+
+  // M30-2 — rounds that are scheduled but have not happened, soonest first.
+  // Outcome null is the definition of "not held" (see candidateInterviews).
+  const upcoming = await db
+    .select({
+      id: candidateInterviews.id,
+      mappingId: candidateInterviews.opportunityCandidateId,
+      round: candidateInterviews.round,
+      mode: candidateInterviews.mode,
+      scheduledAt: candidateInterviews.scheduledAt,
+    })
+    .from(candidateInterviews)
+    .where(and(isNull(candidateInterviews.outcome), isNotNull(candidateInterviews.scheduledAt)))
+    .orderBy(candidateInterviews.scheduledAt)
     .all();
 
   const ownedIds = new Set(owned.map((o) => o.id));
@@ -808,6 +898,28 @@ export async function getRecruiterBoard(userId: number | null) {
     interviewsUnlogged: myMappings.filter(
       (m) => m.status === 'interview' && m.interviewDate && !m.feedback,
     ),
+    // M30-2 — the next few days, and anything already overdue with no outcome.
+    interviewsUpcoming: upcoming
+      .filter((u) => myMappings.some((m) => m.id === u.mappingId))
+      .filter((u) => u.scheduledAt! <= addDays(today_, 3))
+      .map((u) => ({ ...u, mapping: myMappings.find((m) => m.id === u.mappingId)! })),
+    // M30-3 — live and untouched for a fortnight. A null stamp (rows the
+    // migration has not reached) is treated as never moved, which is the
+    // truthful reading rather than the flattering one.
+    stalled: myMappings.filter(
+      (m) =>
+        !['rejected', 'withdrawn', 'joined'].includes(m.status) &&
+        (m.statusChangedAt ?? '0000-00-00') <= addDays(today_, -STALL_DAYS),
+    ),
+    // M30-5 — an offer out, nobody joined yet. Overdue when the expected
+    // date has passed; "no date" is its own warning.
+    offersOpen: myMappings
+      .filter((m) => m.status === 'offered')
+      .map((m) => ({
+        ...m,
+        overdue: Boolean(m.expectedJoinDate && m.expectedJoinDate < today_),
+        daysToJoin: m.expectedJoinDate ? daysBetween(today_, m.expectedJoinDate) : null,
+      })),
     inboxWaiting:
       mine === undefined
         ? pendingReferrals
@@ -1022,4 +1134,50 @@ export async function getTeamMembers() {
     .where(and(eq(users.role, 'ta'), eq(users.active, true)))
     .orderBy(users.name)
     .all();
+}
+
+/* ── M30-4: source effectiveness ───────────────────────────── */
+
+export type SourceRow = {
+  source: string;
+  candidates: number;
+  /** Distinct candidates put forward for at least one requirement. */
+  mapped: number;
+  /** Distinct candidates who reached the client — submitted or beyond. */
+  submitted: number;
+  joined: number;
+};
+
+/**
+ * Which channel actually produces hires.
+ *
+ * Every field it needs has been captured since M9 and nothing reported on it.
+ * Counted per distinct candidate, not per mapping — a person on four
+ * requirements is one sourced person, and a channel does not get four times
+ * the credit for them. Sorted by joins, then by volume, so the channel that
+ * delivers sits at the top even when it is not the biggest.
+ */
+export async function getSourceEffectiveness(): Promise<SourceRow[]> {
+  const rows = await db
+    .select({
+      source: candidates.source,
+      candidates: sql<number>`count(distinct ${candidates.id})`,
+      mapped: sql<number>`count(distinct ${opportunityCandidates.candidateId})`,
+      submitted: sql<number>`count(distinct case when ${opportunityCandidates.status} in ('submitted','interview','selected','offered','joined') then ${opportunityCandidates.candidateId} end)`,
+      joined: sql<number>`count(distinct case when ${opportunityCandidates.status} = 'joined' then ${opportunityCandidates.candidateId} end)`,
+    })
+    .from(candidates)
+    .leftJoin(opportunityCandidates, eq(opportunityCandidates.candidateId, candidates.id))
+    .groupBy(candidates.source)
+    .all();
+
+  return rows
+    .map((r) => ({
+      source: r.source,
+      candidates: Number(r.candidates),
+      mapped: Number(r.mapped),
+      submitted: Number(r.submitted),
+      joined: Number(r.joined),
+    }))
+    .sort((a, b) => b.joined - a.joined || b.candidates - a.candidates);
 }

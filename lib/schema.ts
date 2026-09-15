@@ -125,6 +125,14 @@ export const deployments = sqliteTable(
     /** Forced to 0 for shadow deployments. */
     billingAmount: real('billing_amount').default(0).notNull(),
     commissionAmount: real('commission_amount').default(0).notNull(),
+    /**
+     * M40: what it costs to run this engagement beyond salary and commission
+     * — tooling, a US-shift allowance, a client-mandated laptop. Per
+     * deployment rather than a global rate, because a US-timezone engagement
+     * and a local one do not cost the same to operate. An amount, matching
+     * commission; forced to 0 for shadow deployments the same way.
+     */
+    operationsOverhead: real('operations_overhead').default(0).notNull(),
     gstApplicable: integer('gst_applicable', { mode: 'boolean' })
       .default(true)
       .notNull(),
@@ -519,6 +527,19 @@ export const opportunityCandidates = sqliteTable(
     interviewDate: text('interview_date'),
     feedback: text('feedback'),
     expectedBilling: real('expected_billing'),
+    /**
+     * M30-3: when `status` last changed. Stall detection — "has not moved in
+     * two weeks" — is impossible from `createdAt` alone, and every status
+     * write goes through the two routes that now stamp this.
+     */
+    statusChangedAt: text('status_changed_at'),
+    /**
+     * M30-5: the offer-to-join gap, which is where a placement most often
+     * falls through. `offeredAt` is stamped the first time status reaches
+     * 'offered'; the expected join date is typed by the recruiter.
+     */
+    offeredAt: text('offered_at'),
+    expectedJoinDate: text('expected_join_date'),
     /** Who mapped this candidate, and who last moved its interview state. */
     userId: integer('user_id'),
     updatedByUserId: integer('updated_by_user_id'),

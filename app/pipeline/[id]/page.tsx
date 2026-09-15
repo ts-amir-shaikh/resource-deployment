@@ -100,6 +100,7 @@ export default async function OpportunityDetailPage({
         interviewDate: opportunityCandidates.interviewDate,
         feedback: opportunityCandidates.feedback,
         expectedBilling: opportunityCandidates.expectedBilling,
+        expectedJoinDate: opportunityCandidates.expectedJoinDate,
         name: candidates.name,
         currentDesignation: candidates.currentDesignation,
         experienceYears: candidates.experienceYears,

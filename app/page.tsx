@@ -11,10 +11,12 @@ import {
   getPipelineValue,
   getDueFollowUps,
   syncExpiredAgreements,
+  getSourceEffectiveness,
 } from '@/lib/queries';
+import SourceEffectiveness from '@/components/source-effectiveness';
 import {
+  formatMoney,
   formatMoneyMulti,
-  sumByCurrency,
   coverageNote,
   formatDate,
   daysUntil,
@@ -39,17 +41,27 @@ export default async function DashboardPage() {
   // rather than as eight sequential round trips to the database.
   await syncExpiredAgreements();
 
-  const [s, inv, utilisation, billingByClient, endingSoon, expiring, pipeline, dueFollowUps] =
-    await Promise.all([
-      getDashboardSummary(),
-      getInvoiceSummary(),
-      getResourceUtilisation(),
-      getBillingByClient(),
-      getEndingSoon(30),
-      getExpiringAgreements(30),
-      getPipelineSummary(),
-      getDueFollowUps(),
-    ]);
+  const [
+    s,
+    inv,
+    utilisation,
+    billingByClient,
+    endingSoon,
+    expiring,
+    pipeline,
+    dueFollowUps,
+    sources,
+  ] = await Promise.all([
+    getDashboardSummary(),
+    getInvoiceSummary(),
+    getResourceUtilisation(),
+    getBillingByClient(),
+    getEndingSoon(30),
+    getExpiringAgreements(30),
+    getPipelineSummary(),
+    getDueFollowUps(),
+    getSourceEffectiveness(),
+  ]);
 
   const pipelineValue = await getPipelineValue();
 
@@ -190,20 +202,30 @@ export default async function DashboardPage() {
         </div>
 
         {/* Delivery KPIs */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Stat
             label="Monthly Billing"
             value={formatMoneyMulti(s.monthlyBilling)}
-            sub={`${formatMoneyMulti(s.monthlyGst)} GST · ${formatMoneyMulti(
-              // Margin per currency: billing minus commission, never across.
-              sumByCurrency([
-                ...s.monthlyBilling,
-                ...s.monthlyCommission.map((c) => ({
-                  currency: c.currency as string,
-                  amount: -c.amount,
-                })),
-              ]),
-            )} margin`}
+            sub={`${formatMoneyMulti(s.monthlyGst)} GST`}
+          />
+          <Stat
+            label="Monthly Margin"
+            // billing − (monthly CTC × allocation + commission + overhead), in
+            // rupees, across the deployments it can honestly be computed for.
+            // The old figure here was billing − commission and ignored salary.
+            value={
+              s.margin.covered === 0 ? '—' : formatMoney(s.margin.amount, 'INR')
+            }
+            sub={[
+              `${s.margin.covered} deployment${s.margin.covered === 1 ? '' : 's'}`,
+              s.margin.needsRate > 0 && `${s.margin.needsRate} non-INR excluded`,
+              s.margin.noCtc > 0 && `${s.margin.noCtc} without CTC`,
+              s.margin.shadowCost > 0 &&
+                `shadows cost ${formatMoney(s.margin.shadowCost, 'INR')}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            tone={s.margin.covered > 0 && s.margin.amount < 0 ? 'bad' : 'default'}
           />
           <Stat
             label="Outstanding"
@@ -519,6 +541,11 @@ export default async function DashboardPage() {
             )}
           </section>
         </div>
+      </div>
+
+      {/* M30-4 */}
+      <div className="px-6 pb-2">
+        <SourceEffectiveness rows={sources} />
       </div>
     </div>
   );

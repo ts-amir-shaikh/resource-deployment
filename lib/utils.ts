@@ -138,6 +138,13 @@ export function daysBetween(from: string, to: string): number {
   return Math.round((b - a) / 86_400_000);
 }
 
+/** ISO date `n` days from `date`; negative `n` goes backwards. */
+export function addDays(date: string, n: number): string {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Negative when the date is in the past. */
 export function daysUntil(date: string | null | undefined): number | null {
   if (!date) return null;
@@ -389,4 +396,103 @@ export function availabilityLabel(
   }
   if (noticePeriodDays == null) return '—';
   return noticePeriodDays === 0 ? 'Immediate' : `${noticePeriodDays}d notice`;
+}
+
+/* ── M39 / M40: cost and margin ────────────────────────────── */
+
+/**
+ * Annual CTC as a monthly figure, rounded to the rupee.
+ *
+ * Derived every time rather than stored, so it can never disagree with the
+ * annual figure it came from. Plain division by twelve — not a payroll
+ * monthly, which would need the statutory model.
+ */
+export function monthlyOf(annual: number | null | undefined): number | null {
+  if (annual == null) return null;
+  return Math.round(annual / 12);
+}
+
+/**
+ * The CTC actually in force today for a resource that carries a revision.
+ *
+ * Revised once its effective date has passed, current before it. Anything
+ * else misreports a raise that has already happened — or one that has not.
+ */
+export function effectiveCtc(r: {
+  currentCtc: number | null;
+  revisedCtc: number | null;
+  revisedEffectiveFrom: string | null;
+}): number | null {
+  if (r.revisedCtc != null && r.revisedEffectiveFrom && r.revisedEffectiveFrom <= today()) {
+    return r.revisedCtc;
+  }
+  return r.currentCtc;
+}
+
+export type DeploymentMoney = {
+  base: number;
+  gst: number;
+  total: number;
+  commission: number;
+  overhead: number;
+  /** Monthly salary cost charged to this deployment, pro-rated by allocation. */
+  ctcCost: number | null;
+  /** Null when it cannot be computed honestly — see `marginNote`. */
+  margin: number | null;
+  /** Why margin is null, for the screen to say rather than show a dash. */
+  marginNote: 'needs-rate' | 'no-ctc' | null;
+  /** True for a shadow: the figure is a cost, not a margin. */
+  isCost: boolean;
+};
+
+/**
+ * One formula, every caller.
+ *
+ *   margin = billing − (monthly CTC × allocation + commission + overhead)
+ *
+ * Three things the sentence leaves open, decided here so they cannot be
+ * decided differently on different screens:
+ *
+ * - Allocation. A resource split 50/50 across two deployments must not have
+ *   their whole salary deducted from both; cost is pro-rated.
+ * - Currency. CTC is always rupees and the application never converts, so
+ *   margin exists only where the deployment bills in INR. Elsewhere the
+ *   deductions are still shown; only the subtraction is withheld.
+ * - Shadow. A shadow bills nothing, so the figure is a pure cost and is
+ *   flagged as such rather than shown as a negative margin.
+ *
+ * This replaces `billing − commission`, which ignored salary entirely.
+ */
+export function deploymentMoney(d: {
+  billingAmount: number;
+  commissionAmount: number;
+  operationsOverhead: number;
+  gstApplicable: boolean;
+  allocationPercentage: number;
+  currency: string;
+  deploymentType: 'billable' | 'shadow';
+  annualCtc: number | null;
+}): DeploymentMoney {
+  const gst = d.gstApplicable ? d.billingAmount * GST_RATE : 0;
+  const monthly = monthlyOf(d.annualCtc);
+  const ctcCost = monthly == null ? null : Math.round((monthly * d.allocationPercentage) / 100);
+  const isCost = d.deploymentType === 'shadow';
+
+  let margin: number | null = null;
+  let marginNote: DeploymentMoney['marginNote'] = null;
+  if (d.currency !== 'INR') marginNote = 'needs-rate';
+  else if (ctcCost == null) marginNote = 'no-ctc';
+  else margin = d.billingAmount - (ctcCost + d.commissionAmount + d.operationsOverhead);
+
+  return {
+    base: d.billingAmount,
+    gst,
+    total: d.billingAmount + gst,
+    commission: d.commissionAmount,
+    overhead: d.operationsOverhead,
+    ctcCost,
+    margin,
+    marginNote,
+    isCost,
+  };
 }

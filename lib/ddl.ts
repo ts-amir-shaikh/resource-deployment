@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS deployments (
   currency TEXT NOT NULL DEFAULT 'INR',
   billing_amount REAL NOT NULL DEFAULT 0,
   commission_amount REAL NOT NULL DEFAULT 0,
+  operations_overhead REAL NOT NULL DEFAULT 0,
   gst_applicable INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -197,6 +198,9 @@ CREATE TABLE IF NOT EXISTS opportunity_candidates (
   interview_date TEXT,
   feedback TEXT,
   expected_billing REAL,
+  status_changed_at TEXT,
+  offered_at TEXT,
+  expected_join_date TEXT,
   user_id INTEGER,
   updated_by_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

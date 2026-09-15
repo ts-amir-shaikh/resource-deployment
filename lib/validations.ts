@@ -138,6 +138,7 @@ export const deploymentSchema = z
     endDate: optionalDate,
     billingAmount: money.default(0),
     commissionAmount: money.default(0),
+    operationsOverhead: money.default(0),
     gstApplicable: z.coerce.boolean().default(true),
   })
   .refine((d) => !d.endDate || d.endDate >= d.startDate, {
@@ -159,7 +160,7 @@ export const deploymentSchema = z
   // Shadow deployments carry no billing; normalise rather than reject.
   .transform((d) =>
     d.deploymentType === 'shadow'
-      ? { ...d, billingAmount: 0, commissionAmount: 0, gstApplicable: false }
+      ? { ...d, billingAmount: 0, commissionAmount: 0, operationsOverhead: 0, gstApplicable: false }
       : d,
   );
 
@@ -497,6 +498,8 @@ export const candidateMappingSchema = z.object({
   interviewDate: optionalDate,
   feedback: optionalStr,
   expectedBilling: optionalMoney,
+  /** M30-5: when they are expected to start, once an offer is out. */
+  expectedJoinDate: optionalDate,
 });
 
 export const candidateMappingUpdateSchema = candidateMappingSchema.omit({

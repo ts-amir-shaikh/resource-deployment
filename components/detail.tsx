@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { formatMoney, monthlyOf } from '@/lib/utils';
 
 /**
  * Shared furniture for the six read-only detail pages.
@@ -140,4 +141,23 @@ export function ContactCard({
 
 export function DetailEmpty({ children }: { children: React.ReactNode }) {
   return <p className="px-4 py-6 text-center text-sm text-ink3">{children}</p>;
+}
+
+/**
+ * An annual figure with its monthly equivalent beside it — "₹18,00,000/yr ·
+ * ₹1,50,000/mo". Billing is monthly and CTC is entered annually; every
+ * comparison between them has been done in somebody's head until now.
+ */
+export function AnnualWithMonthly({ annual }: { annual: number | null | undefined }) {
+  if (annual == null) return null;
+  const monthly = monthlyOf(annual);
+  return (
+    <span className="tnum">
+      {formatMoney(annual, 'INR')}
+      <span className="text-ink3">/yr</span>
+      <span className="mx-1.5 text-ink3">·</span>
+      {formatMoney(monthly, 'INR')}
+      <span className="text-ink3">/mo</span>
+    </span>
+  );
 }

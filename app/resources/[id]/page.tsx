@@ -11,6 +11,7 @@ import {
   DetailSection,
   DetailFacts,
   DetailEmpty,
+  AnnualWithMonthly,
 } from '@/components/detail';
 
 export const dynamic = 'force-dynamic';
@@ -169,8 +170,8 @@ export default async function ResourceDetailPage({ params }: { params: { id: str
             <DetailFacts
               columns={2}
               facts={[
-                ['Current CTC', formatMoney(row.currentCtc, 'INR')],
-                ['Revised CTC', formatMoney(row.revisedCtc, 'INR')],
+                ['Current CTC', row.currentCtc == null ? null : <AnnualWithMonthly key="c" annual={row.currentCtc} />],
+                ['Revised CTC', row.revisedCtc == null ? null : <AnnualWithMonthly key="r" annual={row.revisedCtc} />],
                 ['Effective From', formatDate(row.revisedEffectiveFrom)],
                 ['Added', formatDate(row.createdAt?.slice(0, 10))],
               ]}

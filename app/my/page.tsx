@@ -1,18 +1,29 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { CalendarClock, Inbox, Send, MessageSquareWarning } from 'lucide-react';
+import {
+  CalendarClock,
+  CalendarCheck,
+  Inbox,
+  Send,
+  MessageSquareWarning,
+  Hourglass,
+  Handshake,
+} from 'lucide-react';
 import {
   getRecruiterBoard,
   getTeamBoard,
   getTeamMembers,
   getApplicantAlert,
+  getSourceEffectiveness,
+  STALL_DAYS,
 } from '@/lib/queries';
+import SourceEffectiveness from '@/components/source-effectiveness';
 import MemberSelect from './member-select';
 import { requireSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { users } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
-import { formatDate, STAGE_LABELS } from '@/lib/utils';
+import { formatDate, today, STAGE_LABELS, CANDIDATE_STATUS_LABELS } from '@/lib/utils';
 import { KpiCard, Badge, PageHeader } from '@/components/ui';
 import { DetailSection, DetailEmpty } from '@/components/detail';
 
@@ -59,6 +70,8 @@ export default async function MyWorkPage({
   // The roll-up is the whole-team view; with one person selected it is not
   // computed at all, so the common case does less work than before.
   const team = isLead && !viewing ? await getTeamBoard() : null;
+  // The lead is the one who decides where sourcing effort goes.
+  const sources = team ? await getSourceEffectiveness() : null;
   // A lead looking at the whole team is unscoped; looking at one person, or
   // being a plain recruiter, scopes to that one person's requirements.
   const alert = await getApplicantAlert(
@@ -89,6 +102,51 @@ export default async function MyWorkPage({
         href: `/pipeline/${m.opportunityId}`,
         primary: m.candidateName,
         secondary: m.title,
+      })),
+    },
+    {
+      key: 'upcoming',
+      hint: 'Scheduled, no outcome yet — the next three days and anything overdue',
+      icon: CalendarCheck,
+      label: 'Interviews coming up',
+      items: board.interviewsUpcoming.map((u) => ({
+        id: u.id,
+        href: `/pipeline/${u.mapping.opportunityId}`,
+        primary: u.mapping.candidateName,
+        secondary: `Round ${u.round} · ${u.mapping.title} · ${
+          u.scheduledAt! < today() ? 'was due' : 'on'
+        } ${formatDate(u.scheduledAt)}`,
+      })),
+    },
+    {
+      key: 'stalled',
+      hint: `Live, and not moved in ${STALL_DAYS} days`,
+      icon: Hourglass,
+      label: 'Stalled',
+      items: board.stalled.map((m) => ({
+        id: m.id,
+        href: `/pipeline/${m.opportunityId}`,
+        primary: m.candidateName,
+        secondary: `${CANDIDATE_STATUS_LABELS[m.status]} since ${formatDate(
+          m.statusChangedAt,
+        )} · ${m.title}`,
+      })),
+    },
+    {
+      key: 'offers',
+      hint: 'Offered, not yet joined — where placements fall through',
+      icon: Handshake,
+      label: 'Offers awaiting joining',
+      items: board.offersOpen.map((m) => ({
+        id: m.id,
+        href: `/pipeline/${m.opportunityId}`,
+        primary: m.candidateName,
+        secondary:
+          m.daysToJoin === null
+            ? `${m.title} · no joining date recorded`
+            : m.overdue
+              ? `${m.title} · was due ${formatDate(m.expectedJoinDate)}`
+              : `${m.title} · joins in ${m.daysToJoin} day${m.daysToJoin === 1 ? '' : 's'}`,
       })),
     },
     {
@@ -211,6 +269,12 @@ export default async function MyWorkPage({
         </DetailSection>
       </div>
 
+      {sources && (
+        <div className="px-6 pt-6">
+          <SourceEffectiveness rows={sources} />
+        </div>
+      )}
+
       {team && (
         <div className="px-6 pt-6">
           <DetailSection
@@ -223,6 +287,9 @@ export default async function MyWorkPage({
                   b.followUpsDue.length +
                   b.notSubmitted.length +
                   b.interviewsUnlogged.length +
+                  b.interviewsUpcoming.length +
+                  b.stalled.length +
+                  b.offersOpen.length +
                   b.inboxWaiting.length;
                 return (
                   <li key={user.id} className="px-4 py-3">

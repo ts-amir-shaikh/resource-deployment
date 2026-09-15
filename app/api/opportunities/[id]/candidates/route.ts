@@ -7,6 +7,7 @@ import {
 } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
 import { requireSession } from '@/lib/session';
+import { statusStamps } from '@/lib/mappings';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,8 @@ export async function POST(req: Request, { params }: Ctx) {
         interviewDate: data.interviewDate,
         feedback: data.feedback,
         expectedBilling: data.expectedBilling,
+        expectedJoinDate: data.expectedJoinDate ?? null,
+        ...statusStamps(null, data.status),
       })
       .returning()
       .get();
@@ -106,6 +109,8 @@ export async function PUT(req: Request, { params }: Ctx) {
         interviewDate: data.interviewDate,
         feedback: data.feedback,
         expectedBilling: data.expectedBilling,
+        expectedJoinDate: data.expectedJoinDate ?? null,
+        ...statusStamps(existing, data.status),
       })
       .where(eq(opportunityCandidates.id, mappingId))
       .returning()

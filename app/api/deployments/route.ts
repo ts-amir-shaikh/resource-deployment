@@ -45,6 +45,7 @@ export async function GET(req: Request) {
         endDate: deployments.endDate,
         billingAmount: deployments.billingAmount,
         commissionAmount: deployments.commissionAmount,
+        operationsOverhead: deployments.operationsOverhead,
         gstApplicable: deployments.gstApplicable,
         status: deployments.status,
       })
@@ -121,6 +122,7 @@ export async function POST(req: Request) {
         endDate: data.endDate,
         billingAmount: data.billingAmount,
         commissionAmount: data.commissionAmount,
+        operationsOverhead: data.operationsOverhead,
         gstApplicable: data.gstApplicable,
         status: 'active',
       })

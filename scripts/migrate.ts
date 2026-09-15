@@ -209,6 +209,32 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'created_by_user_id',
     ddl: 'ALTER TABLE candidates ADD COLUMN created_by_user_id INTEGER',
   },
+  // Phase 11 — cost and margin. Overhead defaults to 0, so every existing
+  // deployment's margin drops by salary alone on day one, and by nothing
+  // else until somebody records a figure.
+  {
+    table: 'deployments',
+    column: 'operations_overhead',
+    ddl: 'ALTER TABLE deployments ADD COLUMN operations_overhead REAL NOT NULL DEFAULT 0',
+  },
+  // M30-3 / M30-5 — backfilled below from created_at, the only honest
+  // proxy: a mapping that has never been touched since it was created has,
+  // by definition, been in its status since then.
+  {
+    table: 'opportunity_candidates',
+    column: 'status_changed_at',
+    ddl: 'ALTER TABLE opportunity_candidates ADD COLUMN status_changed_at TEXT',
+  },
+  {
+    table: 'opportunity_candidates',
+    column: 'offered_at',
+    ddl: 'ALTER TABLE opportunity_candidates ADD COLUMN offered_at TEXT',
+  },
+  {
+    table: 'opportunity_candidates',
+    column: 'expected_join_date',
+    ddl: 'ALTER TABLE opportunity_candidates ADD COLUMN expected_join_date TEXT',
+  },
   {
     table: 'candidate_ratings',
     column: 'interview_id',
@@ -311,6 +337,12 @@ async function main() {
   if (lifted.length > 0) {
     console.log(`  lifted ${lifted.length} existing feedback record(s) into round 1`);
   }
+
+  // M30-3 backfill. Idempotent: only rows with no stamp are touched.
+  const { rowsAffected: stamped } = await client.execute(
+    'update opportunity_candidates set status_changed_at = created_at where status_changed_at is null',
+  );
+  if (stamped > 0) console.log(`  stamped status_changed_at on ${stamped} mapping(s) from created_at`);
 
   const { rows } = await client.execute(
     "select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name",

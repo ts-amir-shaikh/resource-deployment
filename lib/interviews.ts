@@ -1,6 +1,7 @@
 import 'server-only';
 import { asc, desc, eq, inArray } from 'drizzle-orm';
 import { db, type Executor } from './db';
+import { statusStamps } from './mappings';
 import {
   candidateInterviews,
   interviewPanel,
@@ -89,6 +90,13 @@ export async function syncMappingFromRounds(
   mappingId: number,
   { moveStatus, userId }: SyncOptions,
 ): Promise<void> {
+  // For the status stamps: what the mapping says now.
+  const current = await tx
+    .select({ status: opportunityCandidates.status, offeredAt: opportunityCandidates.offeredAt })
+    .from(opportunityCandidates)
+    .where(eq(opportunityCandidates.id, mappingId))
+    .get();
+
   const latest = await tx
     .select({
       round: candidateInterviews.round,
@@ -112,7 +120,7 @@ export async function syncMappingFromRounds(
             feedback: latest.feedback ?? null,
           }
         : {}),
-      ...(moveStatus ? { status: moveStatus } : {}),
+      ...(moveStatus ? { status: moveStatus, ...statusStamps(current ?? null, moveStatus) } : {}),
       updatedByUserId: userId,
     })
     .where(eq(opportunityCandidates.id, mappingId))

@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { referrals, candidates, opportunityCandidates } from '@/lib/schema';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
 import { requireSession } from '@/lib/session';
+import { statusStamps } from '@/lib/mappings';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +86,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
           opportunityId: referral.opportunityId,
           candidateId: candidate.id,
           status: 'mapped',
+          ...statusStamps(null, 'mapped'),
         });
       }
 

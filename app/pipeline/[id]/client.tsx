@@ -112,6 +112,7 @@ type Mapped = {
   noticePeriodDays: number | null;
   lastWorkingDate: string | null;
   resumeUrl: string | null;
+  expectedJoinDate: string | null;
 };
 
 type Comment = {
@@ -643,6 +644,7 @@ export default function OpportunityDetailClient({
     interviewDate: '',
     feedback: '',
     expectedBilling: '',
+    expectedJoinDate: '',
   });
   const [mapError, setMapError] = useState<string | null>(null);
   const [editingMap, setEditingMap] = useState<Mapped | null>(null);
@@ -815,6 +817,7 @@ export default function OpportunityDetailClient({
       interviewDate: '',
       feedback: '',
       expectedBilling: '',
+      expectedJoinDate: '',
     });
     setMapError(null);
     setMapOpen(true);
@@ -829,6 +832,7 @@ export default function OpportunityDetailClient({
       interviewDate: m.interviewDate ?? '',
       feedback: m.feedback ?? '',
       expectedBilling: m.expectedBilling ? String(m.expectedBilling) : '',
+      expectedJoinDate: m.expectedJoinDate ?? '',
     });
     setMapError(null);
     setMapOpen(true);
@@ -1917,6 +1921,23 @@ export default function OpportunityDetailClient({
               onChange={(e) => setMapForm({ ...mapForm, feedback: e.target.value })}
             />
           </Field>
+
+          {/* M30-5 — only meaningful once there is an offer to join against. */}
+          {['selected', 'offered', 'joined'].includes(mapForm.status) && (
+            <Field
+              label="Expected joining date"
+              hint="The offer-to-join gap is where placements fall through; a date here puts it on the board"
+            >
+              <input
+                type="date"
+                className="input"
+                value={mapForm.expectedJoinDate}
+                onChange={(e) =>
+                  setMapForm({ ...mapForm, expectedJoinDate: e.target.value })
+                }
+              />
+            </Field>
+          )}
         </div>
 
         <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">

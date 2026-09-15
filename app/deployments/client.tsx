@@ -13,6 +13,8 @@ import {
   LIST_PAGE_SIZE,
   CURRENCY_OPTIONS,
   gstApplies,
+  deploymentMoney,
+  effectiveCtc,
 } from '@/lib/utils';
 import {
   PageHeader,
@@ -44,6 +46,7 @@ type Row = {
   currency: string;
   billingAmount: number;
   commissionAmount: number;
+  operationsOverhead: number;
   gstApplicable: boolean;
   status: 'active' | 'ended';
 };
@@ -52,6 +55,9 @@ type ResourceOption = {
   id: number;
   name: string;
   designation: string | null;
+  currentCtc: number | null;
+  revisedCtc: number | null;
+  revisedEffectiveFrom: string | null;
   billable: number;
   shadow: number;
   total: number;
@@ -82,6 +88,7 @@ const BLANK = {
   currency: 'INR',
   billingAmount: '',
   commissionAmount: '',
+  operationsOverhead: '',
   gstApplicable: true,
 };
 
@@ -234,13 +241,32 @@ export default function DeploymentsClient({
   const overAllocated = Boolean(selectedResource) && requested > headroom;
 
   const isShadow = form.deploymentType === 'shadow';
+  // The same function the detail page and the dashboard use, so the preview
+  // can never promise a margin the saved record then disagrees with.
   const billingPreview = useMemo(() => {
-    const base = Number(form.billingAmount) || 0;
-    const gst =
-      form.gstApplicable && !isShadow && gstApplies(form.currency) ? base * GST_RATE : 0;
-    const commission = Number(form.commissionAmount) || 0;
-    return { base, gst, total: base + gst, margin: base - commission };
-  }, [form.billingAmount, form.commissionAmount, form.gstApplicable, form.currency, isShadow]);
+    const picked = resources.find((r) => String(r.id) === form.resourceId);
+    return deploymentMoney({
+      billingAmount: Number(form.billingAmount) || 0,
+      commissionAmount: Number(form.commissionAmount) || 0,
+      operationsOverhead: Number(form.operationsOverhead) || 0,
+      gstApplicable: form.gstApplicable && !isShadow && gstApplies(form.currency),
+      allocationPercentage: Number(form.allocationPercentage) || 0,
+      currency: form.currency,
+      deploymentType: form.deploymentType,
+      annualCtc: picked ? effectiveCtc(picked) : null,
+    });
+  }, [
+    form.billingAmount,
+    form.commissionAmount,
+    form.operationsOverhead,
+    form.gstApplicable,
+    form.currency,
+    form.resourceId,
+    form.allocationPercentage,
+    form.deploymentType,
+    isShadow,
+    resources,
+  ]);
 
   // Shadow deployments carry no billing; clear the fields when the type flips.
   useEffect(() => {
@@ -248,7 +274,7 @@ export default function DeploymentsClient({
       setForm((f) =>
         f.billingAmount === '' && f.commissionAmount === '' && !f.gstApplicable
           ? f
-          : { ...f, billingAmount: '', commissionAmount: '', gstApplicable: false },
+          : { ...f, billingAmount: '', commissionAmount: '', operationsOverhead: '', gstApplicable: false },
       );
     }
   }, [isShadow]);
@@ -274,6 +300,7 @@ export default function DeploymentsClient({
       currency: d.currency ?? 'INR',
       billingAmount: d.billingAmount ? String(d.billingAmount) : '',
       commissionAmount: d.commissionAmount ? String(d.commissionAmount) : '',
+      operationsOverhead: d.operationsOverhead ? String(d.operationsOverhead) : '',
       gstApplicable: d.gstApplicable,
     });
     setErrors({});
@@ -291,6 +318,8 @@ export default function DeploymentsClient({
         billingAmount: form.billingAmount === '' ? 0 : Number(form.billingAmount),
         commissionAmount:
           form.commissionAmount === '' ? 0 : Number(form.commissionAmount),
+        operationsOverhead:
+          form.operationsOverhead === '' ? 0 : Number(form.operationsOverhead),
       };
       if (editing) {
         await api(`/api/deployments/${editing.id}`, { method: 'PUT', json: payload });
@@ -772,6 +801,21 @@ export default function DeploymentsClient({
                     }
                   />
                 </Field>
+                <Field
+                  label={`Operations overhead (${currencySymbol}/month)`}
+                  error={errors.operationsOverhead}
+                  hint="Tooling, shift allowance, anything beyond salary and commission"
+                >
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    value={form.operationsOverhead}
+                    onChange={(e) =>
+                      setForm({ ...form, operationsOverhead: e.target.value })
+                    }
+                  />
+                </Field>
               </div>
 
               {gstApplies(form.currency) ? (
@@ -814,9 +858,35 @@ export default function DeploymentsClient({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-2xs text-ink3">Margin</dt>
-                    <dd className="tnum font-medium text-emerald-600 dark:text-emerald-400">
-                      {formatMoney(billingPreview.margin, form.currency)}
+                    <dt className="text-2xs text-ink3">
+                      Margin
+                      {billingPreview.ctcCost != null && (
+                        <span className="ml-1 text-ink3">
+                          (CTC {formatMoney(billingPreview.ctcCost, 'INR')})
+                        </span>
+                      )}
+                    </dt>
+                    <dd
+                      className={`tnum font-medium ${
+                        billingPreview.margin == null
+                          ? 'text-ink3'
+                          : billingPreview.margin < 0
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : 'text-emerald-600 dark:text-emerald-400'
+                      }`}
+                      title={
+                        billingPreview.marginNote === 'needs-rate'
+                          ? 'Salary is in rupees; the app does not convert'
+                          : billingPreview.marginNote === 'no-ctc'
+                            ? 'Pick a resource with a CTC recorded to see the margin'
+                            : undefined
+                      }
+                    >
+                      {billingPreview.margin == null
+                        ? billingPreview.marginNote === 'no-ctc'
+                          ? 'needs CTC'
+                          : 'needs rate'
+                        : formatMoney(billingPreview.margin, form.currency)}
                     </dd>
                   </div>
                 </dl>

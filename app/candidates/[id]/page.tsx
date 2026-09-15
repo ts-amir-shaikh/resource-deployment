@@ -19,7 +19,6 @@ import {
 import { requireSession } from '@/lib/session';
 import {
   formatDate,
-  formatMoney,
   parseSkills,
   availabilityLabel,
   SOURCE_LABELS,
@@ -27,7 +26,13 @@ import {
   CANDIDATE_STATUS_LABELS,
 } from '@/lib/utils';
 import { Badge, TableShell, type Tone } from '@/components/ui';
-import { DetailHeader, DetailSection, DetailFacts, DetailEmpty } from '@/components/detail';
+import {
+  DetailHeader,
+  DetailSection,
+  DetailFacts,
+  DetailEmpty,
+  AnnualWithMonthly,
+} from '@/components/detail';
 
 export const dynamic = 'force-dynamic';
 
@@ -272,8 +277,8 @@ export default async function CandidateDetailPage({ params }: { params: { id: st
                     </span>
                   ) : null,
                 ],
-                ['Current CTC', row.currentCtc != null ? formatMoney(row.currentCtc, 'INR') : null],
-                ['Expected CTC', row.expectedCtc != null ? formatMoney(row.expectedCtc, 'INR') : null],
+                ['Current CTC', row.currentCtc == null ? null : <AnnualWithMonthly key="c" annual={row.currentCtc} />],
+                ['Expected CTC', row.expectedCtc == null ? null : <AnnualWithMonthly key="e" annual={row.expectedCtc} />],
                 ['Availability', availabilityLabel(row.lastWorkingDate, row.noticePeriodDays)],
                 [
                   'Notice / LWD',

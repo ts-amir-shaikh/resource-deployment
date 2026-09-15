@@ -28,6 +28,7 @@ export default async function DeploymentsPage() {
         currency: deployments.currency,
         billingAmount: deployments.billingAmount,
         commissionAmount: deployments.commissionAmount,
+        operationsOverhead: deployments.operationsOverhead,
         gstApplicable: deployments.gstApplicable,
         status: deployments.status,
       })
