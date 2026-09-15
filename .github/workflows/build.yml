@@ -1,0 +1,45 @@
+# Builds the production images for a release tag and pushes them to ECR.
+# Deploying is a separate, deliberate step on the server (deploy/deploy.sh).
+#
+# Needs one repository variable: AWS_ROLE_ARN — the IAM role GitHub assumes
+# via OIDC (see the runbook, Prepare AWS step 3). No access keys.
+name: build
+
+on:
+  push:
+    tags: ['release-*']
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  REPOSITORY: resource-deployment
+
+jobs:
+  build:
+    # ARM runner to match the t4g instance; images are single-arch on purpose.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          IMAGE="$REGISTRY/$REPOSITORY"
+          docker build --target runner --build-arg APP_COMMIT="$GITHUB_SHA" -t "$IMAGE:$TAG" .
+          docker build --target tools  --build-arg APP_COMMIT="$GITHUB_SHA" -t "$IMAGE:$TAG-tools" .
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:$TAG-tools"
+          echo "pushed $IMAGE:$TAG and :$TAG-tools"

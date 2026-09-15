@@ -16,7 +16,7 @@ import * as schema from './schema';
  * synchronous better-sqlite3 driver this replaced.
  */
 const url = (process.env.TURSO_DATABASE_URL || '').trim() || 'file:./data/deployment.db';
-const authToken = process.env.TURSO_AUTH_TOKEN;
+const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
 
 function createDb() {
   const client = createClient({ url, authToken });

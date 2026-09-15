@@ -34,15 +34,54 @@ everything, which is a scope choice for a small internal team.
 
 ## Deploying
 
-Vercel + Turso, both free. See the runbook, or in short:
+Production runs on a single EC2 instance (app + self-hosted libSQL server +
+Caddy for TLS) at `https://staffing.techstalwarts.com`. Vercel is the testing
+environment at `https://staffing-test.techstalwarts.com`. The full setup and
+operating procedure is the AWS Deployment Runbook (shared separately).
+
+**Branches**
+
+| Branch    | Deploys to                          | Who merges              |
+| --------- | ----------------------------------- | ----------------------- |
+| `develop` | Vercel (testing), automatically     | anyone, from local work |
+| `main`    | Production, only via a release tag  | product owner           |
+
+Features are developed locally and merged into `develop`. When testing is
+happy, `develop` is merged into `main` and a tag is cut:
 
 ```bash
-turso db create resource-deployment
-TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... npm run db:migrate
+git checkout main && git merge --ff-only develop && git push
+git tag release-1.2.3 && git push origin release-1.2.3
 ```
 
-then set `APP_PASSWORD`, `AUTH_SECRET`, `TURSO_DATABASE_URL` and
-`TURSO_AUTH_TOKEN` in the Vercel project and deploy.
+The tag triggers `.github/workflows/build.yml`, which builds two images with
+the `Dockerfile` (`runner` = the app, `tools` = the `db:*` scripts) and pushes
+them to ECR. Nothing deploys by itself; on the server:
+
+```bash
+sudo /srv/deploy/deploy.sh release-1.2.3
+```
+
+`deploy/deploy.sh` backs up the database, runs `db:migrate`, then swaps the app
+container. Rolling back is the same command with the previous tag — migrations
+are additive-only, so old code runs on a newer schema.
+
+**Verify what is running**
+
+```bash
+curl -s https://staffing.techstalwarts.com/api/health
+# {"ok":true,"commit":"<git sha>","db":"ok"}
+```
+
+`/api/health` is unauthenticated, reports the commit the image was built from,
+and returns 503 if the database is unreachable.
+
+**Build the image locally**
+
+```bash
+docker build --target runner --build-arg APP_COMMIT=$(git rev-parse HEAD) -t resource-deployment .
+docker run --rm -p 3000:3000 --env-file .env resource-deployment
+```
 
 ## Modules
 

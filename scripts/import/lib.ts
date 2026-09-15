@@ -18,7 +18,7 @@ function resolvedUrl(): string {
 }
 
 export function getClient(): Client {
-  const authToken = process.env.TURSO_AUTH_TOKEN;
+  const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
   return createClient({ url: resolvedUrl(), authToken });
 }
 

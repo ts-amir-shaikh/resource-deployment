@@ -24,7 +24,7 @@ import * as readline from 'node:readline/promises';
 import { hashPassword, newSalt, ROLES, type Role } from '../lib/auth';
 
 const url = (process.env.TURSO_DATABASE_URL || '').trim() || 'file:./data/deployment.db';
-const authToken = process.env.TURSO_AUTH_TOKEN;
+const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
 
 function flag(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

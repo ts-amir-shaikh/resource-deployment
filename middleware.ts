@@ -13,13 +13,14 @@ import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
  *   /api/share/*  the matching read endpoint and referral submission
  *   /jobs/*       the public job board and its apply form
  *   /api/jobs/*   the matching read and apply endpoints
+ *   /api/health   liveness/readiness for the deploy script and proxy
  *
  * Enforcing writes here rather than in each route handler means a new API
  * route is covered by the policy the moment it exists, instead of being open
  * until someone remembers to add a guard to it.
  */
 const PUBLIC_PREFIXES = ['/share/', '/api/share/', '/jobs/', '/api/jobs/'];
-const PUBLIC_EXACT = ['/login', '/api/auth/login', '/jobs', '/api/jobs'];
+const PUBLIC_EXACT = ['/login', '/api/auth/login', '/jobs', '/api/jobs', '/api/health'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

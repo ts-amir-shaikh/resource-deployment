@@ -1,0 +1,6 @@
+# Caddy obtains and renews the certificate for $HOSTNAME by itself, once DNS
+# points at this server. Port 80 stays open for that and redirects to HTTPS.
+{$HOSTNAME} {
+    encode gzip
+    reverse_proxy app:3000
+}

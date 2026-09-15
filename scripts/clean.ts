@@ -22,7 +22,7 @@ import * as readline from 'node:readline/promises';
 // `|| ''` before `.trim()` treats an env var that's set-but-blank the same
 // as unset — `??` alone doesn't, and libSQL rejects '' with an opaque error.
 const url = (process.env.TURSO_DATABASE_URL || '').trim() || 'file:./data/deployment.db';
-const authToken = process.env.TURSO_AUTH_TOKEN;
+const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
 const isLocal = url.startsWith('file:');
 
 // Child tables first, so foreign keys never block a delete.

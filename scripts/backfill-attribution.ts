@@ -16,7 +16,7 @@
 import { createClient } from '@libsql/client';
 
 const url = (process.env.TURSO_DATABASE_URL || '').trim() || 'file:./data/deployment.db';
-const authToken = process.env.TURSO_AUTH_TOKEN;
+const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
 
 async function main() {
   const commit = process.argv.includes('--commit');

@@ -1,0 +1,45 @@
+# Production stack for one EC2 instance. Lives at /srv/deploy on the server
+# next to .env (ECR_IMAGE, RELEASE, HOSTNAME and the app's own variables).
+# Operate it with deploy.sh, not by hand — see the runbook.
+
+services:
+  sqld:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    restart: unless-stopped
+    environment:
+      SQLD_NODE: primary
+    volumes:
+      - /srv/deploy/data/sqld:/var/lib/sqld
+    ports:
+      # Host-only. Lets the data migration and admin tools reach the database
+      # from an SSM session; nothing outside the instance can.
+      - "127.0.0.1:8080:8080"
+
+  app:
+    image: ${ECR_IMAGE}:${RELEASE}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TURSO_DATABASE_URL: http://sqld:8080
+    depends_on: [sqld]
+    expose: ["3000"]
+
+  # One-off jobs only (profiles keeps it out of `up`). Same env as the app.
+  tools:
+    image: ${ECR_IMAGE}:${RELEASE}-tools
+    env_file: .env
+    environment:
+      TURSO_DATABASE_URL: http://sqld:8080
+    depends_on: [sqld]
+    profiles: [tools]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      HOSTNAME: ${HOSTNAME}
+    volumes:
+      - /srv/deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/deploy/caddy:/data
+    depends_on: [app]
