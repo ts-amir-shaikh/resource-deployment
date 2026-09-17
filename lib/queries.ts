@@ -17,6 +17,7 @@ import {
   referrals,
   users,
   candidateInterviews,
+  opportunityAssignees,
   PIPELINE_STAGES,
 } from './schema';
 import {
@@ -812,8 +813,23 @@ export async function getPipelineValue() {
  * carry no actor, so they surface under "unassigned" rather than being silently
  * attributed to whoever happens to be looking.
  */
+/**
+ * M42 — the requirement ids a TA is assigned to. One row per assignee, so
+ * "mine" is a set membership rather than a column equality, and a requirement
+ * with two TAs shows on both boards.
+ */
+export async function assignedOpportunityIds(userId: number): Promise<Set<number>> {
+  const rows = await db
+    .select({ id: opportunityAssignees.opportunityId })
+    .from(opportunityAssignees)
+    .where(eq(opportunityAssignees.userId, userId))
+    .all();
+  return new Set(rows.map((r) => r.id));
+}
+
 export async function getRecruiterBoard(userId: number | null) {
   const mine = userId === null ? undefined : userId;
+  const assigned = mine === undefined ? null : await assignedOpportunityIds(mine);
 
   const opps = await db
     .select({
@@ -823,14 +839,12 @@ export async function getRecruiterBoard(userId: number | null) {
       requiredCount: opportunities.requiredCount,
       nextStep: opportunities.nextStep,
       nextStepDate: opportunities.nextStepDate,
-      ownerUserId: opportunities.ownerUserId,
-      owner: opportunities.owner,
     })
     .from(opportunities)
     .where(inArray(opportunities.stage, [...PIPELINE_STAGES]))
     .all();
 
-  const owned = mine === undefined ? opps : opps.filter((o) => o.ownerUserId === mine);
+  const owned = assigned === null ? opps : opps.filter((o) => assigned.has(o.id));
 
   const mappings = await db
     .select({
@@ -879,7 +893,6 @@ export async function getRecruiterBoard(userId: number | null) {
       candidateName: referrals.candidateName,
       kind: referrals.kind,
       title: opportunities.title,
-      ownerUserId: opportunities.ownerUserId,
     })
     .from(referrals)
     .innerJoin(opportunities, eq(referrals.opportunityId, opportunities.id))
@@ -921,9 +934,9 @@ export async function getRecruiterBoard(userId: number | null) {
         daysToJoin: m.expectedJoinDate ? daysBetween(today_, m.expectedJoinDate) : null,
       })),
     inboxWaiting:
-      mine === undefined
+      assigned === null
         ? pendingReferrals
-        : pendingReferrals.filter((r) => r.ownerUserId === mine),
+        : pendingReferrals.filter((r) => assigned.has(r.opportunityId)),
     counts: {
       submitted: myMappings.filter((m) =>
         ['submitted', 'interview', 'selected', 'offered', 'joined'].includes(m.status),
@@ -966,8 +979,8 @@ export type ApplicationRow = {
   opportunityId: number;
   requirementTitle: string;
   companyName: string;
-  ownerUserId: number | null;
-  ownerName: string | null;
+  /** The TAs assigned to the requirement, for display. */
+  assigneeNames: string[];
   kind: 'referral' | 'application';
   status: 'new' | 'accepted' | 'dismissed';
   candidateName: string;
@@ -1004,7 +1017,6 @@ export type ApplicationRow = {
  * prevents it if the flag is on screen before anybody dials.
  */
 export async function getApplicationQueue(): Promise<ApplicationRow[]> {
-  const owner = alias(users, 'owner_user');
   const caller = alias(users, 'caller_user');
 
   const rows = await db
@@ -1013,8 +1025,6 @@ export async function getApplicationQueue(): Promise<ApplicationRow[]> {
       opportunityId: referrals.opportunityId,
       requirementTitle: opportunities.title,
       companyName: opportunities.companyName,
-      ownerUserId: opportunities.ownerUserId,
-      ownerName: owner.name,
       kind: referrals.kind,
       status: referrals.status,
       candidateName: referrals.candidateName,
@@ -1036,10 +1046,19 @@ export async function getApplicationQueue(): Promise<ApplicationRow[]> {
     })
     .from(referrals)
     .innerJoin(opportunities, eq(referrals.opportunityId, opportunities.id))
-    .leftJoin(owner, eq(opportunities.ownerUserId, owner.id))
     .leftJoin(caller, eq(referrals.contactedByUserId, caller.id))
     .orderBy(desc(referrals.id))
     .all();
+
+  // One query for every assignee on every requirement in the queue.
+  const assigneeRows = rows.length
+    ? await db
+        .select({ opportunityId: opportunityAssignees.opportunityId, name: users.name })
+        .from(opportunityAssignees)
+        .innerJoin(users, eq(opportunityAssignees.userId, users.id))
+        .where(inArray(opportunityAssignees.opportunityId, [...new Set(rows.map((r) => r.opportunityId))]))
+        .all()
+    : [];
 
   // Matched on email and mobile, lowercased and stripped of formatting — the
   // same person rarely types their number the same way twice.
@@ -1066,6 +1085,7 @@ export async function getApplicationQueue(): Promise<ApplicationRow[]> {
     const others = keys.reduce((n, k) => Math.max(n, seenElsewhere.get(k) ?? 0), 0);
     return {
       ...r,
+      assigneeNames: assigneeRows.filter((a) => a.opportunityId === r.opportunityId).map((a) => a.name),
       alreadyInPool: keys.some((k) => poolKeys.has(k)),
       otherApplications: Math.max(0, others - 1),
     };
@@ -1105,7 +1125,7 @@ export async function getApplicantAlert(
 ): Promise<ApplicantAlert> {
   const rows = await db
     .select({
-      ownerUserId: opportunities.ownerUserId,
+      opportunityId: referrals.opportunityId,
       createdAt: referrals.createdAt,
       contactStatus: referrals.contactStatus,
     })
@@ -1114,7 +1134,8 @@ export async function getApplicantAlert(
     .where(eq(referrals.status, 'new'))
     .all();
 
-  const scoped = mine === undefined ? rows : rows.filter((r) => r.ownerUserId === mine);
+  const assigned = mine === undefined ? null : await assignedOpportunityIds(mine);
+  const scoped = assigned === null ? rows : rows.filter((r) => assigned.has(r.opportunityId));
 
   return {
     pending: scoped.length,
@@ -1180,4 +1201,132 @@ export async function getSourceEffectiveness(): Promise<SourceRow[]> {
       joined: Number(r.joined),
     }))
     .sort((a, b) => b.joined - a.joined || b.candidates - a.candidates);
+}
+
+/** Active accounts of one team role — id and name only, for owner pickers. */
+export async function getTeamOptions(role: 'ta' | 'leadgen' | 'sales') {
+  return db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(and(eq(users.role, role), eq(users.active, true)))
+    .orderBy(users.name)
+    .all();
+}
+
+/* ── M43 / M45: leadgen and sales boards ───────────────────── */
+
+export type OwnerKind = 'lead' | 'sales';
+
+export type OwnerBoardRow = {
+  id: number;
+  title: string;
+  companyName: string;
+  stage: string;
+  priority: string | null;
+  nextStep: string | null;
+  nextStepDate: string | null;
+  createdAt: string;
+  requiredCount: number;
+  currency: string;
+  budgetMin: number | null;
+  budgetMax: number | null;
+  dealValue: number | null;
+  leadOwnerUserId: number | null;
+  salesOwnerUserId: number | null;
+  /** Latest stage-history timestamp — when it last moved. */
+  lastMovedAt: string | null;
+};
+
+const HANDED_ON = ['candidate_mapping', 'interview', 'agreement', 'won'];
+
+/**
+ * The board for one owner kind. `userId` null means the whole team — a head
+ * looking across, or Admin. Leadgen sees everything they own including what
+ * has been handed on (read-only, so they can see what became of it); sales
+ * sees what they own from budgeting onward.
+ */
+export async function getOwnerBoard(kind: OwnerKind, userId: number | null) {
+  const col = kind === 'lead' ? opportunities.leadOwnerUserId : opportunities.salesOwnerUserId;
+  const rows = await db
+    .select({
+      id: opportunities.id,
+      title: opportunities.title,
+      companyName: opportunities.companyName,
+      stage: opportunities.stage,
+      priority: opportunities.priority,
+      nextStep: opportunities.nextStep,
+      nextStepDate: opportunities.nextStepDate,
+      createdAt: opportunities.createdAt,
+      requiredCount: opportunities.requiredCount,
+      currency: opportunities.currency,
+      budgetMin: opportunities.budgetMin,
+      budgetMax: opportunities.budgetMax,
+      dealValue: opportunities.dealValue,
+      leadOwnerUserId: opportunities.leadOwnerUserId,
+      salesOwnerUserId: opportunities.salesOwnerUserId,
+      lastMovedAt: sql<string | null>`(select max(created_at) from opportunity_stage_history h where h.opportunity_id = ${opportunities.id})`,
+    })
+    .from(opportunities)
+    .where(userId === null ? isNotNull(col) : eq(col, userId))
+    .orderBy(desc(opportunities.id))
+    .all();
+
+  const today_ = today();
+  const monthStart = today_.slice(0, 7) + '-01';
+  const ninetyAgo = addDays(today_, -90);
+  const open = rows.filter((r) => !['won', 'lost'].includes(r.stage));
+
+  const counts =
+    kind === 'lead'
+      ? {
+          addedThisMonth: rows.filter((r) => r.createdAt.slice(0, 10) >= monthStart).length,
+          inRequirement: rows.filter((r) => r.stage === 'requirement').length,
+          inQualification: rows.filter((r) => r.stage === 'qualification').length,
+          inBudgeting: rows.filter((r) => r.stage === 'budgeting').length,
+          handedOn: rows.filter((r) => HANDED_ON.includes(r.stage)).length,
+          lost: rows.filter((r) => r.stage === 'lost').length,
+        }
+      : {
+          inMapping: rows.filter((r) => r.stage === 'candidate_mapping').length,
+          inInterview: rows.filter((r) => r.stage === 'interview').length,
+          inAgreement: rows.filter((r) => r.stage === 'agreement').length,
+          won90: rows.filter((r) => r.stage === 'won' && (r.lastMovedAt ?? '') >= ninetyAgo).length,
+          lost90: rows.filter((r) => r.stage === 'lost' && (r.lastMovedAt ?? '') >= ninetyAgo).length,
+          inFlight: valueSummary(open.filter((r) => !['requirement', 'qualification'].includes(r.stage))),
+        };
+
+  return {
+    requirements: rows,
+    open,
+    counts,
+    // The morning list, by kind.
+    followUpsDue: open.filter((r) => r.nextStepDate && r.nextStepDate <= today_),
+    noNextStep: open.filter((r) => !r.nextStep && !r.nextStepDate),
+    // Sat still for a fortnight, by the stage-history clock.
+    stalled: open.filter((r) => (r.lastMovedAt ?? r.createdAt).slice(0, 10) <= addDays(today_, -STALL_DAYS)),
+    wonNotConverted: rows.filter((r) => r.stage === 'won'),
+  };
+}
+
+/** A head's roll-up: every member of the role, with their board. */
+export async function getOwnerTeamBoard(kind: OwnerKind) {
+  const role = kind === 'lead' ? 'leadgen' : 'sales';
+  const team = await db
+    .select({ id: users.id, name: users.name, isTeamLead: users.isTeamLead })
+    .from(users)
+    .where(and(eq(users.role, role), eq(users.active, true)))
+    .orderBy(users.name)
+    .all();
+  const perPerson = await Promise.all(
+    team.map(async (u) => ({ user: u, board: await getOwnerBoard(kind, u.id) })),
+  );
+  // What nobody of this kind owns yet — for leadgen, that is the assignment queue.
+  const col = kind === 'lead' ? opportunities.leadOwnerUserId : opportunities.salesOwnerUserId;
+  const unowned = await db
+    .select({ id: opportunities.id, title: opportunities.title, companyName: opportunities.companyName, stage: opportunities.stage })
+    .from(opportunities)
+    .where(and(isNull(col), inArray(opportunities.stage, [...PIPELINE_STAGES])))
+    .orderBy(desc(opportunities.id))
+    .all();
+  return { team, perPerson, unowned };
 }

@@ -36,6 +36,7 @@ import OpportunityFormFields, {
   BLANK_OPPORTUNITY,
   toPayload,
   type ClientOption,
+  type ProspectOption,
   type OpportunityFormValues,
 } from '@/components/opportunity-form';
 import {
@@ -73,7 +74,8 @@ type Row = {
   isListed: boolean;
   stage: string;
   priority: string | null;
-  owner: string | null;
+  leadOwnerUserId: number | null;
+  salesOwnerUserId: number | null;
   nextStep: string | null;
   nextStepDate: string | null;
   closedReason: string | null;
@@ -107,17 +109,21 @@ const STAGE_TONE: Record<string, Tone> = {
 export default function PipelineClient({
   initial,
   clients,
+  prospects,
   role,
 }: {
   initial: Row[];
   clients: ClientOption[];
+  prospects: ProspectOption[];
   role: Role;
 }) {
   const router = useRouter();
   // TA fulfils requirements but does not raise them, and Management is
   // view-only — both match the policy middleware enforces, so the button is
   // absent rather than present-and-rejected.
-  const canCreate = role === 'admin';
+  // Admin raises requirements; so does leadgen (they own what they raise)
+  // and sales. TA fulfils and Management watches.
+  const canCreate = role === 'admin' || role === 'leadgen' || role === 'sales';
   // TA sees what we can offer a candidate; everyone else sees what the client
   // pays. The other figure is not in the payload at all for that role.
   const showHiringBudget = role === 'ta';
@@ -208,7 +214,7 @@ export default function PipelineClient({
     try {
       await api('/api/opportunities', {
         method: 'POST',
-        json: toPayload(form, clients),
+        json: toPayload(form, clients, prospects),
       });
       setOpen(false);
       router.refresh();
@@ -657,6 +663,7 @@ export default function PipelineClient({
           setForm={setForm}
           errors={errors}
           clients={clients}
+          prospects={prospects}
         />
 
         <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">

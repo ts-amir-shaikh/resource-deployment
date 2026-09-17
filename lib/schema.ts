@@ -1,5 +1,5 @@
 import { sql, relations } from 'drizzle-orm';
-import { sqliteTable, integer, text, real, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, integer, text, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 const timestamps = {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -366,9 +366,24 @@ export const opportunities = sqliteTable(
      * before accounts existed, and two names in live data ('Rakesh Samal',
      * 'Yogini Patil') match no account at all — dropping it would lose them.
      */
+    /**
+     * Free-text owner, retired in M42. Kept as a column so old rows still
+     * read, but nothing writes it: the three account-linked owners below and
+     * the assignee table are the record now.
+     */
     owner: text('owner'),
     /** The account that owns this requirement. Null where the name matched none. */
+    /**
+     * Retired in M42 — migrated into `opportunity_assignees` as the first TA
+     * assignee. Nothing reads it any more; see `opportunityAssignees`.
+     */
     ownerUserId: integer('owner_user_id'),
+    /** M42: who brought the requirement in. Single; set on create or by Admin / leadgen head. */
+    leadOwnerUserId: integer('lead_owner_user_id'),
+    /** M42: who owns closing it. Single; set by Admin or a sales head. */
+    salesOwnerUserId: integer('sales_owner_user_id'),
+    /** M46: the prospect this was raised against, until it becomes a client. */
+    prospectId: integer('prospect_id').references(() => prospects.id),
 
     nextStep: text('next_step'),
     nextStepDate: text('next_step_date'),
@@ -750,9 +765,65 @@ export const interviewPanel = sqliteTable(
   }),
 );
 
+/* ── M42: TA assignees ─────────────────────────────────────── */
+
+/**
+ * The TAs working a requirement — a set, not a column.
+ *
+ * Replaces the single `owner_user_id`. Every assignee sees the requirement on
+ * their board, is alerted about its applicants, and may map candidates and
+ * log rounds. Deliberately no "primary": a primary needs a rule for what only
+ * the primary may do, and there is none.
+ */
+export const opportunityAssignees = sqliteTable(
+  'opportunity_assignees',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    opportunityId: integer('opportunity_id')
+      .notNull()
+      .references(() => opportunities.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull(),
+    assignedByUserId: integer('assigned_by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    oppIdx: index('assignee_opp_idx').on(t.opportunityId),
+    userIdx: index('assignee_user_idx').on(t.userId),
+    uniq: uniqueIndex('assignee_uniq').on(t.opportunityId, t.userId),
+  }),
+);
+
+/* ── M46: Prospects ────────────────────────────────────────── */
+
+/**
+ * A company we are talking to that is not yet a client.
+ *
+ * Until now a prospect was an opportunity with a null client_id and a name
+ * typed into it, and onboarding matched siblings by exact string. A row means
+ * the name is typed once, picked thereafter, and converted by key.
+ */
+export const prospects = sqliteTable(
+  'prospects',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyName: text('company_name').notNull(),
+    contactName: text('contact_name'),
+    contactEmail: text('contact_email'),
+    contactMobile: text('contact_mobile'),
+    notes: text('notes'),
+    createdByUserId: integer('created_by_user_id'),
+    /** Set on conversion; the prospect stays so history still resolves. */
+    convertedClientId: integer('converted_client_id').references(() => clients.id),
+    ...timestamps,
+  },
+  (t) => ({
+    nameIdx: index('prospect_name_idx').on(t.companyName),
+  }),
+);
+
 /* ── M10: Users & roles ────────────────────────────────────── */
 
-export const USER_ROLES = ['admin', 'management', 'ta'] as const;
+export const USER_ROLES = ['admin', 'management', 'ta', 'leadgen', 'sales'] as const;
 
 export const users = sqliteTable(
   'users',

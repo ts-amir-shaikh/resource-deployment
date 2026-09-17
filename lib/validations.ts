@@ -309,8 +309,18 @@ const optionalInt = z
 
 export const opportunitySchema = z
   .object({
-    /** Omit for a prospect; the company is then identified by name alone. */
+    /**
+     * Exactly one of clientId / prospectId, or neither with a typed name for
+     * a brand-new prospect (M46 creates the row). companyName is kept as a
+     * denormalised label so existing readers keep working.
+     */
     clientId: z
+      .union([z.coerce.number().int().positive(), z.literal(''), z.null()])
+      .optional()
+      .transform((v) =>
+        v === '' || v === null || v === undefined ? undefined : Number(v),
+      ),
+    prospectId: z
       .union([z.coerce.number().int().positive(), z.literal(''), z.null()])
       .optional()
       .transform((v) =>
@@ -359,7 +369,6 @@ export const opportunitySchema = z
     showClientName: z.coerce.boolean().default(false),
 
     priority: z.enum(['low', 'medium', 'high']).default('medium'),
-    owner: optionalStr,
     nextStep: optionalStr,
     nextStepDate: optionalDate,
   })

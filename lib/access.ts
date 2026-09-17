@@ -18,16 +18,20 @@ export type NavItem = {
   roles: readonly Role[];
 };
 
-const ALL: readonly Role[] = ['admin', 'management', 'ta'];
+const ALL: readonly Role[] = ['admin', 'management', 'ta', 'leadgen', 'sales'];
 const TA_ONLY: readonly Role[] = ['ta'];
 const BACK_OFFICE: readonly Role[] = ['admin', 'management'];
+/** The fulfilment side — everyone except the two front-of-funnel roles. */
+const FULFILMENT: readonly Role[] = ['admin', 'management', 'ta', 'sales'];
 
 export const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', roles: BACK_OFFICE },
   { href: '/my', label: 'My Work', roles: TA_ONLY },
+  { href: '/leads', label: 'My Leads', roles: ['leadgen'] },
+  { href: '/sales', label: 'My Deals', roles: ['sales'] },
   { href: '/pipeline', label: 'Pipeline', roles: ALL },
-  { href: '/candidates', label: 'Candidates', roles: ALL },
-  { href: '/agents', label: 'Agents', roles: ALL },
+  { href: '/candidates', label: 'Candidates', roles: FULFILMENT },
+  { href: '/agents', label: 'Agents', roles: FULFILMENT },
   { href: '/resources', label: 'Resources', roles: BACK_OFFICE },
   { href: '/clients', label: 'Clients', roles: BACK_OFFICE },
   { href: '/projects', label: 'Projects', roles: BACK_OFFICE },
@@ -40,9 +44,18 @@ export function navFor(role: Role): NavItem[] {
   return NAV.filter((item) => item.roles.includes(role));
 }
 
-/** Where a role lands after login — a recruiter starts on their own board. */
+/** Where a role lands after login — each team role starts on its own board. */
 export function landingPath(role: Role): string {
-  return role === 'ta' ? '/my' : '/';
+  switch (role) {
+    case 'ta':
+      return '/my';
+    case 'leadgen':
+      return '/leads';
+    case 'sales':
+      return '/sales';
+    default:
+      return '/';
+  }
 }
 
 /**
@@ -69,6 +82,44 @@ const TA_READ_PREFIXES = [
   '/api/dashboard/pipeline',
 ];
 
+/**
+ * Leadgen: the pipeline and nothing else. No candidates, no agents, no
+ * resources. Which requirements within the pipeline they may see and touch is
+ * decided per row in lib/ownership.ts — middleware only opens the door.
+ */
+const LEADGEN_READ_PREFIXES = [
+  '/leads',
+  '/pipeline',
+  '/api/opportunities',
+  '/api/prospects',
+  '/api/clients',
+  '/api/users/team',
+];
+
+/**
+ * Sales: the pipeline with its commercial figures, the candidates put forward
+ * on their deals, and the agents that support closing. Not resources,
+ * deployments or invoicing — closing a deal and running it are different jobs.
+ */
+const SALES_READ_PREFIXES = [
+  '/sales',
+  '/pipeline',
+  '/candidates',
+  '/agents',
+  '/api/agents',
+  '/api/opportunities',
+  '/api/prospects',
+  '/api/candidates',
+  '/api/clients',
+  '/api/referrals',
+  '/api/rating-criteria',
+  '/api/ratings',
+  '/api/interviews',
+  '/api/applications',
+  '/api/users/team',
+  '/api/dashboard/pipeline',
+];
+
 /** Paths every signed-in role may reach regardless of role. */
 const COMMON_PREFIXES = ['/api/auth/'];
 
@@ -80,6 +131,8 @@ function matchesPrefix(pathname: string, prefixes: string[]): boolean {
 export function canAccess(role: Role, pathname: string): boolean {
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
   if (role === 'admin' || role === 'management') return true;
+  if (role === 'leadgen') return matchesPrefix(pathname, LEADGEN_READ_PREFIXES);
+  if (role === 'sales') return matchesPrefix(pathname, SALES_READ_PREFIXES);
   return matchesPrefix(pathname, TA_READ_PREFIXES);
 }
 
@@ -123,13 +176,48 @@ const TA_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/agents'), allow: true },
 ];
 
+/**
+ * Leadgen writes: create a requirement, edit one, move its stage, comment,
+ * add a prospect. Whether it is *their* requirement, and whether the stage is
+ * one they may reach, is the row-level check in lib/ownership.ts. Never the
+ * fulfilment routes, never conversion, never owners (a head sets the lead
+ * owner through /owners — allowed here, scoped there).
+ */
+const LEADGEN_WRITE_RULES: WriteRule[] = [
+  { test: (p) => /^\/api\/opportunities\/\d+\/convert(-client)?$/.test(p), allow: false },
+  { test: (p) => /^\/api\/opportunities\/\d+\/(candidates|listing)/.test(p), allow: false },
+  { test: (p) => p === '/api/opportunities', allow: true },
+  { test: (p) => /^\/api\/opportunities\/\d+$/.test(p), allow: true },
+  { test: (p) => /^\/api\/opportunities\/\d+\/(stage|comments|owners)$/.test(p), allow: true },
+  { test: (p) => p.startsWith('/api/prospects'), allow: true },
+];
+
+/**
+ * Sales writes: everything on a requirement from budgeting to closure, plus
+ * onboarding a prospect as a client. Not project conversion — that is Admin.
+ */
+const SALES_WRITE_RULES: WriteRule[] = [
+  { test: (p) => /^\/api\/opportunities\/\d+\/convert$/.test(p), allow: false },
+  { test: (p) => p.startsWith('/api/opportunities'), allow: true },
+  { test: (p) => p.startsWith('/api/prospects'), allow: true },
+  { test: (p) => p.startsWith('/api/candidates'), allow: true },
+  { test: (p) => p.startsWith('/api/referrals'), allow: true },
+  { test: (p) => p.startsWith('/api/rating-criteria'), allow: true },
+  { test: (p) => p.startsWith('/api/ratings'), allow: true },
+  { test: (p) => p.startsWith('/api/interviews'), allow: true },
+  { test: (p) => p.startsWith('/api/applications'), allow: true },
+  { test: (p) => p.startsWith('/api/agents'), allow: true },
+];
+
 /** Can this role mutate at this path? (POST / PUT / PATCH / DELETE) */
 export function canWrite(role: Role, pathname: string): boolean {
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
   if (role === 'admin') return true;
   // Management mirrors Admin's view with every write withheld.
   if (role === 'management') return false;
-  for (const rule of TA_WRITE_RULES) {
+  const rules =
+    role === 'leadgen' ? LEADGEN_WRITE_RULES : role === 'sales' ? SALES_WRITE_RULES : TA_WRITE_RULES;
+  for (const rule of rules) {
     if (rule.test(pathname)) return rule.allow;
   }
   return false;
@@ -153,8 +241,12 @@ export function stripClientBudget<T extends Record<string, unknown>>(
   role: Role,
   row: T,
 ): T {
-  if (role !== 'ta') return row;
-  return { ...row, budgetMin: null, budgetMax: null, dealValue: null };
+  if (role === 'ta') return { ...row, budgetMin: null, budgetMax: null, dealValue: null };
+  // Leadgen takes the requirement to budgeting, so the client budget is
+  // theirs to record. Deal value and pipeline value are not — those are what
+  // the deal is worth to us, which is the sales side of the line.
+  if (role === 'leadgen') return { ...row, dealValue: null };
+  return row;
 }
 
 export function stripClientBudgetAll<T extends Record<string, unknown>>(

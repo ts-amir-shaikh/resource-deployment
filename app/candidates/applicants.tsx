@@ -278,7 +278,7 @@ export default function ApplicantsClient({
                       </Link>{' '}
                       <span className="text-ink3">
                         · {a.companyName}
-                        {a.ownerName && ` · ${a.ownerName}`}
+                        {a.assigneeNames.length > 0 && ` · ${a.assigneeNames.join(', ')}`}
                       </span>
                     </div>
 

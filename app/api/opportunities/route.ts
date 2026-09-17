@@ -8,7 +8,9 @@ import {
 } from '@/lib/schema';
 import { opportunitySchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
-import { getSession } from '@/lib/session';
+import { requireSession, getViewer } from '@/lib/session';
+import { visibleOpportunityIds } from '@/lib/ownership';
+import { resolveCompany } from '@/lib/prospects';
 import { stripClientBudgetAll } from '@/lib/access';
 import { getOpportunityCandidateCounts, newShareToken } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
@@ -20,7 +22,6 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const stage = searchParams.get('stage');
     const clientId = searchParams.get('client_id');
-    const owner = searchParams.get('owner');
     const priority = searchParams.get('priority');
     const search = searchParams.get('search')?.trim();
 
@@ -31,7 +32,6 @@ export async function GET(req: Request) {
       filters.push(eq(opportunities.stage, stage as never));
     }
     if (clientId) filters.push(eq(opportunities.clientId, Number(clientId)));
-    if (owner) filters.push(eq(opportunities.owner, owner));
     if (priority) filters.push(eq(opportunities.priority, priority as never));
     if (search) {
       const q = `%${search}%`;
@@ -86,11 +86,16 @@ export async function GET(req: Request) {
     const counts = await getOpportunityCandidateCounts();
 
     // See the detail route: stripping only in the page would leave the client
-    // budget one fetch away for a role that is not allowed to see it.
-    const { role } = (await getSession()) ?? { role: 'ta' as const };
+    // budget one fetch away for a role that is not allowed to see it. The same
+    // goes for scope — a leadgen who cannot see a requirement on the board must
+    // not be able to list it here.
+    const viewer = await getViewer();
+    const { role } = viewer;
+    const visible = await visibleOpportunityIds(viewer);
+    const scoped = visible === null ? rows : rows.filter((r) => visible.includes(r.id));
 
     return ok(
-      stripClientBudgetAll(role, rows).map((o) => {
+      stripClientBudgetAll(role, scoped).map((o) => {
         const c = counts.find((x) => x.opportunityId === o.id);
         return {
           ...o,
@@ -107,24 +112,22 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   return handle(async () => {
+    const session = await requireSession();
     const { data, error } = await parseBody(req, opportunitySchema);
     if (error) return error;
 
-    if (data.clientId) {
-      const c = await db
-        .select({ id: clients.id })
-        .from(clients)
-        .where(eq(clients.id, data.clientId))
-        .get();
-      if (!c) return fail('Selected client no longer exists', 422);
-    }
-
     const created = await db.transaction(async (tx) => {
+      const company = await resolveCompany(tx, data, session.uid || null);
       const row = await tx
         .insert(opportunities)
         .values({
-          clientId: data.clientId ?? null,
-          companyName: data.companyName,
+          clientId: company.clientId,
+          prospectId: company.prospectId,
+          companyName: company.companyName,
+          // A leadgen person owns what they bring in, from the moment it
+          // exists. Everyone else's requirements start unowned and are
+          // assigned from the detail page.
+          leadOwnerUserId: session.role === 'leadgen' ? session.uid || null : null,
           title: data.title,
           experienceMin: data.experienceMin,
           experienceMax: data.experienceMax,
@@ -149,7 +152,6 @@ export async function POST(req: Request) {
           workingHours: data.workingHours,
           stage: 'requirement',
           priority: data.priority,
-          owner: data.owner,
           nextStep: data.nextStep,
           nextStepDate: data.nextStepDate,
           shareToken: newShareToken(),
@@ -163,6 +165,7 @@ export async function POST(req: Request) {
           fromStage: null,
           toStage: 'requirement',
           note: 'Opportunity created',
+          userId: session.uid || null,
         })
         .run();
 

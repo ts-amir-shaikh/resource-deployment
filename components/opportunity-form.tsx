@@ -14,6 +14,7 @@ import { CURRENCY_OPTIONS, formatMoney, opportunityValue } from '@/lib/utils';
 
 export type OpportunityFormValues = {
   clientId: string;
+  prospectId: string;
   companyName: string;
   title: string;
   experienceMin: string;
@@ -38,15 +39,16 @@ export type OpportunityFormValues = {
   workingDays: string;
   workingHours: string;
   priority: string;
-  owner: string;
   nextStep: string;
   nextStepDate: string;
 };
 
 export type ClientOption = { id: number; companyName: string };
+export type ProspectOption = { id: number; companyName: string };
 
 export const BLANK_OPPORTUNITY: OpportunityFormValues = {
   clientId: '',
+  prospectId: '',
   companyName: '',
   title: '',
   experienceMin: '',
@@ -71,7 +73,6 @@ export const BLANK_OPPORTUNITY: OpportunityFormValues = {
   workingDays: '',
   workingHours: '',
   priority: 'medium',
-  owner: '',
   nextStep: '',
   nextStepDate: '',
 };
@@ -82,6 +83,7 @@ const str = (v: unknown): string => (v === null || v === undefined ? '' : String
 /** Existing opportunity → form values. */
 export function toFormValues(o: {
   clientId: number | null;
+  prospectId: number | null;
   companyName: string;
   title: string;
   experienceMin: number | null;
@@ -106,7 +108,6 @@ export function toFormValues(o: {
   workingDays?: string | null;
   workingHours?: string | null;
   priority: string | null;
-  owner: string | null;
   nextStep: string | null;
   nextStepDate: string | null;
 }): OpportunityFormValues {
@@ -120,6 +121,7 @@ export function toFormValues(o: {
 
   return {
     clientId: str(o.clientId),
+    prospectId: str(o.prospectId),
     companyName: o.companyName,
     title: o.title,
     experienceMin: str(o.experienceMin),
@@ -144,22 +146,28 @@ export function toFormValues(o: {
     workingDays: str(o.workingDays),
     workingHours: str(o.workingHours),
     priority: o.priority ?? 'medium',
-    owner: str(o.owner),
     nextStep: str(o.nextStep),
     nextStepDate: str(o.nextStepDate),
   };
 }
 
 /** Form values → request body. */
-export function toPayload(form: OpportunityFormValues, clients: ClientOption[]) {
+export function toPayload(
+  form: OpportunityFormValues,
+  clients: ClientOption[],
+  prospects: ProspectOption[] = [],
+) {
+  // A picked client or prospect sets the company name; a blank pick means a
+  // brand-new prospect, which the server creates from the typed name (M46).
+  const picked =
+    form.clientId !== ''
+      ? clients.find((c) => String(c.id) === form.clientId)?.companyName
+      : form.prospectId !== ''
+        ? prospects.find((p) => String(p.id) === form.prospectId)?.companyName
+        : undefined;
   return {
     ...form,
-    // A picked client sets the company name; otherwise it is a prospect.
-    companyName:
-      form.clientId !== ''
-        ? (clients.find((c) => String(c.id) === form.clientId)?.companyName ??
-          form.companyName)
-        : form.companyName,
+    companyName: picked ?? form.companyName,
     engagementType: form.engagementType === '' ? undefined : form.engagementType,
   };
 }
@@ -169,12 +177,17 @@ export default function OpportunityFormFields({
   setForm,
   errors,
   clients,
+  prospects = [],
 }: {
   form: OpportunityFormValues;
   setForm: (v: OpportunityFormValues) => void;
   errors: Record<string, string>;
   clients: ClientOption[];
+  prospects?: ProspectOption[];
 }) {
+  // One picker over clients and prospects together, encoded so a single
+  // <select> can hold both kinds; '' means "a company we have not seen".
+  const pick = form.clientId !== '' ? `c:${form.clientId}` : form.prospectId !== '' ? `p:${form.prospectId}` : '';
   // Shown as the placeholder and hint, so it is obvious what leaving the
   // override blank will actually produce.
   const derived = opportunityValue({
@@ -189,41 +202,71 @@ export default function OpportunityFormFields({
       <FormSection title="Company">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field
-            label="Existing Client"
-            error={errors.clientId}
-            hint="Leave unset if this is a new prospect"
+            label="Client or prospect"
+            error={errors.clientId ?? errors.prospectId}
+            hint="Pick an existing one, or leave unset and type a new prospect's name"
           >
             <select
               className="input"
-              value={form.clientId}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  clientId: e.target.value,
-                  companyName:
-                    clients.find((c) => String(c.id) === e.target.value)
-                      ?.companyName ?? '',
-                })
-              }
+              value={pick}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v.startsWith('c:')) {
+                  const id = v.slice(2);
+                  setForm({
+                    ...form,
+                    clientId: id,
+                    prospectId: '',
+                    companyName: clients.find((c) => String(c.id) === id)?.companyName ?? '',
+                  });
+                } else if (v.startsWith('p:')) {
+                  const id = v.slice(2);
+                  setForm({
+                    ...form,
+                    clientId: '',
+                    prospectId: id,
+                    companyName: prospects.find((p) => String(p.id) === id)?.companyName ?? '',
+                  });
+                } else {
+                  setForm({ ...form, clientId: '', prospectId: '', companyName: '' });
+                }
+              }}
             >
-              <option value="">New prospect — not a client yet</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.companyName}
-                </option>
-              ))}
+              <option value="">New prospect — type the name →</option>
+              {clients.length > 0 && (
+                <optgroup label="Clients">
+                  {clients.map((c) => (
+                    <option key={`c${c.id}`} value={`c:${c.id}`}>
+                      {c.companyName}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {prospects.length > 0 && (
+                <optgroup label="Prospects">
+                  {prospects.map((p) => (
+                    <option key={`p${p.id}`} value={`p:${p.id}`}>
+                      {p.companyName}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </Field>
           <Field
             label="Company Name"
             required
             error={errors.companyName}
-            hint={form.clientId ? 'Taken from the selected client' : undefined}
+            hint={
+              pick
+                ? 'Taken from the selection'
+                : 'A new prospect is created from this name and offered in the list from now on'
+            }
           >
             <input
               className="input"
               value={form.companyName}
-              disabled={form.clientId !== ''}
+              disabled={pick !== ''}
               onChange={(e) => setForm({ ...form, companyName: e.target.value })}
             />
           </Field>
@@ -438,13 +481,6 @@ export default function OpportunityFormFields({
               min={0}
               value={form.hiringBudgetMax}
               onChange={(e) => setForm({ ...form, hiringBudgetMax: e.target.value })}
-            />
-          </Field>
-          <Field label="Owner" error={errors.owner}>
-            <input
-              className="input"
-              value={form.owner}
-              onChange={(e) => setForm({ ...form, owner: e.target.value })}
             />
           </Field>
           <Field label="Next Step Date" error={errors.nextStepDate}>

@@ -145,6 +145,9 @@ CREATE TABLE IF NOT EXISTS opportunities (
   priority TEXT DEFAULT 'medium',
   owner TEXT,
   owner_user_id INTEGER,
+  lead_owner_user_id INTEGER,
+  sales_owner_user_id INTEGER,
+  prospect_id INTEGER REFERENCES prospects(id),
   next_step TEXT,
   next_step_date TEXT,
   closed_reason TEXT,
@@ -232,6 +235,30 @@ CREATE TABLE IF NOT EXISTS opportunity_stage_history (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS oppstage_opp_idx ON opportunity_stage_history(opportunity_id);
+
+CREATE TABLE IF NOT EXISTS opportunity_assignees (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL,
+  assigned_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS assignee_opp_idx ON opportunity_assignees(opportunity_id);
+CREATE INDEX IF NOT EXISTS assignee_user_idx ON opportunity_assignees(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS assignee_uniq ON opportunity_assignees(opportunity_id, user_id);
+
+CREATE TABLE IF NOT EXISTS prospects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_name TEXT NOT NULL,
+  contact_name TEXT,
+  contact_email TEXT,
+  contact_mobile TEXT,
+  notes TEXT,
+  created_by_user_id INTEGER,
+  converted_client_id INTEGER REFERENCES clients(id),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS prospect_name_idx ON prospects(company_name);
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

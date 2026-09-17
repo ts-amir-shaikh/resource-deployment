@@ -1,5 +1,8 @@
 import { cookies } from 'next/headers';
+import { eq } from 'drizzle-orm';
 import { SESSION_COOKIE, verifySession, type Role, type Session } from './auth';
+import { db } from './db';
+import { users } from './schema';
 
 /**
  * Reads the current user inside server components and route handlers.
@@ -25,4 +28,19 @@ export async function requireSession(): Promise<Session> {
 
 export async function currentRole(): Promise<Role> {
   return (await getSession())?.role ?? 'ta';
+}
+
+/**
+ * The session plus the one fact about the user that lives in the database
+ * rather than the token: whether they head their team. Read here, once, so
+ * pages and routes stop each doing their own users lookup.
+ */
+export type Viewer = Session & { isTeamLead: boolean };
+
+export async function getViewer(): Promise<Viewer> {
+  const session = await requireSession();
+  const me = session.uid
+    ? await db.select({ lead: users.isTeamLead }).from(users).where(eq(users.id, session.uid)).get()
+    : undefined;
+  return { ...session, isTeamLead: Boolean(me?.lead) };
 }

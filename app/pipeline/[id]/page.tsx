@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import {
   opportunities,
@@ -11,10 +11,15 @@ import {
   referrals,
   candidateInterviews,
   agentRuns,
+  opportunityAssignees,
+  prospects,
+  users,
 } from '@/lib/schema';
 import { getStageBeforeHold } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
-import { requireSession } from '@/lib/session';
+import { getViewer } from '@/lib/session';
+import { visibleOpportunityIds, allowedStages, canEditRequirement, canSetOwner } from '@/lib/ownership';
+import { getTeamOptions as teamOptions } from '@/lib/queries';
 import { stripClientBudget } from '@/lib/access';
 import OpportunityDetailClient from './client';
 
@@ -28,7 +33,8 @@ export default async function OpportunityDetailPage({
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
-  const { role } = await requireSession();
+  const viewer = await getViewer();
+  const { role } = viewer;
 
   // Every query here is keyed only on `id` from the route params — none
   // depends on another's result — so they run concurrently instead of as a
@@ -73,7 +79,9 @@ export default async function OpportunityDetailPage({
         workingHours: opportunities.workingHours,
         stage: opportunities.stage,
         priority: opportunities.priority,
-        owner: opportunities.owner,
+        leadOwnerUserId: opportunities.leadOwnerUserId,
+        salesOwnerUserId: opportunities.salesOwnerUserId,
+        prospectId: opportunities.prospectId,
         nextStep: opportunities.nextStep,
         nextStepDate: opportunities.nextStepDate,
         closedReason: opportunities.closedReason,
@@ -194,8 +202,55 @@ export default async function OpportunityDetailPage({
 
   if (!row) notFound();
 
+  // M41/M42 — row-level permissions, decided once here and handed to the
+  // client so it never offers a button the request would reject. Leadgen may
+  // not open a requirement that is not theirs at all.
+  const visible = await visibleOpportunityIds(viewer);
+  if (visible !== null && !visible.includes(id)) notFound();
+
+  const [stages, editable, owners, assignees, leadgenTeam, salesTeam, taTeam, prospectOptions] =
+    await Promise.all([
+      allowedStages(viewer, row),
+      canEditRequirement(viewer, row),
+      Promise.all([canSetOwner(viewer, 'lead', null), canSetOwner(viewer, 'sales', null), canSetOwner(viewer, 'ta', null)]),
+      db
+        .select({ userId: opportunityAssignees.userId, name: users.name })
+        .from(opportunityAssignees)
+        .innerJoin(users, eq(opportunityAssignees.userId, users.id))
+        .where(eq(opportunityAssignees.opportunityId, id))
+        .all(),
+      teamOptions('leadgen'),
+      teamOptions('sales'),
+      teamOptions('ta'),
+      db
+        .select({ id: prospects.id, companyName: prospects.companyName })
+        .from(prospects)
+        .where(isNull(prospects.convertedClientId))
+        .orderBy(prospects.companyName)
+        .all(),
+    ]);
+  const nameOf = (uid: number | null, list: { id: number; name: string }[]) =>
+    uid === null ? null : (list.find((u) => u.id === uid)?.name ?? null);
+
   return (
     <OpportunityDetailClient
+      permissions={{
+        edit: editable,
+        stages: stages === 'all' ? null : [...stages],
+        onboard: role === 'admin' || role === 'sales',
+        setLeadOwner: owners[0],
+        setSalesOwner: owners[1],
+        setAssignees: owners[2],
+      }}
+      owners={{
+        leadOwnerUserId: row.leadOwnerUserId,
+        leadOwnerName: nameOf(row.leadOwnerUserId, leadgenTeam),
+        salesOwnerUserId: row.salesOwnerUserId,
+        salesOwnerName: nameOf(row.salesOwnerUserId, salesTeam),
+        assignees,
+      }}
+      teams={{ leadgen: leadgenTeam, sales: salesTeam, ta: taTeam }}
+      prospects={prospectOptions}
       opportunity={{
         ...stripClientBudget(role, row),
         isProspect: row.clientId === null,

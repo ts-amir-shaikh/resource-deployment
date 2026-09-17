@@ -12,14 +12,24 @@ import { SignJWT, jwtVerify } from 'jose';
 export const SESSION_COOKIE = 'rd_session';
 const SESSION_HOURS = 12;
 
-export const ROLES = ['admin', 'management', 'ta'] as const;
+/**
+ * Five roles. "Leadgen head", "sales head" and "TA lead" are the `is_team_lead`
+ * flag on the corresponding role, not roles of their own — a head is a working
+ * member with a wider view, which is what a flag is for.
+ */
+export const ROLES = ['admin', 'management', 'ta', 'leadgen', 'sales'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Admin',
   management: 'Management',
   ta: 'TA Team',
+  leadgen: 'Lead Generation',
+  sales: 'Sales',
 };
+
+/** Roles on which `is_team_lead` means something. */
+export const TEAM_ROLES: readonly Role[] = ['ta', 'leadgen', 'sales'];
 
 export type Session = {
   /** User id, or 0 for the legacy shared-password fallback account. */

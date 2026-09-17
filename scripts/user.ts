@@ -21,7 +21,7 @@
  */
 import { createClient } from '@libsql/client';
 import * as readline from 'node:readline/promises';
-import { hashPassword, newSalt, ROLES, type Role } from '../lib/auth';
+import { hashPassword, newSalt, ROLES, TEAM_ROLES, type Role } from '../lib/auth';
 
 const url = (process.env.TURSO_DATABASE_URL || '').trim() || 'file:./data/deployment.db';
 const authToken = process.env.TURSO_AUTH_TOKEN || undefined;
@@ -117,17 +117,16 @@ function parseRole(value: string | undefined, fallback?: Role): Role {
 }
 
 /**
- * Team lead is a flag on a TA, not a role of its own — a lead is a working
- * recruiter with the same access and the same commercial restrictions, who
- * additionally sees the team roll-up on /my. So it is meaningless on an admin
- * or management account, and setting it there is refused rather than stored
- * as a field nothing reads.
+ * Head / lead is a flag on a team role, not a role of its own — a TA lead, a
+ * leadgen head and a sales head are each a working member with a wider view.
+ * It is meaningless on an admin or management account, and setting it there
+ * is refused rather than stored as a field nothing reads.
  */
 function assertTaBeforeLead(role: string, username: string): void {
-  if (role === 'ta') return;
+  if ((TEAM_ROLES as readonly string[]).includes(role)) return;
   console.error(
-    `\n"${username}" is ${role}, not ta. Team lead only applies to a TA account —` +
-      `\nit adds the team roll-up to their own recruiter dashboard.` +
+    `\n"${username}" is ${role}. Lead / head only applies to a team account (${TEAM_ROLES.join(', ')}) —` +
+      `\nit adds the team roll-up and member selector to their own dashboard.` +
       `\nNothing was changed.`,
   );
   process.exit(1);
@@ -209,7 +208,7 @@ async function main() {
     });
     console.log(
       `\nCreated. ${username} can now sign in as ${role}` +
-        (lead ? ', and sees the whole team on /my.' : '.'),
+        (lead ? ', and sees the whole team on their dashboard.' : '.'),
     );
     client.close();
     return;

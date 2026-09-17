@@ -13,9 +13,12 @@ import { Users } from 'lucide-react';
 export default function MemberSelect({
   members,
   selected,
+  base = '/my',
 }: {
   members: { id: number; name: string; isTeamLead: boolean }[];
   selected: number | null;
+  /** Which board this selector lives on — /my, /leads or /sales. */
+  base?: string;
 }) {
   const router = useRouter();
   return (
@@ -24,7 +27,7 @@ export default function MemberSelect({
       <select
         className="input w-auto"
         value={selected ?? ''}
-        onChange={(e) => router.push(e.target.value ? `/my?member=${e.target.value}` : '/my')}
+        onChange={(e) => router.push(e.target.value ? `${base}?member=${e.target.value}` : base)}
         aria-label="Whose board to show"
       >
         <option value="">Whole team</option>

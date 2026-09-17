@@ -10,7 +10,9 @@ import {
 } from '@/lib/schema';
 import { opportunitySchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
-import { getSession } from '@/lib/session';
+import { getViewer } from '@/lib/session';
+import { canEditRequirement, LEADGEN_STAGES, visibleOpportunityIds } from '@/lib/ownership';
+import { resolveCompany } from '@/lib/prospects';
 import { stripClientBudget } from '@/lib/access';
 import { isFollowUpDue } from '@/lib/utils';
 
@@ -105,8 +107,12 @@ export async function GET(_req: Request, { params }: Ctx) {
       .all();
 
     // The pages strip this too, but the API is reachable on its own — a role
-    // that cannot see the client budget on screen must not be able to curl it.
-    const { role } = (await getSession()) ?? { role: 'ta' as const };
+    // that cannot see the client budget on screen must not be able to curl it,
+    // and a leadgen who cannot open it on the board must not be able to fetch it.
+    const viewer = await getViewer();
+    const { role } = viewer;
+    const visible = await visibleOpportunityIds(viewer);
+    if (visible !== null && !visible.includes(id)) return fail('Opportunity not found', 404);
 
     return ok({
       ...stripClientBudget(role, row),
@@ -121,6 +127,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 
 export async function PUT(req: Request, { params }: Ctx) {
   return handle(async () => {
+    const viewer = await getViewer();
     const id = parseId(params.id);
     if (!id) return fail('Invalid opportunity id', 400);
 
@@ -131,15 +138,32 @@ export async function PUT(req: Request, { params }: Ctx) {
       .get();
     if (!existing) return fail('Opportunity not found', 404);
 
+    // Middleware let the role through the door; whether *this* requirement
+    // is theirs to edit, and whether it is still at a stage they may touch,
+    // is decided on the row.
+    if (!(await canEditRequirement(viewer, existing))) {
+      return fail(
+        viewer.role === 'leadgen' && !LEADGEN_STAGES.includes(existing.stage as never)
+          ? 'This requirement has been handed on and is no longer yours to edit.'
+          : 'You do not own this requirement.',
+        403,
+      );
+    }
+
     const { data, error } = await parseBody(req, opportunitySchema);
     if (error) return error;
 
+    const company = await resolveCompany(db, data, viewer.uid || null);
+
     // Stage is not editable here — it moves through /stage so history is kept.
+    // Owners are not editable here either — they go through /owners, which
+    // checks who may set which.
     const row = await db
       .update(opportunities)
       .set({
-        clientId: data.clientId ?? null,
-        companyName: data.companyName,
+        clientId: company.clientId,
+        prospectId: company.prospectId,
+        companyName: company.companyName,
         title: data.title,
         experienceMin: data.experienceMin,
         experienceMax: data.experienceMax,
@@ -169,7 +193,6 @@ export async function PUT(req: Request, { params }: Ctx) {
         workingDays: data.workingDays,
         workingHours: data.workingHours,
         priority: data.priority,
-        owner: data.owner,
         nextStep: data.nextStep,
         nextStepDate: data.nextStepDate,
       })

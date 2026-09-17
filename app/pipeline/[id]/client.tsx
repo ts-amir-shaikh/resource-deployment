@@ -21,6 +21,7 @@ import {
   FileText,
   Sparkles,
   RefreshCw,
+  Users,
   Building2,
   X,
   Globe,
@@ -48,6 +49,7 @@ import OpportunityFormFields, {
   toFormValues,
   toPayload,
   type ClientOption,
+  type ProspectOption,
   type OpportunityFormValues,
 } from '@/components/opportunity-form';
 
@@ -83,7 +85,9 @@ type Opportunity = {
   workingHours: string | null;
   stage: string;
   priority: string | null;
-  owner: string | null;
+  prospectId: number | null;
+  leadOwnerUserId: number | null;
+  salesOwnerUserId: number | null;
   nextStep: string | null;
   nextStepDate: string | null;
   closedReason: string | null;
@@ -158,6 +162,25 @@ type Criterion = {
   description: string | null;
   scope: string;
 };
+
+/** M41/M42 — decided server-side in lib/ownership.ts; the client only renders. */
+type Permissions = {
+  edit: boolean;
+  /** null = any stage; otherwise the stages this viewer may move to. */
+  stages: string[] | null;
+  onboard: boolean;
+  setLeadOwner: boolean;
+  setSalesOwner: boolean;
+  setAssignees: boolean;
+};
+type Owners = {
+  leadOwnerUserId: number | null;
+  leadOwnerName: string | null;
+  salesOwnerUserId: number | null;
+  salesOwnerName: string | null;
+  assignees: { userId: number; name: string }[];
+};
+type TeamOption = { id: number; name: string };
 
 /** M28 — a question set already generated for this requirement. */
 type QuestionSet = {
@@ -264,6 +287,10 @@ export default function OpportunityDetailClient({
   role,
   roundCounts,
   questionSets,
+  permissions,
+  owners,
+  teams,
+  prospects,
 }: {
   opportunity: Opportunity;
   mapped: Mapped[];
@@ -276,12 +303,21 @@ export default function OpportunityDetailClient({
   role: Role;
   roundCounts: Record<number, number>;
   questionSets: QuestionSet[];
+  permissions: Permissions;
+  owners: Owners;
+  teams: { leadgen: TeamOption[]; sales: TeamOption[]; ta: TeamOption[] };
+  prospects: ProspectOption[];
 }) {
   const router = useRouter();
   // Mirrors the policy middleware enforces, so the UI never offers an action
   // the request would reject.
   const readOnly = role === 'management';
-  const canEditRequirement = role === 'admin';
+  // Leadgen raises requirements and does not fulfil them: no mapping, no
+  // rounds, no ratings, no agents. Mirrors the access table so nothing is
+  // offered that the request would reject.
+  const canFulfil = !readOnly && role !== 'leadgen';
+  // Row-level: Admin always; leadgen and sales on their own, at their stages.
+  const canEditRequirement = permissions.edit;
   const showHiringBudget = role === 'ta';
 
   // Stakeholder replies from the share link are kept in their own thread —
@@ -317,7 +353,7 @@ export default function OpportunityDetailClient({
     try {
       await api(`/api/opportunities/${o.id}`, {
         method: 'PUT',
-        json: toPayload(editForm, clients),
+        json: toPayload(editForm, clients, prospects),
       });
       setEditOpen(false);
       router.refresh();
@@ -562,6 +598,37 @@ export default function OpportunityDetailClient({
       setRoundError(errorMessage(e));
     } finally {
       setRoundBusy(false);
+    }
+  }
+
+  /* ── M42: owners ───────────────────────────────────────────
+   * Three kinds, set through /owners which checks who may set which. The
+   * pickers only render for the kinds this viewer may set; the names always
+   * render so everyone can see who holds what. */
+  const [ownerForm, setOwnerForm] = useState({
+    leadOwnerUserId: owners.leadOwnerUserId ? String(owners.leadOwnerUserId) : '',
+    salesOwnerUserId: owners.salesOwnerUserId ? String(owners.salesOwnerUserId) : '',
+    assigneeIds: owners.assignees.map((a) => a.userId),
+  });
+  const [ownerBusy, setOwnerBusy] = useState(false);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
+  const canSetAnyOwner = permissions.setLeadOwner || permissions.setSalesOwner || permissions.setAssignees;
+
+  async function saveOwners() {
+    setOwnerBusy(true);
+    setOwnerError(null);
+    try {
+      // Send only the kinds this viewer may set — the route refuses the rest.
+      const json: Record<string, unknown> = {};
+      if (permissions.setLeadOwner) json.leadOwnerUserId = ownerForm.leadOwnerUserId || null;
+      if (permissions.setSalesOwner) json.salesOwnerUserId = ownerForm.salesOwnerUserId || null;
+      if (permissions.setAssignees) json.assigneeIds = ownerForm.assigneeIds;
+      await api(`/api/opportunities/${o.id}/owners`, { method: 'PUT', json });
+      router.refresh();
+    } catch (e) {
+      setOwnerError(errorMessage(e));
+    } finally {
+      setOwnerBusy(false);
     }
   }
 
@@ -865,7 +932,17 @@ export default function OpportunityDetailClient({
               ) : (
                 <Badge tone="blue">Client</Badge>
               )}
-              {o.owner && <span className="text-ink3">· owned by {o.owner}</span>}
+              {(owners.leadOwnerName || owners.salesOwnerName || owners.assignees.length > 0) && (
+                <span className="text-ink3">
+                  {[
+                    owners.leadOwnerName && `lead ${owners.leadOwnerName}`,
+                    owners.salesOwnerName && `sales ${owners.salesOwnerName}`,
+                    owners.assignees.length > 0 && `TA ${owners.assignees.map((a) => a.name).join(', ')}`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              )}
             </p>
           </div>
 
@@ -881,7 +958,7 @@ export default function OpportunityDetailClient({
                 <Globe className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Listed
               </a>
             )}
-            {o.isProspect && canEditRequirement && (
+            {o.isProspect && permissions.onboard && (
               <button className="btn-ghost" onClick={convertToClient} disabled={onboarding}>
                 <Building2 className="h-4 w-4" />
                 {onboarding ? 'Onboarding…' : 'Onboard as client'}
@@ -916,7 +993,7 @@ export default function OpportunityDetailClient({
                 </>
               )}
             </button>
-            {!o.convertedProjectId && (
+            {!o.convertedProjectId && !readOnly && (permissions.stages === null || permissions.stages.length > 0) && (
               <button
                 className="btn-ghost"
                 onClick={() => {
@@ -1041,7 +1118,7 @@ export default function OpportunityDetailClient({
                   Grouped by the rating pointers this candidate will be scored against
                 </p>
               </div>
-              {!readOnly && (
+              {canFulfil && (
                 <button
                   className="btn-ghost"
                   onClick={generateQuestions}
@@ -1124,9 +1201,11 @@ export default function OpportunityDetailClient({
                   {mapped.length} mapped · {filled} filling a position
                 </p>
               </div>
-              <button className="btn-ghost" onClick={openMapCreate} disabled={isTerminal}>
-                <Plus className="h-3.5 w-3.5" /> Map candidate
-              </button>
+              {canFulfil && (
+                <button className="btn-ghost" onClick={openMapCreate} disabled={isTerminal}>
+                  <Plus className="h-3.5 w-3.5" /> Map candidate
+                </button>
+              )}
             </header>
 
             {mapped.length === 0 ? (
@@ -1217,6 +1296,7 @@ export default function OpportunityDetailClient({
                         </span>
                       </td>
                       <td className="td text-right">
+                        {canFulfil && (
                         <div className="flex justify-end gap-1">
                           <button
                             onClick={() => openRounds(m)}
@@ -1254,6 +1334,7 @@ export default function OpportunityDetailClient({
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1265,6 +1346,94 @@ export default function OpportunityDetailClient({
 
         {/* Right column */}
         <div className="space-y-6">
+          {/* M42 — who owns what */}
+          <section className="card">
+            <header className="flex items-center gap-2 border-b border-line px-4 py-3">
+              <Users className="h-4 w-4 text-ink3" />
+              <h2 className="text-sm font-semibold text-ink">Owners</h2>
+            </header>
+            {ownerError && (
+              <p className="border-b border-line px-4 py-2 text-xs text-rose-600 dark:text-rose-400">
+                {ownerError}
+              </p>
+            )}
+            <div className="space-y-3 px-4 py-3">
+              <OwnerRow
+                label="Lead owner"
+                hint="Brought the requirement in"
+                current={owners.leadOwnerName}
+                editable={permissions.setLeadOwner}
+              >
+                <select
+                  className="input"
+                  value={ownerForm.leadOwnerUserId}
+                  onChange={(e) => setOwnerForm({ ...ownerForm, leadOwnerUserId: e.target.value })}
+                >
+                  <option value="">— nobody —</option>
+                  {teams.leadgen.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </OwnerRow>
+              <OwnerRow
+                label="Sales owner"
+                hint="Owns closing it"
+                current={owners.salesOwnerName}
+                editable={permissions.setSalesOwner}
+              >
+                <select
+                  className="input"
+                  value={ownerForm.salesOwnerUserId}
+                  onChange={(e) => setOwnerForm({ ...ownerForm, salesOwnerUserId: e.target.value })}
+                >
+                  <option value="">— nobody —</option>
+                  {teams.sales.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </OwnerRow>
+              <OwnerRow
+                label="TA assignees"
+                hint="Map candidates, run interviews — every one of them"
+                current={owners.assignees.length ? owners.assignees.map((a) => a.name).join(', ') : null}
+                editable={permissions.setAssignees}
+              >
+                <div className="flex flex-wrap gap-1.5">
+                  {teams.ta.map((u) => {
+                    const on = ownerForm.assigneeIds.includes(u.id);
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() =>
+                          setOwnerForm({
+                            ...ownerForm,
+                            assigneeIds: on
+                              ? ownerForm.assigneeIds.filter((x) => x !== u.id)
+                              : [...ownerForm.assigneeIds, u.id],
+                          })
+                        }
+                        className={`chip border transition-colors ${
+                          on ? 'border-brand bg-brandbg text-brand' : 'border-line bg-surface text-ink2 hover:bg-surface2'
+                        }`}
+                      >
+                        {u.name}
+                      </button>
+                    );
+                  })}
+                  {teams.ta.length === 0 && <span className="text-2xs text-ink3">No TA accounts yet.</span>}
+                </div>
+              </OwnerRow>
+              {canSetAnyOwner && (
+                <div className="flex justify-end pt-1">
+                  <button className="btn-primary px-3 py-1.5 text-xs" onClick={saveOwners} disabled={ownerBusy}>
+                    Save owners
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+
           {/* Referred profiles awaiting review */}
           <section className="card">
             <header className="flex items-center gap-2 border-b border-line px-4 py-3">
@@ -1717,6 +1886,7 @@ export default function OpportunityDetailClient({
           setForm={setEditForm}
           errors={editErrors}
           clients={clients}
+          prospects={prospects}
         />
 
         <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
@@ -1755,7 +1925,12 @@ export default function OpportunityDetailClient({
               <button
                 key={s}
                 type="button"
-                disabled={s === o.stage}
+                disabled={s === o.stage || (permissions.stages !== null && !permissions.stages.includes(s))}
+                title={
+                  permissions.stages !== null && !permissions.stages.includes(s)
+                    ? 'Not a stage your role can move this requirement to'
+                    : undefined
+                }
                 onClick={() => setStageTarget(s)}
                 className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-40 ${
                   stageTarget === s
@@ -2349,6 +2524,35 @@ export default function OpportunityDetailClient({
           </>
         )}
       </Modal>
+    </div>
+  );
+}
+
+/** One owner kind: the current holder, and a picker when this viewer may change it. */
+function OwnerRow({
+  label,
+  hint,
+  current,
+  editable,
+  children,
+}: {
+  label: string;
+  hint: string;
+  current: string | null;
+  editable: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs font-medium text-ink">{label}</span>
+        <span className="text-2xs text-ink3">{hint}</span>
+      </div>
+      {editable ? (
+        <div className="mt-1">{children}</div>
+      ) : (
+        <div className="mt-0.5 text-sm text-ink2">{current ?? <span className="text-ink3">—</span>}</div>
+      )}
     </div>
   );
 }

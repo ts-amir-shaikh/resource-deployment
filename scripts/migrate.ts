@@ -235,6 +235,26 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'expected_join_date',
     ddl: 'ALTER TABLE opportunity_candidates ADD COLUMN expected_join_date TEXT',
   },
+  // Phase 12 — owners and prospects. All nullable. The single owner_user_id
+  // is not dropped: it is copied into opportunity_assignees below and then
+  // left in place, unread, so a rollback has something to roll back to.
+  {
+    table: 'opportunities',
+    column: 'lead_owner_user_id',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN lead_owner_user_id INTEGER',
+  },
+  {
+    table: 'opportunities',
+    column: 'sales_owner_user_id',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN sales_owner_user_id INTEGER',
+  },
+  {
+    // No REFERENCES: the prospects table may not exist yet on an established
+    // database when column migrations run. The constraint is in ddl.ts.
+    table: 'opportunities',
+    column: 'prospect_id',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN prospect_id INTEGER',
+  },
   {
     table: 'candidate_ratings',
     column: 'interview_id',
@@ -337,6 +357,40 @@ async function main() {
   if (lifted.length > 0) {
     console.log(`  lifted ${lifted.length} existing feedback record(s) into round 1`);
   }
+
+  // M42 — every existing single owner becomes the first TA assignee. The
+  // unique index makes a re-run a no-op.
+  const { rowsAffected: assigned } = await client.execute(`
+    insert or ignore into opportunity_assignees (opportunity_id, user_id)
+    select id, owner_user_id from opportunities where owner_user_id is not null
+  `);
+  if (assigned > 0) console.log(`  moved ${assigned} owner(s) into opportunity_assignees`);
+
+  // M46 — every distinct company on an opportunity with no client becomes a
+  // prospect, and the opportunities are linked to it. Guarded on prospect_id
+  // being null, so a re-run touches nothing and a company already converted
+  // (client_id set) is left alone.
+  const { rows: orphanNames } = await client.execute(`
+    select distinct trim(company_name) as name from opportunities
+     where client_id is null and prospect_id is null and trim(company_name) <> ''
+  `);
+  for (const r of orphanNames) {
+    const name = String(r.name);
+    const { rows: hit } = await client.execute({
+      sql: 'select id from prospects where company_name = ? and converted_client_id is null',
+      args: [name],
+    });
+    const pid = hit.length
+      ? Number(hit[0].id)
+      : Number(
+          (await client.execute({ sql: 'insert into prospects (company_name) values (?) returning id', args: [name] })).rows[0].id,
+        );
+    await client.execute({
+      sql: 'update opportunities set prospect_id = ? where client_id is null and prospect_id is null and trim(company_name) = ?',
+      args: [pid, name],
+    });
+  }
+  if (orphanNames.length > 0) console.log(`  linked ${orphanNames.length} prospect(s) from typed company names`);
 
   // M30-3 backfill. Idempotent: only rows with no stamp are touched.
   const { rowsAffected: stamped } = await client.execute(

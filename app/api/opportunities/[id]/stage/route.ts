@@ -3,7 +3,8 @@ import { db } from '@/lib/db';
 import { opportunities, opportunityStageHistory } from '@/lib/schema';
 import { stageMoveSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
-import { requireSession } from '@/lib/session';
+import { getViewer } from '@/lib/session';
+import { allowedStages } from '@/lib/ownership';
 import { getStageBeforeHold } from '@/lib/queries';
 import { STAGE_LABELS } from '@/lib/utils';
 
@@ -22,7 +23,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   return handle(async () => {
-    const session = await requireSession();
+    const session = await getViewer();
     const id = parseId(params.id);
     if (!id) return fail('Invalid opportunity id', 400);
 
@@ -35,6 +36,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     const { data, error } = await parseBody(req, stageMoveSchema);
     if (error) return error;
+
+    // Which stages this person may move *this* requirement to. Leadgen stops
+    // at budgeting — past that is a handover made by assigning a sales owner,
+    // not by leadgen pushing it. Sales starts at budgeting.
+    const allowed = await allowedStages(session, existing);
+    if (allowed !== 'all' && !allowed.includes(data.toStage)) {
+      return fail(
+        allowed.length === 0
+          ? 'You do not own this requirement.'
+          : `Your role can move this requirement to: ${allowed.map((s) => STAGE_LABELS[s] ?? s).join(', ')}.`,
+        403,
+      );
+    }
 
     if (data.toStage === existing.stage) {
       return fail(

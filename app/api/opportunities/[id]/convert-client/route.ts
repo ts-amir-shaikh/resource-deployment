@@ -1,6 +1,6 @@
 import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { opportunities, clients } from '@/lib/schema';
+import { opportunities, clients, prospects } from '@/lib/schema';
 import { handle, ok, fail, parseId } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +26,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       .select({
         id: opportunities.id,
         clientId: opportunities.clientId,
+        prospectId: opportunities.prospectId,
         companyName: opportunities.companyName,
       })
       .from(opportunities)
@@ -53,10 +54,27 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
           await tx.insert(clients).values({ companyName: name }).returning().get()
         ).id;
 
+      // M46 — it is the *prospect* that converts. Siblings are found by key
+      // where one exists; the name match is kept only for rows the migration
+      // could not link (a blank company name).
+      if (opp.prospectId) {
+        await tx
+          .update(prospects)
+          .set({ convertedClientId: clientId })
+          .where(eq(prospects.id, opp.prospectId))
+          .run();
+      }
       const siblings = await tx
         .select({ id: opportunities.id })
         .from(opportunities)
-        .where(and(eq(opportunities.companyName, name), isNull(opportunities.clientId)))
+        .where(
+          and(
+            isNull(opportunities.clientId),
+            opp.prospectId
+              ? eq(opportunities.prospectId, opp.prospectId)
+              : eq(opportunities.companyName, name),
+          ),
+        )
         .all();
 
       for (const s of siblings) {

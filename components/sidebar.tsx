@@ -19,6 +19,8 @@ import {
   Eye,
   PanelLeftClose,
   PanelLeftOpen,
+  Compass,
+  Handshake,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -34,6 +36,8 @@ import { SIDEBAR_COOKIE } from '@/lib/prefs';
 const ICONS: Record<string, LucideIcon> = {
   '/': LayoutDashboard,
   '/my': ClipboardList,
+  '/leads': Compass,
+  '/sales': Handshake,
   '/pipeline': Target,
   '/candidates': UserSearch,
   '/agents': Sparkles,

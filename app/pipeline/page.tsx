@@ -1,19 +1,21 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { opportunities, clients } from '@/lib/schema';
+import { opportunities, clients, prospects } from '@/lib/schema';
 import { getOpportunityCandidateCounts } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
-import { requireSession } from '@/lib/session';
+import { getViewer } from '@/lib/session';
+import { visibleOpportunityIds } from '@/lib/ownership';
 import { stripClientBudgetAll } from '@/lib/access';
 import PipelineClient from './client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PipelinePage() {
-  const { role } = await requireSession();
+  const viewer = await getViewer();
+  const { role } = viewer;
 
   // Independent of each other — run concurrently.
-  const [rows, counts, clientOptions] = await Promise.all([
+  const [rows, counts, clientOptions, prospectOptions, visibleIds] = await Promise.all([
     db
       .select({
         id: opportunities.id,
@@ -38,7 +40,8 @@ export default async function PipelinePage() {
         isListed: opportunities.isListed,
         stage: opportunities.stage,
         priority: opportunities.priority,
-        owner: opportunities.owner,
+        leadOwnerUserId: opportunities.leadOwnerUserId,
+        salesOwnerUserId: opportunities.salesOwnerUserId,
         nextStep: opportunities.nextStep,
         nextStepDate: opportunities.nextStepDate,
         closedReason: opportunities.closedReason,
@@ -55,11 +58,22 @@ export default async function PipelinePage() {
       .from(clients)
       .orderBy(clients.companyName)
       .all(),
+    db
+      .select({ id: prospects.id, companyName: prospects.companyName })
+      .from(prospects)
+      .where(isNull(prospects.convertedClientId))
+      .orderBy(prospects.companyName)
+      .all(),
+    // Leadgen sees their own (or, as head, their team's); everyone else the
+    // whole board. Decided in lib/ownership.ts, not here.
+    visibleOpportunityIds(viewer),
   ]);
+
+  const scoped = visibleIds === null ? rows : rows.filter((r) => visibleIds.includes(r.id));
 
   // What the client pays never reaches a TA browser — stripped here, on the
   // server, rather than hidden in the markup.
-  const visible = stripClientBudgetAll(role, rows);
+  const visible = stripClientBudgetAll(role, scoped);
 
   const initial = visible.map((o) => {
     const c = counts.find((x) => x.opportunityId === o.id);
@@ -72,5 +86,12 @@ export default async function PipelinePage() {
     };
   });
 
-  return <PipelineClient initial={initial} clients={clientOptions} role={role} />;
+  return (
+    <PipelineClient
+      initial={initial}
+      clients={clientOptions}
+      prospects={prospectOptions}
+      role={role}
+    />
+  );
 }
