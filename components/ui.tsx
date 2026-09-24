@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { X, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /* ── Page header ───────────────────────────────────────────── */
@@ -258,6 +258,66 @@ export function TableShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* ── KPI definition popover ────────────────────────────────── */
+
+/**
+ * The "what does this number actually count" button beside a KPI.
+ *
+ * A real popover rather than a `title` attribute: native tooltips never
+ * appear on touch, most screen readers skip them, and they cannot hold the two
+ * sentences a definition needs — the base it is counted over, and the rule
+ * that decides what is in it.
+ *
+ * `aria-describedby` ties the text to the figure, so a screen reader reaching
+ * the value announces the definition with it rather than leaving it stranded
+ * on a button somebody has to find.
+ */
+export function KpiInfo({ text, labelledBy }: { text: string; labelledBy?: string }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: PointerEvent) {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <span className="relative inline-flex" ref={wrap}>
+      <button
+        type="button"
+        aria-label={labelledBy ? `How ${labelledBy} is counted` : 'How this is counted'}
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        onClick={() => setOpen((v) => !v)}
+        className="rounded text-ink3 transition-colors hover:text-ink2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+      >
+        <Info className="h-3 w-3" />
+      </button>
+      {open && (
+        <span
+          id={id}
+          role="note"
+          className="absolute left-1/2 top-5 z-30 w-56 -translate-x-1/2 rounded-md border border-line bg-surface p-2.5 text-2xs font-normal normal-case leading-relaxed tracking-normal text-ink2 shadow-lg"
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /* ── Stat tile ─────────────────────────────────────────────── */
 
 export function Stat({
@@ -265,12 +325,16 @@ export function Stat({
   value,
   sub,
   tone,
+  info,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   tone?: 'default' | 'good' | 'warn' | 'bad';
+  /** What this figure counts, and over what base. Shown behind an info icon. */
+  info?: string;
 }) {
+  const describedBy = useId();
   const valueTone =
     tone === 'good'
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -282,12 +346,21 @@ export function Stat({
 
   return (
     <div className="card p-4">
-      <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
-        {label}
+      <div className="flex items-center gap-1 text-2xs font-medium uppercase tracking-wider text-ink3">
+        <span>{label}</span>
+        {info && <KpiInfo text={info} labelledBy={label} />}
       </div>
-      <div className={cn('tnum mt-1.5 text-2xl font-semibold tracking-tight', valueTone)}>
+      <div
+        className={cn('tnum mt-1.5 text-2xl font-semibold tracking-tight', valueTone)}
+        aria-describedby={info ? describedBy : undefined}
+      >
         {value}
       </div>
+      {info && (
+        <span id={describedBy} className="sr-only">
+          {info}
+        </span>
+      )}
       {sub && <div className="mt-0.5 text-xs text-ink2">{sub}</div>}
     </div>
   );
@@ -387,12 +460,16 @@ export function KpiCard({
   value,
   note,
   tone = 'default',
+  info,
 }: {
   label: string;
   value: string;
   note?: string;
   tone?: 'default' | 'good' | 'bad';
+  /** What this figure counts, and over what base. Shown behind an info icon. */
+  info?: string;
 }) {
+  const describedBy = useId();
   const valueTone =
     tone === 'good'
       ? 'text-emerald-600 dark:text-emerald-400'
@@ -401,12 +478,22 @@ export function KpiCard({
         : 'text-ink';
   return (
     <div className="card p-3">
-      <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
-        {label}
+      <div className="flex items-center gap-1 text-2xs font-medium uppercase tracking-wider text-ink3">
+        <span className="truncate">{label}</span>
+        {info && <KpiInfo text={info} labelledBy={label} />}
       </div>
-      <div className={`tnum mt-1 truncate text-xl font-semibold ${valueTone}`} title={value}>
+      <div
+        className={`tnum mt-1 truncate text-xl font-semibold ${valueTone}`}
+        title={value}
+        aria-describedby={info ? describedBy : undefined}
+      >
         {value}
       </div>
+      {info && (
+        <span id={describedBy} className="sr-only">
+          {info}
+        </span>
+      )}
       {note && <div className="mt-0.5 truncate text-2xs text-ink3">{note}</div>}
     </div>
   );

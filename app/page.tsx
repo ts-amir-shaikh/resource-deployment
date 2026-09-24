@@ -162,6 +162,7 @@ export default async function DashboardPage() {
         <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <KpiCard
             label="Open Pipeline"
+            info="Monthly value of requirements in an active stage — deal value where set, otherwise the top of the client budget range times the headcount required. Requirements carrying neither are counted but contribute nothing, which is what the coverage note beneath reports. Currencies are grouped, never converted."
             value={formatMoneyMulti(pipelineValue.open.total)}
             note={
               coverageNote(pipelineValue.open.valued, pipelineValue.open.count) ??
@@ -170,11 +171,13 @@ export default async function DashboardPage() {
           />
           <KpiCard
             label="Weighted Pipeline"
+            info="The same open value with each requirement multiplied by its stage\u2019s win probability: requirement 10%, qualification 25%, budgeting 40%, candidate mapping 60%, interview 75%, agreement 90%. A first conversation is not money in the bank."
             value={formatMoneyMulti(pipelineValue.weighted.total)}
             note="by stage win probability"
           />
           <KpiCard
             label="Won This Month"
+            info="Value of requirements that moved to won since the first of this calendar month, read from the stage history rather than the requirement\u2019s own date. The count beneath is how many deals that was."
             value={formatMoneyMulti(pipelineValue.wonThisMonth.total)}
             note={`${pipelineValue.wonThisMonth.count} deal${
               pipelineValue.wonThisMonth.count === 1 ? '' : 's'
@@ -183,6 +186,7 @@ export default async function DashboardPage() {
           />
           <KpiCard
             label="Win Rate"
+            info="Of the requirements decided this calendar month \u2014 moved to won or to lost \u2014 the share that went to won. Shows a dash rather than 0% when nothing was decided, because no data and a bad month are different claims."
             value={
               pipelineValue.conversionRate === null
                 ? '—'
@@ -205,11 +209,13 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Stat
             label="Monthly Billing"
+            info="Billing on every active deployment, pro-rated by allocation, grouped by currency. GST is shown separately beneath rather than added in."
             value={formatMoneyMulti(s.monthlyBilling)}
             sub={`${formatMoneyMulti(s.monthlyGst)} GST`}
           />
           <Stat
             label="Monthly Margin"
+            info="Billing less the true cost: monthly CTC pro-rated by allocation, plus commission, plus the operations overhead set on the deployment. Only INR deployments where the resource has a CTC can be computed \u2014 the rest are excluded and counted in the line beneath. Shadow deployments carry cost with no billing and are reported separately."
             // billing − (monthly CTC × allocation + commission + overhead), in
             // rupees, across the deployments it can honestly be computed for.
             // The old figure here was billing − commission and ignored salary.
@@ -229,18 +235,21 @@ export default async function DashboardPage() {
           />
           <Stat
             label="Outstanding"
+            info="Invoiced and not yet collected \u2014 everything raised or pending collection, including GST. Overdue beneath is the part whose due date has passed."
             value={formatMoneyMulti(inv.outstandingAmount)}
             sub={`${formatMoneyMulti(inv.overdueAmount)} overdue`}
             tone={inv.overdueAmount.length > 0 ? 'bad' : 'default'}
           />
           <Stat
             label="Bench Utilisation"
+            info="Share of all resources carrying at least one active deployment, billable or shadow. It counts people who are deployed at all, not how much of their capacity is used \u2014 a resource at 20% counts the same as one at 100%."
             value={`${deployedPct}%`}
             sub={`${s.fullyDeployed} full · ${s.partiallyDeployed} partial · ${s.available} free`}
             tone={deployedPct >= 80 ? 'good' : deployedPct >= 50 ? 'warn' : 'bad'}
           />
           <Stat
             label="Active Deployments"
+            info="Deployments that have started and not ended, billable and shadow together. One person on two projects is two deployments."
             value={s.billableDeployments + s.shadowDeployments}
             sub={`${s.billableDeployments} billable · ${s.shadowDeployments} shadow`}
           />
@@ -250,7 +259,7 @@ export default async function DashboardPage() {
         <section className="card">
           <header className="flex items-center justify-between border-b border-line px-4 py-3">
             <div>
-              <h2 className="text-sm font-semibold text-ink">Pipeline</h2>
+              <h2 className="text-sm font-semibold text-ink">Staffing Pipeline</h2>
               <p className="mt-0.5 text-2xs text-ink3">
                 {pipeline.openCount} open · {pipeline.openPositions} positions ·{' '}
                 {pipeline.filledPositions} filled · {pipeline.won90d}W/
@@ -290,11 +299,18 @@ export default async function DashboardPage() {
 
         {/* Secondary counts */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Resources" value={s.totalResources} />
-          <Stat label="Active Clients" value={s.activeClients} />
-          <Stat label="Active Projects" value={s.activeProjects} />
+          <Stat label="Resources" value={s.totalResources}
+            info="Everyone on the bench, deployed or not. The source list for utilisation."
+          />
+          <Stat label="Active Clients" value={s.activeClients}
+            info="Clients with at least one project carrying an active deployment. A client with no live work is not counted."
+          />
+          <Stat label="Active Projects" value={s.activeProjects}
+            info="Projects with at least one active deployment on them."
+          />
           <Stat
             label="Monthly Commission"
+            info="Commission on active billable deployments, pro-rated by allocation and grouped by currency. Already deducted inside Monthly Margin \u2014 this shows it on its own."
             value={formatMoneyMulti(s.monthlyCommission)}
           />
         </div>

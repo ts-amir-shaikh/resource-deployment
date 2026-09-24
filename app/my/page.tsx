@@ -207,11 +207,34 @@ export default async function MyWorkPage({
       />
 
       <div className="grid grid-cols-2 gap-3 px-6 pt-4 lg:grid-cols-5">
-        <KpiCard label="My Requirements" value={String(board.requirements.length)} note={`${board.counts.positions} positions`} />
-        <KpiCard label="Submitted" value={String(board.counts.submitted)} />
-        <KpiCard label="Interviewing" value={String(board.counts.interviewing)} />
-        <KpiCard label="Offered" value={String(board.counts.offered)} tone="good" />
-        <KpiCard label="Joined" value={String(board.counts.joined)} tone="good" />
+        <KpiCard
+          label="My Requirements"
+          value={String(board.requirements.length)}
+          note={`${board.counts.positions} positions`}
+          info="Requirements you are assigned to as a TA, in any live stage. Since Phase 12 a requirement can have several TAs, so it appears on each of their boards. Positions is the headcount those requirements ask for."
+        />
+        <KpiCard
+          label="Submitted"
+          value={String(board.counts.submitted)}
+          info="Candidates on your requirements who have reached the client or gone past it — submitted, interview, selected, offered or joined. It counts how far they got, so someone now at interview is still counted as submitted."
+        />
+        <KpiCard
+          label="Interviewing"
+          value={String(board.counts.interviewing)}
+          info="Candidates sitting at the interview status right now on your requirements — a snapshot, not a running total."
+        />
+        <KpiCard
+          label="Offered"
+          value={String(board.counts.offered)}
+          tone="good"
+          info="Candidates on your requirements who have an offer or have already joined. Joined is included because an offer that converted is still an offer you made."
+        />
+        <KpiCard
+          label="Joined"
+          value={String(board.counts.joined)}
+          tone="good"
+          info="Candidates on your requirements who have started. The subset of Offered that actually converted."
+        />
       </div>
 
       <div className="grid gap-6 px-6 py-6 lg:grid-cols-2">

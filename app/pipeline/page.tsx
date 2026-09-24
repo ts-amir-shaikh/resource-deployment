@@ -1,7 +1,7 @@
 import { desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { opportunities, clients, prospects } from '@/lib/schema';
-import { getOpportunityCandidateCounts } from '@/lib/queries';
+import { getOpportunityCandidateCounts, getStageSince } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
 import { getViewer } from '@/lib/session';
 import { visibleOpportunityIds } from '@/lib/ownership';
@@ -15,7 +15,7 @@ export default async function PipelinePage() {
   const { role } = viewer;
 
   // Independent of each other — run concurrently.
-  const [rows, counts, clientOptions, prospectOptions, visibleIds] = await Promise.all([
+  const [rows, counts, stageSince, clientOptions, prospectOptions, visibleIds] = await Promise.all([
     db
       .select({
         id: opportunities.id,
@@ -46,6 +46,7 @@ export default async function PipelinePage() {
         nextStepDate: opportunities.nextStepDate,
         closedReason: opportunities.closedReason,
         convertedProjectId: opportunities.convertedProjectId,
+        createdAt: opportunities.createdAt,
         clientName: clients.companyName,
       })
       .from(opportunities)
@@ -53,6 +54,7 @@ export default async function PipelinePage() {
       .orderBy(desc(opportunities.id))
       .all(),
     getOpportunityCandidateCounts(),
+    getStageSince(),
     db
       .select({ id: clients.id, companyName: clients.companyName })
       .from(clients)
@@ -77,11 +79,14 @@ export default async function PipelinePage() {
 
   const initial = visible.map((o) => {
     const c = counts.find((x) => x.opportunityId === o.id);
+    const moved = stageSince.find((x) => x.opportunityId === o.id)?.since;
     return {
       ...o,
       isProspect: o.clientId === null,
       mappedCount: c?.mapped ?? 0,
       filledCount: c?.filled ?? 0,
+      // Never moved → it has been sitting where it started since day one.
+      stageSince: moved ?? o.createdAt,
       followUpDue: isFollowUpDue(o.nextStepDate),
     };
   });

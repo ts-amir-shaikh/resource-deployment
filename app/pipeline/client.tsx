@@ -14,9 +14,13 @@ import {
   CalendarClock,
   X,
   Globe,
+  ArrowDownWideNarrow,
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import {
+  daysInStage,
+  daysInStageLabel,
+  STALL_DAYS,
   formatDate,
   formatExperience,
   formatBudget,
@@ -51,6 +55,7 @@ import {
   KpiCard,
   type Tone,
 } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 
 type Row = {
   id: number;
@@ -85,6 +90,7 @@ type Row = {
   isProspect: boolean;
   mappedCount: number;
   filledCount: number;
+  stageSince: string;
   followUpDue: boolean;
 };
 
@@ -106,6 +112,12 @@ const STAGE_TONE: Record<string, Tone> = {
   hold: 'amber',
 };
 
+
+/** "9 positions" / "1 position" / "no positions" — the line under a funnel count. */
+function positionNote(n: number): string {
+  if (n === 0) return 'no positions';
+  return `${n} position${n === 1 ? '' : 's'}`;
+}
 
 export default function PipelineClient({
   initial,
@@ -138,6 +150,10 @@ export default function PipelineClient({
   // The board already groups by stage via its columns, so this filter only
   // applies to the list view, where there is no equivalent structure.
   const [stageFilter, setStageFilter] = useState('all');
+  const [companyFilter, setCompanyFilter] = useState('');
+  // Off by default: the board's own order is by recency, which is what people
+  // expect when they arrive. Sorting is something you ask for.
+  const [sortOldest, setSortOldest] = useState(false);
   const [page, setPage] = useState(1);
 
   const [open, setOpen] = useState(false);
@@ -152,6 +168,7 @@ export default function PipelineClient({
     const q = search.trim().toLowerCase();
     return initial.filter((o) => {
       if (!showClosed && ['won', 'lost'].includes(o.stage)) return false;
+      if (companyFilter && o.companyName !== companyFilter) return false;
       if (!q) return true;
       return (
         o.title.toLowerCase().includes(q) ||
@@ -160,28 +177,73 @@ export default function PipelineClient({
         (o.location ?? '').toLowerCase().includes(q)
       );
     });
-  }, [initial, search, showClosed]);
+  }, [initial, search, showClosed, companyFilter]);
+
+  // Only companies that actually appear on the board this viewer can see: a
+  // list of mostly dead ends is worse than no list. Grouped the way the
+  // requirement form groups them, and counted so the shape reads before you pick.
+  const companyOptions: ComboOption[] = useMemo(() => {
+    const seen = new Map<string, { n: number; prospect: boolean }>();
+    for (const o of initial) {
+      if (!showClosed && ['won', 'lost'].includes(o.stage)) continue;
+      const cur = seen.get(o.companyName);
+      if (cur) cur.n += 1;
+      else seen.set(o.companyName, { n: 1, prospect: o.isProspect });
+    }
+    return [...seen.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([name, meta]) => ({
+        value: name,
+        label: name,
+        detail: `${meta.n} requirement${meta.n === 1 ? '' : 's'}`,
+        group: meta.prospect ? 'Prospects' : 'Clients',
+      }))
+      .sort((a, b) => (a.group === b.group ? 0 : a.group === 'Clients' ? -1 : 1));
+  }, [initial, showClosed]);
 
   const listFiltered = useMemo(
     () => (stageFilter === 'all' ? filtered : filtered.filter((o) => o.stage === stageFilter)),
     [filtered, stageFilter],
   );
 
-  useEffect(() => setPage(1), [search, showClosed, stageFilter]);
+  useEffect(() => setPage(1), [search, showClosed, stageFilter, companyFilter]);
+
+  const listSorted = useMemo(
+    () =>
+      sortOldest
+        ? [...listFiltered].sort((a, b) => a.stageSince.localeCompare(b.stageSince))
+        : listFiltered,
+    [listFiltered, sortOldest],
+  );
 
   const pageItems = useMemo(
-    () => listFiltered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
-    [listFiltered, page],
+    () => listSorted.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
+    [listSorted, page],
   );
 
   const stats = useMemo(() => {
     const open = initial.filter((o) => (ACTIVE_STAGES as readonly string[]).includes(o.stage));
+    const won = initial.filter((o) => o.stage === 'won');
+    const hold = initial.filter((o) => o.stage === 'hold');
+    const lost = initial.filter((o) => o.stage === 'lost');
+    const positions = (rows: typeof initial) => rows.reduce((s, o) => s + o.requiredCount, 0);
+    // Positions actually taken, derived the way you read it: headcount asked
+    // for, less the seats still pending. Pending is floored at zero so that
+    // over-mapping — three offers against two seats — cannot report more seats
+    // filled than the requirement has.
+    const filledPositions = (rows: typeof initial) =>
+      rows.reduce((total, o) => {
+        const pending = Math.max(0, o.requiredCount - o.filledCount);
+        return total + (o.requiredCount - pending);
+      }, 0);
     return {
-      open: open.length,
-      positions: open.reduce((s, o) => s + o.requiredCount, 0),
-      filled: open.reduce((s, o) => s + o.filledCount, 0),
+      open: { count: open.length, positions: positions(open) },
+      // Filled is the won stage only — a requirement is filled when the deal
+      // is closed, not when a candidate happens to be sitting at offered.
+      filled: { count: won.length, positions: filledPositions(won) },
+      hold: { count: hold.length, positions: positions(hold) },
+      lost: { count: lost.length, positions: positions(lost) },
       due: initial.filter((o) => o.followUpDue).length,
-      hold: initial.filter((o) => o.stage === 'hold').length,
     };
   }, [initial]);
 
@@ -250,7 +312,7 @@ export default function PipelineClient({
   return (
     <div className="pb-12">
       <PageHeader
-        title="Pipeline"
+        title="Staffing Pipeline"
         subtitle="Open requirements from first brief through to won"
         action={
           canCreate ? (
@@ -266,28 +328,33 @@ export default function PipelineClient({
         <div className="grid grid-cols-2 gap-3 px-6 pt-4 lg:grid-cols-5">
           <KpiCard
             label="Open Pipeline"
+            info="Monthly value of requirements in an active stage — deal value where set, otherwise the top of the client budget range times the headcount required. Requirements with neither are counted but contribute nothing; the note beneath says how many carry a figure."
             value={formatMoneyMulti(value.open.total)}
             note={coverageNote(value.open.valued, value.open.count) ?? 'per month'}
           />
           <KpiCard
             label="Weighted"
+            info="The same open value with each requirement multiplied by its stage\u2019s win probability: requirement 10%, qualification 25%, budgeting 40%, candidate mapping 60%, interview 75%, agreement 90%."
             value={formatMoneyMulti(value.weighted.total)}
             note="by stage win probability"
           />
           <KpiCard
             label="Won"
+            info="Value of every requirement in the won stage, over all time rather than a rolling window."
             value={formatMoneyMulti(value.won.total)}
             note={coverageNote(value.won.valued, value.won.count) ?? 'closed deals'}
             tone="good"
           />
           <KpiCard
             label="Lost"
+            info="Value of every requirement in the lost stage, over all time. Worth reading beside Won rather than alone."
             value={formatMoneyMulti(value.lost.total)}
             note={coverageNote(value.lost.valued, value.lost.count) ?? 'closed out'}
             tone={value.lost.valued > 0 ? 'bad' : 'default'}
           />
           <KpiCard
             label="Average Deal"
+            info="Mean monthly value across open requirements that carry a figure. Requirements nobody has costed are left out rather than counted as zero, which would drag the average toward nothing."
             value={
               value.average === null ? '—' : `${formatMoneyCompact(value.average, 'INR')}/mo`
             }
@@ -300,46 +367,42 @@ export default function PipelineClient({
         </div>
       )}
 
-      {/* Funnel summary */}
+      {/* Funnel summary — four states, each as requirements and the positions
+          inside them, plus the one card that is a thing to do. */}
       <div className="grid grid-cols-2 gap-3 px-6 py-4 lg:grid-cols-5">
-        <div className="card p-3">
-          <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
-            Open
-          </div>
-          <div className="tnum mt-1 text-xl font-semibold text-ink">{stats.open}</div>
-        </div>
-        <div className="card p-3">
-          <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
-            Positions
-          </div>
-          <div className="tnum mt-1 text-xl font-semibold text-ink">
-            {stats.positions}
-          </div>
-        </div>
-        <div className="card p-3">
-          <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
-            Filled
-          </div>
-          <div className="tnum mt-1 text-xl font-semibold text-emerald-600 dark:text-emerald-400">
-            {stats.filled}
-          </div>
-        </div>
-        <div className="card p-3">
-          <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
-            Follow-ups Due
-          </div>
-          <div
-            className={`tnum mt-1 text-xl font-semibold ${stats.due > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-ink'}`}
-          >
-            {stats.due}
-          </div>
-        </div>
-        <div className="card p-3">
-          <div className="text-2xs font-medium uppercase tracking-wider text-ink3">
-            On Hold
-          </div>
-          <div className="tnum mt-1 text-xl font-semibold text-ink">{stats.hold}</div>
-        </div>
+        <KpiCard
+          label="Open"
+          value={String(stats.open.count)}
+          note={positionNote(stats.open.positions)}
+          info="Requirements in one of the six active stages — requirement, qualification, budgeting, candidate mapping, interview or agreement. Won, lost and on-hold are excluded. Positions is the total headcount those requirements ask for."
+        />
+        <KpiCard
+          label="Filled"
+          value={String(stats.filled.count)}
+          tone="good"
+          note={positionNote(stats.filled.positions)}
+          info="Requirements in the won stage. Positions counts the seats actually taken — the headcount required less those still pending — so a won requirement with one seat yet to start counts the seats filled, not the seats asked for."
+        />
+        <KpiCard
+          label="On Hold"
+          value={String(stats.hold.count)}
+          note={positionNote(stats.hold.positions)}
+          info="Requirements paused at the client's or our own request. Resuming returns them to the stage they were on before the hold. Positions is the headcount sitting behind that pause."
+        />
+        <KpiCard
+          label="Lost"
+          value={String(stats.lost.count)}
+          tone={stats.lost.count > 0 ? 'bad' : 'default'}
+          note={positionNote(stats.lost.positions)}
+          info="Requirements closed without a placement, over all time rather than a rolling window. Positions is the headcount that went with them."
+        />
+        <KpiCard
+          label="Follow-ups Due"
+          value={String(stats.due)}
+          tone={stats.due > 0 ? 'bad' : 'default'}
+          note="next step today or overdue"
+          info="Requirements whose next-step date is today or has passed, in any stage. The only figure here that is a thing to do rather than a thing to know."
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
@@ -362,20 +425,43 @@ export default function PipelineClient({
           Show won / lost
         </label>
 
+        {/* Company narrows both views — unlike the stage filter, which the
+            board already expresses through its columns. */}
+        <div className="w-56">
+          <Combobox
+            value={companyFilter}
+            onChange={setCompanyFilter}
+            options={companyOptions}
+            placeholder="All companies"
+            emptyLabel="No company matches"
+          />
+        </div>
+
         {view === 'list' && (
-          <select
-            className="input max-w-48"
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
-            aria-label="Filter by stage"
-          >
-            <option value="all">All stages</option>
-            {[...ACTIVE_STAGES, 'won', 'lost', 'hold'].map((s) => (
-              <option key={s} value={s}>
-                {STAGE_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <>
+            <select
+              className="input max-w-48"
+              value={stageFilter}
+              onChange={(e) => setStageFilter(e.target.value)}
+              aria-label="Filter by stage"
+            >
+              <option value="all">All stages</option>
+              {[...ACTIVE_STAGES, 'won', 'lost', 'hold'].map((s) => (
+                <option key={s} value={s}>
+                  {STAGE_LABELS[s]}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setSortOldest((v) => !v)}
+              aria-pressed={sortOldest}
+              className={`btn-ghost ${sortOldest ? 'border-brand text-ink' : ''}`}
+            >
+              <ArrowDownWideNarrow className="h-4 w-4" />
+              Longest in stage
+            </button>
+          </>
         )}
 
         <div className="ml-auto flex rounded-md border border-line bg-surface p-0.5">
@@ -488,6 +574,16 @@ export default function PipelineClient({
                                   prospect
                                 </span>
                               )}
+                              <span
+                                className={`tnum ml-auto shrink-0 ${
+                                  daysInStage(o.stageSince) >= STALL_DAYS
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-ink3'
+                                }`}
+                                title={`In this stage since ${formatDate(o.stageSince)}`}
+                              >
+                                {daysInStageLabel(o.stageSince)}
+                              </span>
                             </div>
 
                             {showValue && (
@@ -608,6 +704,16 @@ export default function PipelineClient({
                     </td>
                     <td className="td">
                       <Badge tone={STAGE_TONE[o.stage]}>{STAGE_LABELS[o.stage]}</Badge>
+                      <div
+                        className={`tnum mt-0.5 text-2xs ${
+                          daysInStage(o.stageSince) >= STALL_DAYS
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-ink3'
+                        }`}
+                        title={`In this stage since ${formatDate(o.stageSince)}`}
+                      >
+                        {daysInStageLabel(o.stageSince)} in stage
+                      </div>
                       {o.closedReason && (
                         <div className="mt-0.5 max-w-40 truncate text-2xs text-ink3">
                           {o.closedReason}

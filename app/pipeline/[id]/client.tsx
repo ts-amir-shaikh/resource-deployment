@@ -42,6 +42,8 @@ import {
   SOURCE_LABELS,
   WORK_MODE_LABELS,
   ENGAGEMENT_LABELS,
+  daysInStage,
+  STALL_DAYS,
 } from '@/lib/utils';
 import { Modal, Field, Badge, FormSection, TableShell, type Tone } from '@/components/ui';
 import { Combobox, type ComboOption } from '@/components/combobox';
@@ -97,6 +99,7 @@ type Opportunity = {
   clientName: string | null;
   isProspect: boolean;
   followUpDue: boolean;
+  createdAt: string;
 };
 
 type Mapped = {
@@ -310,6 +313,10 @@ export default function OpportunityDetailClient({
   prospects: ProspectOption[];
 }) {
   const router = useRouter();
+  // When this stage began. `history` arrives newest first; an empty history
+  // means the requirement has never moved, so it has been where it is since
+  // the day it was logged.
+  const stageSince = history[0]?.createdAt ?? o.createdAt;
   // Mirrors the policy middleware enforces, so the UI never offers an action
   // the request would reject.
   const readOnly = role === 'management';
@@ -941,6 +948,21 @@ export default function OpportunityDetailClient({
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold tracking-tight text-ink">{o.title}</h1>
               <Badge tone={STAGE_TONE[o.stage]}>{STAGE_LABELS[o.stage]}</Badge>
+              {/* Read from the history beside it rather than stored: the most
+                  recent move is when this stage began. Nothing logged means it
+                  has not moved since it was created. */}
+              <span
+                className={`tnum text-xs ${
+                  daysInStage(stageSince) >= STALL_DAYS
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-ink3'
+                }`}
+                title={`In this stage since ${formatDate(stageSince)}`}
+              >
+                {daysInStage(stageSince) === 0
+                  ? 'moved today'
+                  : `${daysInStage(stageSince)} days in this stage`}
+              </span>
               {o.priority === 'high' && <Badge tone="rose">High priority</Badge>}
             </div>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink2">

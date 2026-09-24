@@ -145,6 +145,34 @@ export function addDays(date: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * How long something may sit untouched before it is worth flagging.
+ *
+ * One threshold for the whole app: the candidate-mapping stall list (Phase 11)
+ * and days-in-stage on the requirement both read it, so the two cannot drift
+ * into disagreeing about what "stale" means. Lives here rather than in
+ * queries.ts because that module is server-only and the boards are client
+ * components.
+ */
+export const STALL_DAYS = 14;
+
+/**
+ * Whole days since `from`, never negative.
+ *
+ * Timestamps carry a time of day; comparing them raw makes "yesterday
+ * evening" a day old and "this morning" zero, which reads as inconsistent on
+ * a board. Both ends are cut to the date first.
+ */
+export function daysInStage(since: string): number {
+  return Math.max(0, daysBetween(since.slice(0, 10), today()));
+}
+
+/** "today" / "3d" / "27d" — the compact form for a list cell or a card. */
+export function daysInStageLabel(since: string): string {
+  const d = daysInStage(since);
+  return d === 0 ? 'today' : `${d}d`;
+}
+
 /** Negative when the date is in the past. */
 export function daysUntil(date: string | null | undefined): number | null {
   if (!date) return null;

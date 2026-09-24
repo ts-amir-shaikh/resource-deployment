@@ -29,7 +29,7 @@ export const NAV: NavItem[] = [
   { href: '/my', label: 'My Work', roles: TA_ONLY },
   { href: '/leads', label: 'My Leads', roles: ['leadgen'] },
   { href: '/sales', label: 'My Deals', roles: ['sales'] },
-  { href: '/pipeline', label: 'Pipeline', roles: ALL },
+  { href: '/pipeline', label: 'Staffing Pipeline', roles: ALL },
   { href: '/candidates', label: 'Candidates', roles: FULFILMENT },
   { href: '/agents', label: 'Agents', roles: FULFILMENT },
   { href: '/resources', label: 'Resources', roles: BACK_OFFICE },

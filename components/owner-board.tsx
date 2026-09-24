@@ -100,24 +100,71 @@ export default function OwnerBoard({
       <div className={`grid grid-cols-2 gap-3 px-6 pt-4 ${isLead ? 'lg:grid-cols-6' : 'lg:grid-cols-6'}`}>
         {isLead ? (
           <>
-            <KpiCard label="Added this month" value={String(c.addedThisMonth)} />
-            <KpiCard label="Requirement" value={String(c.inRequirement)} />
-            <KpiCard label="Qualification" value={String(c.inQualification)} />
-            <KpiCard label="Budgeting" value={String(c.inBudgeting)} />
-            <KpiCard label="Handed on" value={String(c.handedOn)} tone="good" />
-            <KpiCard label="Lost" value={String(c.lost)} />
+            <KpiCard
+              label="Added this month"
+              value={String(c.addedThisMonth)}
+              info="Requirements you are the lead owner of that were created since the first of this calendar month. Counts when it was logged, not when it moved."
+            />
+            <KpiCard
+              label="Requirement"
+              value={String(c.inRequirement)}
+              info="Your leads sitting at the first stage — logged, not yet qualified. The ones with no next step are listed as a pending action below."
+            />
+            <KpiCard
+              label="Qualification"
+              value={String(c.inQualification)}
+              info="Your leads being qualified: the brief is being pinned down before anyone talks money."
+            />
+            <KpiCard
+              label="Budgeting"
+              value={String(c.inBudgeting)}
+              info="Your leads at the budgeting stage — the last one you can move. Going further is a handover, made by setting a sales owner."
+            />
+            <KpiCard
+              label="Handed on"
+              value={String(c.handedOn)}
+              tone="good"
+              info="Your leads that have moved past budgeting — candidate mapping, interview, agreement or won. Read-only to you from here, and kept visible so you can see what became of them."
+            />
+            <KpiCard
+              label="Lost"
+              value={String(c.lost)}
+              info="Your leads closed without a placement, over all time. Includes those lost after handover."
+            />
           </>
         ) : (
           <>
-            <KpiCard label="Mapping" value={String(c.inMapping)} />
-            <KpiCard label="Interview" value={String(c.inInterview)} />
-            <KpiCard label="Agreement" value={String(c.inAgreement)} />
-            <KpiCard label="Won · 90d" value={String(c.won90)} tone="good" />
-            <KpiCard label="Lost · 90d" value={String(c.lost90)} />
+            <KpiCard
+              label="Mapping"
+              value={String(c.inMapping)}
+              info="Deals you own at candidate mapping — the client has a brief and TA is putting profiles against it."
+            />
+            <KpiCard
+              label="Interview"
+              value={String(c.inInterview)}
+              info="Deals you own where candidates are in front of the client."
+            />
+            <KpiCard
+              label="Agreement"
+              value={String(c.inAgreement)}
+              info="Deals you own at the paperwork stage — agreed in principle, not yet closed."
+            />
+            <KpiCard
+              label="Won · 90d"
+              value={String(c.won90)}
+              tone="good"
+              info="Deals you own that moved to won in the last 90 days, read from the stage history. A rolling window, not this calendar month."
+            />
+            <KpiCard
+              label="Lost · 90d"
+              value={String(c.lost90)}
+              info="Deals you own that moved to lost in the last 90 days. Same window as Won, so the two read against each other."
+            />
             <KpiCard
               label="In flight"
               value={c.inFlight ? formatMoneyMulti(c.inFlight.total) : '—'}
               note="stage-weighted"
+              info="Monthly value of your open deals past qualification, each multiplied by its stage&rsquo;s win probability — candidate mapping 60%, interview 75%, agreement 90%. Requirements still at requirement or qualification are left out as too early to count."
             />
           </>
         )}

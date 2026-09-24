@@ -33,7 +33,8 @@ import {
 } from './utils';
 
 /** M30-3: a live mapping untouched this long is flagged as stalled. */
-export const STALL_DAYS = 14;
+export { STALL_DAYS } from './utils';
+import { STALL_DAYS } from './utils';
 import crypto from 'node:crypto';
 
 /* ── Allocation ────────────────────────────────────────────── */
@@ -565,6 +566,28 @@ export function newShareToken() {
 
 /** Candidates counted as filling a position. */
 const FILLED_STATUSES = ['selected', 'offered', 'joined'] as const;
+
+/**
+ * When each opportunity last changed stage, for "days in this stage".
+ *
+ * Read from the history table rather than a column on the opportunity: every
+ * move has been logged with a timestamp since Phase 2, so the answer already
+ * exists and a stored column could only drift from it.
+ *
+ * An opportunity with no history has never moved — the caller falls back to
+ * its creation date, which is the honest reading: it has sat in `requirement`
+ * since the day it was logged.
+ */
+export async function getStageSince() {
+  return await db
+    .select({
+      opportunityId: opportunityStageHistory.opportunityId,
+      since: sql<string>`max(${opportunityStageHistory.createdAt})`,
+    })
+    .from(opportunityStageHistory)
+    .groupBy(opportunityStageHistory.opportunityId)
+    .all();
+}
 
 /** Per-opportunity candidate counts, used across list and board views. */
 export async function getOpportunityCandidateCounts() {
