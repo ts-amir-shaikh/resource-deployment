@@ -41,6 +41,7 @@ import {
   Pagination,
   type Tone,
 } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 
 type Status = 'not_raised' | 'raised' | 'pending_collection' | 'collected';
 
@@ -144,6 +145,21 @@ export default function InvoicesClient({
     return [...set].sort();
   }, [initial]);
 
+  const clientFilterOptions: ComboOption[] = useMemo(
+    () => clientOptions.map((c) => ({ value: c, label: c })),
+    [clientOptions],
+  );
+
+  const projectOptions: ComboOption[] = useMemo(
+    () =>
+      projects.map((p) => ({
+        value: String(p.id),
+        label: p.projectName,
+        detail: p.clientName,
+      })),
+    [projects],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initial.filter((i) => {
@@ -204,6 +220,16 @@ export default function InvoicesClient({
 
   const agreementsForProject = agreements.filter(
     (a) => a.projectId === Number(form.projectId),
+  );
+
+  const agreementOptions: ComboOption[] = useMemo(
+    () =>
+      agreementsForProject.map((a) => ({
+        value: String(a.id),
+        label: (a.agreementNumber ?? a.title) + (a.renewalVersion > 1 ? ` (v${a.renewalVersion})` : ''),
+        detail: a.agreementNumber ? a.title : undefined,
+      })),
+    [agreementsForProject],
   );
 
   // Load the chosen agreement's registered resources + rates. Cleared when
@@ -436,19 +462,15 @@ export default function InvoicesClient({
           </button>
         )}
 
-        <select
-          className="input max-w-56"
-          value={clientFilter}
-          onChange={(e) => setClientFilter(e.target.value)}
-          aria-label="Filter by client"
-        >
-          <option value="">All clients</option>
-          {clientOptions.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <div className="w-56">
+          <Combobox
+            value={clientFilter}
+            onChange={setClientFilter}
+            options={clientFilterOptions}
+            placeholder="All clients"
+            emptyLabel="No client matches"
+          />
+        </div>
 
         <div className="ml-auto flex rounded-md border border-line bg-surface p-0.5">
           <button
@@ -732,20 +754,13 @@ export default function InvoicesClient({
           <FormSection title="Billed To">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Project" required error={errors.projectId}>
-                <select
-                  className="input"
+                <Combobox
                   value={form.projectId}
-                  onChange={(e) =>
-                    setForm({ ...form, projectId: e.target.value, agreementId: '' })
-                  }
-                >
-                  <option value="">Select a project…</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.clientName} — {p.projectName}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm({ ...form, projectId: v, agreementId: '' })}
+                  options={projectOptions}
+                  placeholder="Search projects…"
+                  emptyLabel="No project matches"
+                />
               </Field>
               <Field
                 label="Agreement / PO"
@@ -756,22 +771,14 @@ export default function InvoicesClient({
                     : 'Optional'
                 }
               >
-                <select
-                  className="input"
+                <Combobox
                   value={form.agreementId}
-                  onChange={(e) =>
-                    setForm({ ...form, agreementId: e.target.value, resourceIds: [] })
-                  }
+                  onChange={(v) => setForm({ ...form, agreementId: v, resourceIds: [] })}
+                  options={agreementOptions}
                   disabled={!form.projectId}
-                >
-                  <option value="">No PO</option>
-                  {agreementsForProject.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.agreementNumber ?? a.title}
-                      {a.renewalVersion > 1 ? ` (v${a.renewalVersion})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="No PO"
+                  emptyLabel="No PO matches"
+                />
               </Field>
               <Field label="Invoice Number" error={errors.invoiceNumber}>
                 <input

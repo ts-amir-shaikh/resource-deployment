@@ -10,6 +10,7 @@
  */
 
 import { FormSection, Field } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 import { CURRENCY_OPTIONS, formatMoney, opportunityValue } from '@/lib/utils';
 
 export type OpportunityFormValues = {
@@ -45,6 +46,46 @@ export type OpportunityFormValues = {
 
 export type ClientOption = { id: number; companyName: string };
 export type ProspectOption = { id: number; companyName: string };
+
+/**
+ * Fields that describe the *engagement* rather than the *role*, kept when
+ * "Save and add another" resets the form (M48).
+ *
+ * The case this serves is a lead that arrives with several roles on it: same
+ * company, same terms, different jobs. So everything about the company and how
+ * the work is done carries; everything about the particular job — title, JD,
+ * skills, experience, headcount, budget, next step — is cleared.
+ *
+ * Skills are cleared deliberately: five roles at one client are usually five
+ * different skills, and a stale skill silently inherited is worse than one
+ * retyped.
+ */
+export const CARRIED_ON_ADD_ANOTHER = [
+  'clientId',
+  'prospectId',
+  'companyName',
+  'workMode',
+  'location',
+  'timezone',
+  'engagementType',
+  'currency',
+  'workingDays',
+  'workingHours',
+  'priority',
+  'publicCompanyLabel',
+  'showClientName',
+] as const satisfies readonly (keyof OpportunityFormValues)[];
+
+/** The blank form with the engagement-level fields of `from` kept. */
+export function nextInBatch(from: OpportunityFormValues): OpportunityFormValues {
+  const next = { ...BLANK_OPPORTUNITY };
+  for (const k of CARRIED_ON_ADD_ANOTHER) {
+    // Each key indexes both objects at the same type; the cast is only needed
+    // because TypeScript cannot prove that for a loop variable.
+    (next as Record<string, unknown>)[k] = from[k];
+  }
+  return next;
+}
 
 export const BLANK_OPPORTUNITY: OpportunityFormValues = {
   clientId: '',
@@ -178,16 +219,34 @@ export default function OpportunityFormFields({
   errors,
   clients,
   prospects = [],
+  titleRef,
 }: {
   form: OpportunityFormValues;
   setForm: (v: OpportunityFormValues) => void;
   errors: Record<string, string>;
   clients: ClientOption[];
   prospects?: ProspectOption[];
+  /** Focus target after "Save and add another" resets the form (M48). */
+  titleRef?: React.RefObject<HTMLInputElement>;
 }) {
   // One picker over clients and prospects together, encoded so a single
   // <select> can hold both kinds; '' means "a company we have not seen".
   const pick = form.clientId !== '' ? `c:${form.clientId}` : form.prospectId !== '' ? `p:${form.prospectId}` : '';
+  // Clients and prospects in one list, prefixed so a single string value can
+  // say which kind it is. Clearing the picker (the X) is what selects "a
+  // company we have not seen" — the typed name then creates the prospect.
+  const companyOptions: ComboOption[] = [
+    ...clients.map((c) => ({
+      value: `c:${c.id}`,
+      label: c.companyName,
+      group: 'Clients',
+    })),
+    ...prospects.map((p) => ({
+      value: `p:${p.id}`,
+      label: p.companyName,
+      group: 'Prospects',
+    })),
+  ];
   // Shown as the placeholder and hint, so it is obvious what leaving the
   // override blank will actually produce.
   const derived = opportunityValue({
@@ -204,13 +263,11 @@ export default function OpportunityFormFields({
           <Field
             label="Client or prospect"
             error={errors.clientId ?? errors.prospectId}
-            hint="Pick an existing one, or leave unset and type a new prospect's name"
+            hint="Search for one, or clear the field and type a new prospect's name"
           >
-            <select
-              className="input"
+            <Combobox
               value={pick}
-              onChange={(e) => {
-                const v = e.target.value;
+              onChange={(v) => {
                 if (v.startsWith('c:')) {
                   const id = v.slice(2);
                   setForm({
@@ -231,27 +288,10 @@ export default function OpportunityFormFields({
                   setForm({ ...form, clientId: '', prospectId: '', companyName: '' });
                 }
               }}
-            >
-              <option value="">New prospect — type the name →</option>
-              {clients.length > 0 && (
-                <optgroup label="Clients">
-                  {clients.map((c) => (
-                    <option key={`c${c.id}`} value={`c:${c.id}`}>
-                      {c.companyName}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {prospects.length > 0 && (
-                <optgroup label="Prospects">
-                  {prospects.map((p) => (
-                    <option key={`p${p.id}`} value={`p:${p.id}`}>
-                      {p.companyName}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+              options={companyOptions}
+              placeholder="Search clients and prospects…"
+              emptyLabel="No match — clear this to add a new prospect"
+            />
           </Field>
           <Field
             label="Company Name"
@@ -277,6 +317,7 @@ export default function OpportunityFormFields({
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Title" required error={errors.title} className="sm:col-span-2">
             <input
+              ref={titleRef}
               className="input"
               placeholder="e.g. FullStack Engineer (Angular + MVC + C#)"
               value={form.title}

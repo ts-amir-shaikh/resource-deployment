@@ -27,6 +27,7 @@ import {
   AllocationBar,
   Pagination,
 } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 
 type Row = {
   id: number;
@@ -131,6 +132,21 @@ export default function DeploymentsClient({
     return [...set].sort();
   }, [initial]);
 
+  const clientFilterOptions: ComboOption[] = useMemo(
+    () => clientOptions.map((c) => ({ value: c, label: c })),
+    [clientOptions],
+  );
+
+  const projectOptions: ComboOption[] = useMemo(
+    () =>
+      projects.map((p) => ({
+        value: String(p.id),
+        label: p.projectName,
+        detail: p.clientName,
+      })),
+    [projects],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initial.filter((d) => {
@@ -212,6 +228,36 @@ export default function DeploymentsClient({
     const narrowed = resources.filter((r) => ids.has(r.id));
     return narrowed.length ? narrowed : resources;
   }, [resources, agreementResources]);
+
+  // Rate and headroom are display-only, so they stay out of `search`: nobody
+  // types a rupee figure to find a person.
+  const resourceOptions: ComboOption[] = useMemo(
+    () =>
+      resourceOptionsForForm.map((r) => {
+        const rate = agreementResources.find((ar) => ar.resourceId === r.id);
+        return {
+          value: String(r.id),
+          label: r.name,
+          search: r.name,
+          detail:
+            `${r.free}% free` +
+            (rate ? ` · ${formatMoney(rate.billingAmount, form.currency)}/mo` : ''),
+        };
+      }),
+    [resourceOptionsForForm, agreementResources, form.currency],
+  );
+
+  const agreementOptions: ComboOption[] = useMemo(
+    () =>
+      agreementsForProject.map((a) => ({
+        value: String(a.id),
+        label:
+          (a.agreementNumber ?? a.title) +
+          (a.renewalVersion > 1 ? ` (v${a.renewalVersion})` : ''),
+        detail: a.agreementNumber ? a.title : undefined,
+      })),
+    [agreementsForProject],
+  );
 
   function handleResourceChange(resourceId: string) {
     const rate = agreementResources.find((r) => String(r.resourceId) === resourceId);
@@ -406,19 +452,15 @@ export default function DeploymentsClient({
           ))}
         </div>
 
-        <select
-          className="input max-w-56"
-          value={clientFilter}
-          onChange={(e) => setClientFilter(e.target.value)}
-          aria-label="Filter by client"
-        >
-          <option value="">All clients</option>
-          {clientOptions.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+        <div className="w-56">
+          <Combobox
+            value={clientFilter}
+            onChange={setClientFilter}
+            options={clientFilterOptions}
+            placeholder="All clients"
+            emptyLabel="No client matches"
+          />
+        </div>
       </div>
 
       <div className="px-6">
@@ -562,18 +604,13 @@ export default function DeploymentsClient({
           <FormSection title="Assignment">
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Project" required error={errors.projectId}>
-                <select
-                  className="input"
+                <Combobox
                   value={form.projectId}
-                  onChange={(e) => handleProjectChange(e.target.value)}
-                >
-                  <option value="">Select a project…</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.clientName} — {p.projectName}
-                    </option>
-                  ))}
-                </select>
+                  onChange={handleProjectChange}
+                  options={projectOptions}
+                  placeholder="Search projects…"
+                  emptyLabel="No project matches"
+                />
               </Field>
 
               <Field
@@ -585,20 +622,14 @@ export default function DeploymentsClient({
                     : 'Optional — narrows the resource list to its rate card'
                 }
               >
-                <select
-                  className="input"
+                <Combobox
                   value={form.agreementId}
-                  onChange={(e) => setForm({ ...form, agreementId: e.target.value })}
+                  onChange={(v) => setForm({ ...form, agreementId: v })}
+                  options={agreementOptions}
                   disabled={!form.projectId}
-                >
-                  <option value="">No agreement</option>
-                  {agreementsForProject.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.agreementNumber ?? a.title}
-                      {a.renewalVersion > 1 ? ` (v${a.renewalVersion})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="No agreement"
+                  emptyLabel="No agreement matches"
+                />
               </Field>
 
               <Field
@@ -613,22 +644,13 @@ export default function DeploymentsClient({
                       : undefined
                 }
               >
-                <select
-                  className="input"
+                <Combobox
                   value={form.resourceId}
-                  onChange={(e) => handleResourceChange(e.target.value)}
-                >
-                  <option value="">Select a resource…</option>
-                  {resourceOptionsForForm.map((r) => {
-                    const rate = agreementResources.find((ar) => ar.resourceId === r.id);
-                    return (
-                      <option key={r.id} value={r.id}>
-                        {r.name} — {r.free}% free
-                        {rate ? ` · ${formatMoney(rate.billingAmount, form.currency)}/mo` : ''}
-                      </option>
-                    );
-                  })}
-                </select>
+                  onChange={handleResourceChange}
+                  options={resourceOptions}
+                  placeholder="Search by name…"
+                  emptyLabel="No resource matches"
+                />
               </Field>
             </div>
 

@@ -26,6 +26,7 @@ import {
   Pagination,
   type Tone,
 } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 
 type Row = {
   id: number;
@@ -189,6 +190,16 @@ export default function CandidatesClient({
   }
 
   /** Picking a bench resource pre-fills the profile from their record. */
+  const resourceOptions: ComboOption[] = useMemo(
+    () =>
+      resources.map((r) => ({
+        value: String(r.id),
+        label: r.name,
+        detail: r.designation ?? undefined,
+      })),
+    [resources],
+  );
+
   function pickResource(value: string) {
     const r = resources.find((x) => String(x.id) === value);
     if (!r) {
@@ -506,19 +517,13 @@ export default function CandidatesClient({
                   error={errors.resourceId}
                   hint="Optional — picking one fills the profile from their resource record"
                 >
-                  <select
-                    className="input"
+                  <Combobox
                     value={form.resourceId}
-                    onChange={(e) => pickResource(e.target.value)}
-                  >
-                    <option value="">Not linked — enter details manually</option>
-                    {resources.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                        {r.designation ? ` — ${r.designation}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={pickResource}
+                    options={resourceOptions}
+                    placeholder="Not linked — enter details manually"
+                    emptyLabel="No bench resource matches"
+                  />
                 </Field>
               ) : needsPartner ? (
                 <Field

@@ -36,6 +36,7 @@ import {
   Pagination,
   type Tone,
 } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 
 type Row = {
   id: number;
@@ -119,6 +120,26 @@ export default function AgreementsClient({
   /** null = creating new; a Row = renewing that version */
   const [renewingFrom, setRenewingFrom] = useState<Row | null>(null);
   const [form, setForm] = useState(BLANK);
+
+  const projectOptions: ComboOption[] = useMemo(
+    () =>
+      projects.map((p) => ({
+        value: String(p.id),
+        label: p.projectName,
+        detail: p.clientName,
+      })),
+    [projects],
+  );
+
+  const resourceOptions: ComboOption[] = useMemo(
+    () =>
+      resources.map((r) => ({
+        value: String(r.id),
+        label: r.name,
+        detail: r.designation ?? undefined,
+      })),
+    [resources],
+  );
   const [lines, setLines] = useState<ResourceLine[]>([
     { resourceId: '', billingAmount: '' },
   ]);
@@ -603,19 +624,14 @@ export default function AgreementsClient({
           <FormSection title="Agreement">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Project" required error={errors.projectId}>
-                <select
-                  className="input"
+                <Combobox
                   value={form.projectId}
-                  onChange={(e) => setForm({ ...form, projectId: e.target.value })}
+                  onChange={(v) => setForm({ ...form, projectId: v })}
+                  options={projectOptions}
                   disabled={Boolean(renewingFrom)}
-                >
-                  <option value="">Select a project…</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.clientName} — {p.projectName}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Search projects…"
+                  emptyLabel="No project matches"
+                />
               </Field>
               <Field label="PO / Agreement Number" error={errors.agreementNumber}>
                 <input
@@ -731,23 +747,19 @@ export default function AgreementsClient({
             <div className="space-y-2">
               {lines.map((line, i) => (
                 <div key={i} className="flex gap-2">
-                  <select
-                    className="input flex-1"
-                    value={line.resourceId}
-                    onChange={(e) => {
-                      const next = [...lines];
-                      next[i] = { ...next[i], resourceId: e.target.value };
-                      setLines(next);
-                    }}
-                  >
-                    <option value="">Select a resource…</option>
-                    {resources.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                        {r.designation ? ` — ${r.designation}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex-1">
+                    <Combobox
+                      value={line.resourceId}
+                      onChange={(v) => {
+                        const next = [...lines];
+                        next[i] = { ...next[i], resourceId: v };
+                        setLines(next);
+                      }}
+                      options={resourceOptions}
+                      placeholder="Search resources…"
+                      emptyLabel="No resource matches"
+                    />
+                  </div>
                   <input
                     className="input w-40"
                     type="number"
@@ -978,23 +990,19 @@ export default function AgreementsClient({
               <div className="space-y-2">
                 {correctLines.map((line, i) => (
                   <div key={i} className="flex gap-2">
-                    <select
-                      className="input flex-1"
-                      value={line.resourceId}
-                      onChange={(e) => {
-                        const next = [...correctLines];
-                        next[i] = { ...next[i], resourceId: e.target.value };
-                        setCorrectLines(next);
-                      }}
-                    >
-                      <option value="">Select a resource…</option>
-                      {resources.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.name}
-                          {r.designation ? ` — ${r.designation}` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex-1">
+                      <Combobox
+                        value={line.resourceId}
+                        onChange={(v) => {
+                          const next = [...correctLines];
+                          next[i] = { ...next[i], resourceId: v };
+                          setCorrectLines(next);
+                        }}
+                        options={resourceOptions}
+                        placeholder="Search resources…"
+                        emptyLabel="No resource matches"
+                      />
+                    </div>
                     <input
                       className="input w-40"
                       type="number"

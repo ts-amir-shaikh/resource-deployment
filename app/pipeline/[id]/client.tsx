@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -44,6 +44,7 @@ import {
   ENGAGEMENT_LABELS,
 } from '@/lib/utils';
 import { Modal, Field, Badge, FormSection, TableShell, type Tone } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 import type { Role } from '@/lib/auth';
 import OpportunityFormFields, {
   toFormValues,
@@ -738,6 +739,23 @@ export default function OpportunityDetailClient({
   const joined = mapped.filter((m) => m.status === 'joined').length;
   const isTerminal = ['won', 'lost'].includes(o.stage);
   const alreadyMapped = new Set(mapped.map((m) => m.candidateId));
+
+  // Someone already on this requirement is not offered again; skill and source
+  // are searchable because that is how a recruiter recalls a half-known name.
+  const candidateOptions: ComboOption[] = useMemo(
+    () =>
+      pool
+        .filter((c) => !alreadyMapped.has(c.id))
+        .map((c) => ({
+          value: String(c.id),
+          label: c.name,
+          detail:
+            (c.primarySkill ? `${c.primarySkill} · ` : '') + SOURCE_LABELS[c.source],
+          search: `${c.name} ${c.primarySkill ?? ''} ${SOURCE_LABELS[c.source]}`,
+        })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pool, mapped],
+  );
 
   const shareUrl =
     typeof window !== 'undefined'
@@ -2019,24 +2037,13 @@ export default function OpportunityDetailClient({
         <div className="space-y-4">
           {!editingMap && (
             <Field label="Candidate" required>
-              <select
-                className="input"
+              <Combobox
                 value={mapForm.candidateId}
-                onChange={(e) =>
-                  setMapForm({ ...mapForm, candidateId: e.target.value })
-                }
-              >
-                <option value="">Select a candidate…</option>
-                {pool
-                  .filter((c) => !alreadyMapped.has(c.id))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {c.primarySkill ? ` — ${c.primarySkill}` : ''}
-                      {` (${SOURCE_LABELS[c.source]})`}
-                    </option>
-                  ))}
-              </select>
+                onChange={(v) => setMapForm({ ...mapForm, candidateId: v })}
+                options={candidateOptions}
+                placeholder="Search by name or skill…"
+                emptyLabel="No candidate matches — everyone else is already mapped"
+              />
             </Field>
           )}
 

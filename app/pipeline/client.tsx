@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -37,6 +37,7 @@ import OpportunityFormFields, {
   toPayload,
   type ClientOption,
   type ProspectOption,
+  nextInBatch,
   type OpportunityFormValues,
 } from '@/components/opportunity-form';
 import {
@@ -141,6 +142,8 @@ export default function PipelineClient({
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<OpportunityFormValues>(BLANK_OPPORTUNITY);
+  const [addedInBatch, setAddedInBatch] = useState(0);
+  const titleRef = useRef<HTMLInputElement>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -204,10 +207,16 @@ export default function PipelineClient({
     setForm(BLANK_OPPORTUNITY);
     setErrors({});
     setBanner(null);
+    setAddedInBatch(0);
     setOpen(true);
   }
 
-  async function save() {
+  /**
+   * `andAnother` keeps the modal open and resets only the role-level fields,
+   * so a lead carrying several roles is entered in one sitting (M48). The
+   * request itself is identical either way.
+   */
+  async function save(andAnother = false) {
     setSaving(true);
     setErrors({});
     setBanner(null);
@@ -216,8 +225,20 @@ export default function PipelineClient({
         method: 'POST',
         json: toPayload(form, clients, prospects),
       });
-      setOpen(false);
-      router.refresh();
+      if (andAnother) {
+        setForm(nextInBatch(form));
+        setAddedInBatch((n) => n + 1);
+        // The list behind updates as each one lands rather than all at the end.
+        router.refresh();
+        // Back to the first field that actually changes between roles. A
+        // timeout rather than requestAnimationFrame: rAF does not fire in a
+        // hidden tab, so a batch continued after switching away would land the
+        // cursor nowhere.
+        setTimeout(() => titleRef.current?.focus(), 0);
+      } else {
+        setOpen(false);
+        router.refresh();
+      }
     } catch (e) {
       if (isApiError(e) && e.fields) setErrors(e.fields);
       setBanner(errorMessage(e));
@@ -664,13 +685,22 @@ export default function PipelineClient({
           errors={errors}
           clients={clients}
           prospects={prospects}
+          titleRef={titleRef}
         />
 
-        <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4">
+          {addedInBatch > 0 && (
+            <span className="mr-auto text-xs text-ink2" role="status">
+              {addedInBatch} added · company and terms carried over
+            </span>
+          )}
           <button className="btn-ghost" onClick={() => setOpen(false)}>
-            Cancel
+            {addedInBatch > 0 ? 'Done' : 'Cancel'}
           </button>
-          <button className="btn-primary" onClick={save} disabled={saving}>
+          <button className="btn-ghost" onClick={() => save(true)} disabled={saving}>
+            Save and add another
+          </button>
+          <button className="btn-primary" onClick={() => save()} disabled={saving}>
             {saving ? 'Saving…' : 'Add Opportunity'}
           </button>
         </div>

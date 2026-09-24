@@ -12,6 +12,7 @@ import { errorMessage, isApiError } from '@/lib/client';
 import { formatDate } from '@/lib/utils';
 import type { Role } from '@/lib/auth';
 import { Badge, PageHeader, Field, EmptyState } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 
 type AgentKind =
   | 'jd_evaluator'
@@ -83,6 +84,16 @@ export default function AgentsClient({
     title: '', jd: '', roleDetails: '', referenceTemplate: '', resumeText: '',
     notes: '', opportunityId: '',
   });
+
+  const requirementOptions: ComboOption[] = useMemo(
+    () =>
+      requirements.map((r) => ({
+        value: String(r.id),
+        label: r.title,
+        detail: r.companyName,
+      })),
+    [requirements],
+  );
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -236,18 +247,13 @@ export default function AgentsClient({
                     label="Use a requirement from the pipeline"
                     hint="Pulls its JD and details — no need to paste what the system already holds"
                   >
-                    <select
-                      className="input"
+                    <Combobox
                       value={form.opportunityId}
-                      onChange={(e) => setForm({ ...form, opportunityId: e.target.value })}
-                    >
-                      <option value="">Not linked — I will paste the JD</option>
-                      {requirements.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.title} · {r.companyName}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setForm({ ...form, opportunityId: v })}
+                      options={requirementOptions}
+                      placeholder="Not linked — I will paste the JD"
+                      emptyLabel="No requirement matches"
+                    />
                   </Field>
 
                   {!form.opportunityId && (
