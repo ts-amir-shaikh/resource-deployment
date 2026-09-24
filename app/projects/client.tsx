@@ -16,6 +16,7 @@ import {
   Badge,
   Pagination,
 } from '@/components/ui';
+import { Combobox, type ComboOption } from '@/components/combobox';
 
 type Row = {
   id: number;
@@ -56,6 +57,11 @@ export default function ProjectsClient({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState(BLANK);
+
+  const clientOptions: ComboOption[] = useMemo(
+    () => clients.map((c) => ({ value: String(c.id), label: c.companyName })),
+    [clients],
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -157,19 +163,15 @@ export default function ProjectsClient({
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <select
-          className="input max-w-56"
-          value={clientFilter}
-          onChange={(e) => setClientFilter(e.target.value)}
-          aria-label="Filter by client"
-        >
-          <option value="">All clients</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.companyName}
-            </option>
-          ))}
-        </select>
+        <div className="w-56">
+          <Combobox
+            value={clientFilter}
+            onChange={setClientFilter}
+            options={clientOptions}
+            placeholder="All clients"
+            emptyLabel="No client matches"
+          />
+        </div>
         <div className="flex rounded-md border border-line bg-surface p-0.5">
           {(['all', 'deployed', 'none'] as const).map((d) => (
             <button
@@ -306,18 +308,13 @@ export default function ProjectsClient({
           <FormSection title="Project">
             <div className="grid gap-3">
               <Field label="Client" required error={errors.clientId}>
-                <select
-                  className="input"
+                <Combobox
                   value={form.clientId}
-                  onChange={(e) => setForm({ ...form, clientId: e.target.value })}
-                >
-                  <option value="">Select a client…</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.companyName}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm({ ...form, clientId: v })}
+                  options={clientOptions}
+                  placeholder="Search clients…"
+                  emptyLabel="No client matches"
+                />
               </Field>
               <Field label="Project Name" required error={errors.projectName}>
                 <input
