@@ -16,3 +16,13 @@ tsconfig.tsbuildinfo
 *.db-wal
 *.db-shm
 data/
+
+# Real data exports used by the CSV importers. The templates under
+# scripts/import/templates/ are headers only and stay tracked; a filled-in
+# file at the repo root carries live client, project and salary data and must
+# not reach the remote.
+/clients.csv
+/projects.csv
+/resources.csv
+/candidates.csv
+/deployments.csv
