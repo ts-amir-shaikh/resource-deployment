@@ -70,11 +70,25 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
       resourceId: resources.id,
       resourceName: resources.name,
       designation: resources.designation,
+      monthlyRate: invoiceResources.monthlyRate,
+      workingDays: invoiceResources.workingDays,
+      leaveDays: invoiceResources.leaveDays,
+      deploymentDate: invoiceResources.deploymentDate,
+      lastWorkingDate: invoiceResources.lastWorkingDate,
+      billedDays: invoiceResources.billedDays,
+      lineAmount: invoiceResources.amount,
     })
     .from(invoiceResources)
     .innerJoin(resources, eq(invoiceResources.resourceId, resources.id))
     .where(eq(invoiceResources.invoiceId, id))
     .all();
+
+  // Lines saved before the day-count fields existed carry no rate and no
+  // amount, so their columns would read as a row of zeros — which is a
+  // stronger claim than "we don't know". Those invoices are shown as the bare
+  // list of names they were.
+  const itemised = covered.some((c) => c.lineAmount > 0 || c.monthlyRate > 0);
+  const lineTotal = covered.reduce((s, c) => s + c.lineAmount, 0);
 
   const overdue = isInvoiceOverdue(row.status, row.dueDate);
   const total = row.amount + row.gstAmount;
@@ -140,13 +154,17 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
           <DetailSection
             title="Resources Covered"
             count={covered.length}
-            hint="An invoice need not cover every resource on the agreement"
+            hint={
+              itemised
+                ? 'Each line priced on its own day count for this period'
+                : 'An invoice need not cover every resource on the agreement'
+            }
           >
             {covered.length === 0 ? (
               <DetailEmpty>
                 No specific resources tagged — this invoice is not itemised.
               </DetailEmpty>
-            ) : (
+            ) : !itemised ? (
               <TableShell>
                 <thead className="border-b border-line bg-surface2">
                   <tr>
@@ -170,6 +188,89 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
                   ))}
                 </tbody>
               </TableShell>
+            ) : (
+              <>
+                <TableShell>
+                  <thead className="border-b border-line bg-surface2">
+                    <tr>
+                      <th className="th">Resource</th>
+                      <th className="th text-right">Rate/mo</th>
+                      <th className="th text-right">Days billed</th>
+                      <th className="th">Leave</th>
+                      <th className="th">On the engagement</th>
+                      <th className="th text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {covered.map((c) => (
+                      <tr key={c.resourceId}>
+                        <td className="td">
+                          <Link
+                            href={`/resources/${c.resourceId}`}
+                            className="font-medium text-ink hover:text-brand"
+                          >
+                            {c.resourceName}
+                          </Link>
+                          <div className="text-2xs text-ink3">{c.designation ?? '—'}</div>
+                        </td>
+                        <td className="td tnum text-right text-ink2">
+                          {formatMoney(c.monthlyRate, row.currency)}
+                        </td>
+                        <td className="td tnum text-right">
+                          {c.workingDays == null || c.billedDays == null ? (
+                            <span className="text-xs text-ink3">Full month</span>
+                          ) : (
+                            <span
+                              className={
+                                c.billedDays < c.workingDays
+                                  ? 'font-medium text-amber-700 dark:text-amber-400'
+                                  : 'text-ink'
+                              }
+                            >
+                              {c.billedDays} / {c.workingDays}
+                            </span>
+                          )}
+                        </td>
+                        <td className="td tnum text-xs text-ink2">
+                          {c.leaveDays > 0 ? `${c.leaveDays}d` : '—'}
+                        </td>
+                        <td className="td text-xs text-ink2">
+                          {c.deploymentDate || c.lastWorkingDate ? (
+                            <>
+                              {c.deploymentDate
+                                ? `from ${formatDate(c.deploymentDate)}`
+                                : 'from period start'}
+                              <div className="text-2xs text-ink3">
+                                {c.lastWorkingDate
+                                  ? `to ${formatDate(c.lastWorkingDate)}`
+                                  : 'to period end'}
+                              </div>
+                            </>
+                          ) : (
+                            'Whole period'
+                          )}
+                        </td>
+                        <td className="td tnum text-right font-medium text-ink">
+                          {formatMoney(c.lineAmount, row.currency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </TableShell>
+                <div className="flex items-baseline justify-between border-t border-line px-4 py-2.5">
+                  <span className="text-xs text-ink2">Lines total (pre-GST)</span>
+                  <span className="tnum text-sm font-semibold text-ink">
+                    {formatMoney(lineTotal, row.currency)}
+                  </span>
+                </div>
+                {Math.round(lineTotal) !== Math.round(row.amount) && (
+                  <p className="border-t border-line px-4 py-2 text-2xs text-amber-700 dark:text-amber-400">
+                    The invoice was raised at {formatMoney(row.amount, row.currency)}{' '}
+                    pre-GST, which differs from the lines above. The invoice amount is
+                    what the client was billed.
+                  </p>
+                )}
+              </>
             )}
           </DetailSection>
 

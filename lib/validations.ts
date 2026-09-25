@@ -246,6 +246,43 @@ export const agreementCorrectSchema = agreementBase
 
 /* ── Invoices ──────────────────────────────────────────────── */
 
+/**
+ * One billed resource, with the day count behind their share.
+ *
+ * `workingDays` absent is meaningful rather than missing: it says this line is
+ * a flat monthly rate and nothing is being pro-rated, which is how invoices
+ * were raised before these fields existed. The dates are unbounded here on
+ * purpose — a deployment date before the period simply means "already on it",
+ * and `invoiceLineMath` clamps both ends to the period rather than rejecting
+ * them, so re-using last month's lines on this month's invoice is not an error.
+ */
+const invoiceLineEntry = z
+  .object({
+    resourceId: z.coerce.number().int().positive('Select a resource'),
+    monthlyRate: money.default(0),
+    workingDays: z
+      .union([z.literal(''), z.null(), z.coerce.number()])
+      .optional()
+      .transform((v) => (v === '' || v === null || v === undefined ? undefined : Number(v)))
+      .refine((v) => v === undefined || (v > 0 && v <= 31), {
+        message: 'Working days must be between 1 and 31',
+      }),
+    leaveDays: z.coerce.number().min(0, 'Leave days cannot be negative').default(0),
+    deploymentDate: optionalDate,
+    lastWorkingDate: optionalDate,
+  })
+  .refine(
+    (d) => !d.deploymentDate || !d.lastWorkingDate || d.lastWorkingDate >= d.deploymentDate,
+    {
+      message: 'Last working date cannot be before the deployment date',
+      path: ['lastWorkingDate'],
+    },
+  )
+  .refine((d) => d.workingDays === undefined || d.leaveDays <= d.workingDays, {
+    message: 'Leave cannot exceed the working days in the month',
+    path: ['leaveDays'],
+  });
+
 export const invoiceSchema = z
   .object({
     projectId: z.coerce.number().int().positive('Select a project'),
@@ -269,11 +306,15 @@ export const invoiceSchema = z
     invoiceDate: optionalDate,
     dueDate: optionalDate,
     notes: optionalStr,
-    resourceIds: z.array(z.coerce.number().int().positive()).default([]),
+    lines: z.array(invoiceLineEntry).default([]),
   })
   .refine((d) => d.periodTo >= d.periodFrom, {
     message: 'Period end cannot be before period start',
     path: ['periodTo'],
+  })
+  .refine((d) => new Set(d.lines.map((l) => l.resourceId)).size === d.lines.length, {
+    message: 'A resource can only appear once on an invoice',
+    path: ['lines'],
   })
   .refine((d) => d.currency === 'INR' || d.gstAmount === 0, {
     message: 'GST is an Indian tax and cannot apply to a foreign-currency invoice',

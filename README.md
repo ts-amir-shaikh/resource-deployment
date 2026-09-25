@@ -107,6 +107,10 @@ deployments cannot exceed 100%. Both billable and shadow deployments consume
 capacity. Violations return `409` with the remaining headroom, which the form
 surfaces inline before submit.
 
+Allocation is typed as a whole percentage (1–100) with 25/50/75/100 presets
+alongside, rather than dragged on a slider. The slider stepped in fives, so the
+split a three-way share actually needs — 33% — could not be expressed at all.
+
 A resource can therefore be:
 - 100% billable on one project
 - 60% billable on Client A + 40% billable on Client B (split billing)
@@ -161,12 +165,44 @@ falls back to the full bench, unchanged. Deleting an agreement is blocked
 while any deployment still references it.
 
 **Invoices pull price and resource details from the agreement**, once one is
-selected: the "Resources Covered" picker becomes a checklist of that
+selected: the "Billed Resources" picker becomes a checklist of that
 agreement's registered resources with their rates, and `amount` is the live
 sum of whichever are checked — not retyped by hand, and still editable after.
 Raising an invoice for a subset of an agreement's resources is the normal
 case, not an exception: nothing requires including everyone on the PO. No
-agreement selected keeps the original manual entry + full-bench picker.
+agreement selected keeps the manual entry + full-bench picker; there each rate
+is typed instead of read off a rate card.
+
+**Invoice lines are pro-rated per resource.** Each billed resource carries four
+figures for the period — working days in the month, leave days, deployment
+date and last working day — and the line's amount is derived from them:
+
+```
+billed days = (working days × share of the period on the engagement) − leave
+line amount = monthly rate × billed days ÷ working days
+```
+
+The partial-month share is measured in **calendar** days, not weekdays. The
+application holds no holiday calendar and does not know whether a given client
+works five days or six; the biller has already said how many days the month is
+worth, so scaling that by the calendar share needs no further assumption.
+Someone on the engagement for 17 of a 31-day period bills 17/31 of the month's
+working days, rounded to the nearest half day. A resource present for the whole
+period bills `working days − leave` exactly, with no rounding involved.
+
+Leaving working days blank means *not pro-rated*: the line is a flat monthly
+rate and the other three fields are ignored. That is what every invoice raised
+before this feature is, and those rows keep NULL day counts rather than a
+backfilled guess — the detail page shows them as the plain list of names they
+were rather than a table of zeros.
+
+Billed days are floored at 0 and capped at the month's working days, so leave
+longer than the month cannot produce a credit note by accident and a bad date
+cannot bill more than a full month. The invoice `amount` follows the sum of the
+lines while it is untouched and stays editable; once it diverges, both figures
+are saved as they stand and every screen that shows them says which is which.
+The stored `billed_days` and per-line `amount` are always recomputed
+server-side from the four inputs, never taken from the request.
 
 **Sharing is by unguessable token, with no authentication.** `/share/[token]`
 exposes the requirement and JD only — never budget, client contacts, candidate

@@ -255,6 +255,47 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'prospect_id',
     ddl: 'ALTER TABLE opportunities ADD COLUMN prospect_id INTEGER',
   },
+  // Phase 13 — pro-rated invoice lines. Every column is nullable or defaults
+  // to a value that means "nothing was pro-rated", which is the truth about
+  // every invoice raised before this: they were priced at a flat monthly rate
+  // with no day count behind them. working_days and billed_days stay NULL on
+  // those rows rather than being backfilled with a guessed 22 — a line with no
+  // recorded day count reads as a flat month, which is what it was.
+  {
+    table: 'invoice_resources',
+    column: 'monthly_rate',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN monthly_rate REAL NOT NULL DEFAULT 0',
+  },
+  {
+    table: 'invoice_resources',
+    column: 'working_days',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN working_days REAL',
+  },
+  {
+    table: 'invoice_resources',
+    column: 'leave_days',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN leave_days REAL NOT NULL DEFAULT 0',
+  },
+  {
+    table: 'invoice_resources',
+    column: 'deployment_date',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN deployment_date TEXT',
+  },
+  {
+    table: 'invoice_resources',
+    column: 'last_working_date',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN last_working_date TEXT',
+  },
+  {
+    table: 'invoice_resources',
+    column: 'billed_days',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN billed_days REAL',
+  },
+  {
+    table: 'invoice_resources',
+    column: 'amount',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN amount REAL NOT NULL DEFAULT 0',
+  },
   {
     table: 'candidate_ratings',
     column: 'interview_id',

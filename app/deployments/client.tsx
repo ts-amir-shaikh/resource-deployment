@@ -694,8 +694,13 @@ export default function DeploymentsClient({
                 </div>
               </Field>
 
+              {/* A typed field, not a slider. The slider stepped in fives, so
+                  the split a three-way share actually needs — 33% — could not
+                  be entered at all, and a keyboard or screen-reader user had
+                  no way to state a figure they already knew. The presets keep
+                  the common splits one click away. */}
               <Field
-                label={`Allocation — ${form.allocationPercentage}%`}
+                label="Allocation %"
                 required
                 error={errors.allocationPercentage}
                 hint={
@@ -704,17 +709,38 @@ export default function DeploymentsClient({
                     : 'Select a resource to see available headroom'
                 }
               >
-                <input
-                  type="range"
-                  min={1}
-                  max={100}
-                  step={5}
-                  value={form.allocationPercentage}
-                  onChange={(e) =>
-                    setForm({ ...form, allocationPercentage: e.target.value })
-                  }
-                  className="w-full accent-[rgb(var(--accent))]"
-                />
+                <div className="flex gap-2">
+                  <input
+                    className="input tnum w-24"
+                    type="number"
+                    min={1}
+                    max={100}
+                    step={1}
+                    inputMode="numeric"
+                    value={form.allocationPercentage}
+                    onChange={(e) =>
+                      setForm({ ...form, allocationPercentage: e.target.value })
+                    }
+                  />
+                  <div className="flex flex-1 gap-1">
+                    {[25, 50, 75, 100].map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() =>
+                          setForm({ ...form, allocationPercentage: String(p) })
+                        }
+                        className={`flex-1 rounded border px-1.5 py-1.5 text-xs font-medium transition-colors ${
+                          Number(form.allocationPercentage) === p
+                            ? 'border-brand bg-brandbg text-brand'
+                            : 'border-line bg-surface text-ink2 hover:bg-surface2'
+                        }`}
+                      >
+                        {p}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </Field>
             </div>
 

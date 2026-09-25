@@ -524,3 +524,157 @@ export function deploymentMoney(d: {
     isCost,
   };
 }
+
+/* ── Invoice lines: pro-rating a part month ────────────────── */
+
+/** The four figures a biller types per resource, plus the period they sit in. */
+export type InvoiceLineBasis = {
+  /** Full-month rate for this resource, in the invoice's currency. */
+  monthlyRate: number;
+  /**
+   * Working days the client's month is billed on — 22 for a five-day week,
+   * 26 for six, whatever the SOW says. Null means "don't pro-rate": the line
+   * is a flat monthly rate and the three fields below are ignored.
+   */
+  workingDays: number | null;
+  /** Days of leave taken inside the period. Half days are allowed. */
+  leaveDays: number;
+  /** First day on the engagement, when the resource joined mid-period. */
+  deploymentDate: string | null;
+  /** Last day, when the resource rolled off mid-period. */
+  lastWorkingDate: string | null;
+  periodFrom: string;
+  periodTo: string;
+};
+
+export type InvoiceLineMath = {
+  /** Calendar days in the billing period. */
+  daysInPeriod: number;
+  /** Calendar days of it the resource was actually on the engagement. */
+  daysOnSite: number;
+  /** Working days that window is worth, before leave. Null when not pro-rated. */
+  availableDays: number | null;
+  /** What the client is billed for: available days less leave. */
+  billedDays: number | null;
+  amount: number;
+  /** True when the line came out below a full month, for whatever reason. */
+  prorated: boolean;
+};
+
+/** To the nearest half day — half days are a real unit on a leave register. */
+function roundHalf(n: number): number {
+  return Math.round(n * 2) / 2;
+}
+
+/**
+ * What one resource is worth on one invoice.
+ *
+ *   billed days = (working days × share of the period they were on) − leave
+ *   amount      = monthly rate × billed days ÷ working days
+ *
+ * Three decisions the sentence leaves open, settled here so the form preview
+ * and the saved record cannot settle them differently:
+ *
+ * - The partial-month share is measured in CALENDAR days, not weekdays. The
+ *   application holds no holiday calendar and does not know whether this
+ *   client works five days or six — the biller already told us how many days
+ *   the month is worth, and scaling that by the calendar share needs no
+ *   further assumption. Someone on for 17 of a 31-day period is billed
+ *   17/31 of the month's working days.
+ * - A resource present for the whole period is billed `workingDays − leave`
+ *   exactly. The share is 1, so no rounding enters the common case.
+ * - Billed days are floored at zero and capped at the month's working days:
+ *   leave longer than the month cannot produce a credit note by accident, and
+ *   a bad date cannot bill more than a full month.
+ */
+export function invoiceLineMath(b: InvoiceLineBasis): InvoiceLineMath {
+  // The API cannot reach this with an unusable period — the schema requires
+  // two dates in order. The form can, while the biller is still filling it in,
+  // and a half-typed period must not silently bill the line at zero. With no
+  // period to measure against there is no partial month, so the window share
+  // is a whole one and only leave moves the figure.
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const usablePeriod =
+    ISO.test(b.periodFrom) && ISO.test(b.periodTo) && b.periodTo >= b.periodFrom;
+
+  const daysInPeriod = usablePeriod ? daysBetween(b.periodFrom, b.periodTo) + 1 : 0;
+
+  const from =
+    b.deploymentDate && b.deploymentDate > b.periodFrom ? b.deploymentDate : b.periodFrom;
+  const to =
+    b.lastWorkingDate && b.lastWorkingDate < b.periodTo ? b.lastWorkingDate : b.periodTo;
+  const daysOnSite = !usablePeriod || to < from ? 0 : daysBetween(from, to) + 1;
+
+  if (b.workingDays == null || b.workingDays <= 0) {
+    return {
+      daysInPeriod,
+      daysOnSite,
+      availableDays: null,
+      billedDays: null,
+      amount: Math.round(b.monthlyRate),
+      prorated: false,
+    };
+  }
+
+  const share = usablePeriod ? Math.min(1, daysOnSite / daysInPeriod) : 1;
+  const availableDays = roundHalf(b.workingDays * share);
+  const billedDays = Math.min(
+    b.workingDays,
+    Math.max(0, availableDays - Math.max(0, b.leaveDays)),
+  );
+
+  return {
+    daysInPeriod,
+    daysOnSite,
+    availableDays,
+    billedDays,
+    amount: Math.round((b.monthlyRate * billedDays) / b.workingDays),
+    prorated: billedDays < b.workingDays,
+  };
+}
+
+/** "18 of 22 days" — how a pro-rated line is labelled everywhere it appears. */
+export function billedDaysLabel(m: InvoiceLineMath, workingDays: number | null): string {
+  if (m.billedDays == null || workingDays == null) return 'Full month';
+  return `${m.billedDays} of ${workingDays} days`;
+}
+
+/**
+ * A validated line plus the invoice's period, as the row that gets stored.
+ *
+ * The derived columns are computed here rather than taken from the request:
+ * the form sends what the biller typed, and the two figures that end up on the
+ * invoice are the server's own, so a stale or edited client cannot save a
+ * day count and an amount that disagree with each other.
+ */
+export function invoiceLineRow(
+  line: {
+    resourceId: number;
+    monthlyRate: number;
+    workingDays?: number;
+    leaveDays: number;
+    deploymentDate?: string;
+    lastWorkingDate?: string;
+  },
+  period: { periodFrom: string; periodTo: string },
+) {
+  const math = invoiceLineMath({
+    monthlyRate: line.monthlyRate,
+    workingDays: line.workingDays ?? null,
+    leaveDays: line.leaveDays,
+    deploymentDate: line.deploymentDate ?? null,
+    lastWorkingDate: line.lastWorkingDate ?? null,
+    periodFrom: period.periodFrom,
+    periodTo: period.periodTo,
+  });
+  return {
+    resourceId: line.resourceId,
+    monthlyRate: line.monthlyRate,
+    workingDays: line.workingDays ?? null,
+    leaveDays: line.leaveDays,
+    deploymentDate: line.deploymentDate ?? null,
+    lastWorkingDate: line.lastWorkingDate ?? null,
+    billedDays: math.billedDays,
+    amount: math.amount,
+  };
+}

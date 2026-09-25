@@ -9,7 +9,7 @@ import {
 } from '@/lib/schema';
 import { invoiceSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
-import { isInvoiceOverdue, today } from '@/lib/utils';
+import { isInvoiceOverdue, today, invoiceLineRow } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -141,9 +141,10 @@ export async function POST(req: Request) {
         .returning()
         .get();
 
-      for (const rid of data.resourceIds) {
-        await tx.insert(invoiceResources)
-          .values({ invoiceId: row.id, resourceId: rid })
+      for (const line of data.lines) {
+        await tx
+          .insert(invoiceResources)
+          .values({ invoiceId: row.id, ...invoiceLineRow(line, data) })
           .run();
       }
       return row;

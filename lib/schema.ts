@@ -268,7 +268,18 @@ export const invoices = sqliteTable(
   }),
 );
 
-/** Junction: which resources an invoice line covers. */
+/**
+ * One billed line of an invoice: the resource, and the day count behind their
+ * share of it.
+ *
+ * Started life as a bare junction table — which resources an invoice covered,
+ * and nothing about what each was worth. The amount lived only as the
+ * invoice's single total, so a client query ("why is Priya's line short this
+ * month?") could not be answered from the record. These columns hold the four
+ * inputs the answer is made of, plus the two figures derived from them, so a
+ * line raised months ago can still be explained without recomputing it from
+ * whatever the rate card says today.
+ */
 export const invoiceResources = sqliteTable(
   'invoice_resources',
   {
@@ -279,6 +290,27 @@ export const invoiceResources = sqliteTable(
     resourceId: integer('resource_id')
       .notNull()
       .references(() => resources.id),
+
+    /** Full-month rate for this resource, as the line was priced. */
+    monthlyRate: real('monthly_rate').notNull().default(0),
+    /**
+     * Working days the client's month is billed on — 22, 26, whatever the SOW
+     * says. NULL means the line was not pro-rated at all and is a flat month,
+     * which is how every invoice raised before this feature was priced.
+     */
+    workingDays: real('working_days'),
+    leaveDays: real('leave_days').notNull().default(0),
+    /** The resource's first day on the engagement, when it falls inside the
+     *  billing period. NULL means they were already on it at period start. */
+    deploymentDate: text('deployment_date'),
+    /** Their last day, when it falls inside the period. NULL means they ran
+     *  through to period end. */
+    lastWorkingDate: text('last_working_date'),
+
+    /** Derived: days actually billed, after the window and leave are applied. */
+    billedDays: real('billed_days'),
+    /** Derived: this line's share of the invoice, in the invoice's currency. */
+    amount: real('amount').notNull().default(0),
   },
   (t) => ({
     invoiceIdx: index('invres_invoice_idx').on(t.invoiceId),

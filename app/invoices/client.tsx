@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   LayoutGrid,
   List,
+  X,
 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import {
@@ -29,6 +30,8 @@ import {
   INVOICE_STATUS_ORDER,
   nextInvoiceStatus,
   LIST_PAGE_SIZE,
+  invoiceLineMath,
+  type InvoiceLineMath,
 } from '@/lib/utils';
 import {
   PageHeader,
@@ -83,6 +86,23 @@ type ResourceOption = { id: number; name: string };
 /** One row of an agreement's registered rate card, from /api/agreements/[id]. */
 type AgreementResource = { resourceId: number; resourceName: string; billingAmount: number };
 
+/**
+ * One billed resource on the invoice being edited.
+ *
+ * Every figure is held as the string the biller typed, not a number: an empty
+ * working-days box has to stay empty (meaning "flat month") rather than
+ * becoming a 0 that bills nothing, and a half-typed "1" on the way to "18"
+ * must not be rewritten under the cursor.
+ */
+type LineForm = {
+  resourceId: number;
+  monthlyRate: string;
+  workingDays: string;
+  leaveDays: string;
+  deploymentDate: string;
+  lastWorkingDate: string;
+};
+
 const STATUS_TONE: Record<Status, Tone> = {
   not_raised: 'neutral',
   raised: 'amber',
@@ -104,8 +124,19 @@ const BLANK = {
   invoiceDate: '',
   dueDate: '',
   notes: '',
-  resourceIds: [] as number[],
+  lines: [] as LineForm[],
 };
+
+function blankLine(resourceId: number, monthlyRate: number, workingDays: string): LineForm {
+  return {
+    resourceId,
+    monthlyRate: monthlyRate ? String(monthlyRate) : '',
+    workingDays,
+    leaveDays: '',
+    deploymentDate: '',
+    lastWorkingDate: '',
+  };
+}
 
 export default function InvoicesClient({
   initial,
@@ -139,6 +170,12 @@ export default function InvoicesClient({
   // so the invoice can be raised for a subset of it without retyping prices.
   const [agreementResources, setAgreementResources] = useState<AgreementResource[]>([]);
   const [loadingRateCard, setLoadingRateCard] = useState(false);
+
+  // The month's working-day count, which is a property of the month and the
+  // client's calendar rather than of any one person — so it is typed once and
+  // seeds each line, which can then be overridden where somebody's roster
+  // genuinely differs. Not part of the payload; only the lines are stored.
+  const [monthWorkingDays, setMonthWorkingDays] = useState('');
 
   const clientOptions = useMemo(() => {
     const set = new Set(initial.map((i) => i.clientName));
@@ -269,24 +306,66 @@ export default function InvoicesClient({
     };
   }, [form.agreementId]);
 
-  // With an agreement selected, the amount is the sum of whichever of its
-  // registered resources are checked — not typed by hand. Recomputes live as
-  // the selection changes; still a plain field the user can override after.
+  // Each line priced on its own day count, so a resource who joined on the
+  // 14th or took four days' leave bills what they are worth rather than a
+  // full month. Recomputes live as any of the four inputs changes.
+  const lineMath = useMemo(
+    () =>
+      form.lines.map((l) =>
+        invoiceLineMath({
+          monthlyRate: Number(l.monthlyRate) || 0,
+          workingDays: l.workingDays === '' ? null : Number(l.workingDays) || null,
+          leaveDays: Number(l.leaveDays) || 0,
+          deploymentDate: l.deploymentDate || null,
+          lastWorkingDate: l.lastWorkingDate || null,
+          periodFrom: form.periodFrom,
+          periodTo: form.periodTo,
+        }),
+      ),
+    [form.lines, form.periodFrom, form.periodTo],
+  );
+
+  const lineTotal = useMemo(
+    () => lineMath.reduce((sum, m) => sum + m.amount, 0),
+    [lineMath],
+  );
+
+  // The amount follows the lines, and keeps following them as the day counts
+  // are edited — that is the whole point of entering them. It stays a plain
+  // field the biller can overwrite afterwards; the moment they do, the panel
+  // below says so rather than silently pulling the figure back.
+  const [amountOverridden, setAmountOverridden] = useState(false);
   useEffect(() => {
-    if (!agreementResources.length) return;
-    const sum = form.resourceIds.reduce((total, id) => {
-      const rate = agreementResources.find((r) => r.resourceId === id);
-      return total + (rate?.billingAmount ?? 0);
-    }, 0);
-    setForm((f) => (f.amount === String(sum) ? f : { ...f, amount: String(sum) }));
-    // Only resourceIds/agreementResources should retrigger this — form.amount
-    // itself is written by this effect, so it must stay out of the deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.resourceIds, agreementResources]);
+    if (!form.lines.length || amountOverridden) return;
+    const next = String(lineTotal);
+    setForm((f) => (f.amount === next ? f : { ...f, amount: next }));
+  }, [lineTotal, form.lines.length, amountOverridden]);
+
+  /** The amount has genuinely parted company with the lines it came from. */
+  const amountDiverges =
+    form.lines.length > 0 && (Number(form.amount) || 0) !== lineTotal;
+
+  /** Replace one line in place, leaving every other line's typing untouched. */
+  function setLine(resourceId: number, patch: Partial<LineForm>) {
+    setForm((f) => ({
+      ...f,
+      lines: f.lines.map((l) => (l.resourceId === resourceId ? { ...l, ...patch } : l)),
+    }));
+  }
+
+  function toggleLine(resourceId: number, monthlyRate: number) {
+    setForm((f) =>
+      f.lines.some((l) => l.resourceId === resourceId)
+        ? { ...f, lines: f.lines.filter((l) => l.resourceId !== resourceId) }
+        : { ...f, lines: [...f.lines, blankLine(resourceId, monthlyRate, monthWorkingDays)] },
+    );
+  }
 
   function openCreate() {
     setEditing(null);
     setForm(BLANK);
+    setMonthWorkingDays('');
+    setAmountOverridden(false);
     setErrors({});
     setBanner(null);
     setOpen(true);
@@ -309,21 +388,50 @@ export default function InvoicesClient({
       dueDate: i.dueDate ?? '',
       notes: i.notes ?? '',
       // The list row doesn't carry which resources are tagged — fetched below.
-      resourceIds: [],
+      lines: [],
     });
+    setMonthWorkingDays('');
+    // An existing invoice's amount is whatever was saved. Treated as an
+    // override so re-opening a record to change its due date can never quietly
+    // reprice it off a rate card that has moved since.
+    setAmountOverridden(true);
     setErrors({});
     setBanner(null);
     setOpen(true);
 
-    // Load the resources actually saved on this invoice, so re-saving
-    // without touching the picker doesn't silently clear them.
+    // Load the lines actually saved on this invoice, so re-saving without
+    // touching the picker doesn't silently clear them — or flatten the day
+    // counts behind each one back to a full month.
     try {
-      const detail = await api<{ resources: { resourceId: number }[] }>(
-        `/api/invoices/${i.id}`,
+      const detail = await api<{
+        resources: {
+          resourceId: number;
+          monthlyRate: number;
+          workingDays: number | null;
+          leaveDays: number;
+          deploymentDate: string | null;
+          lastWorkingDate: string | null;
+        }[];
+      }>(`/api/invoices/${i.id}`);
+      setForm((f) => ({
+        ...f,
+        lines: detail.resources.map((r) => ({
+          resourceId: r.resourceId,
+          monthlyRate: r.monthlyRate ? String(r.monthlyRate) : '',
+          workingDays: r.workingDays == null ? '' : String(r.workingDays),
+          leaveDays: r.leaveDays ? String(r.leaveDays) : '',
+          deploymentDate: r.deploymentDate ?? '',
+          lastWorkingDate: r.lastWorkingDate ?? '',
+        })),
+      }));
+      // Seed the shared box from the saved lines when they agree on a count,
+      // so adding one more person to the invoice inherits the same month.
+      const counts = new Set(
+        detail.resources.map((r) => (r.workingDays == null ? '' : String(r.workingDays))),
       );
-      setForm((f) => ({ ...f, resourceIds: detail.resources.map((r) => r.resourceId) }));
+      if (counts.size === 1) setMonthWorkingDays([...counts][0]);
     } catch {
-      // Leave resourceIds empty; the user can re-pick if this fails.
+      // Leave the lines empty; the user can re-pick if this fails.
     }
   }
 
@@ -337,6 +445,16 @@ export default function InvoicesClient({
         amount: Number(form.amount) || 0,
         gstAmount: Number(form.gstAmount) || 0,
         fxRateToInr: Number(form.fxRateToInr) || 1,
+        // Sent as the biller typed them. The billed days and the line amount
+        // are the server's to derive — see invoiceLineRow.
+        lines: form.lines.map((l) => ({
+          resourceId: l.resourceId,
+          monthlyRate: Number(l.monthlyRate) || 0,
+          workingDays: l.workingDays === '' ? null : Number(l.workingDays),
+          leaveDays: Number(l.leaveDays) || 0,
+          deploymentDate: l.deploymentDate,
+          lastWorkingDate: l.lastWorkingDate,
+        })),
       };
       if (editing) {
         await api(`/api/invoices/${editing.id}`, { method: 'PUT', json: payload });
@@ -773,7 +891,7 @@ export default function InvoicesClient({
               >
                 <Combobox
                   value={form.agreementId}
-                  onChange={(v) => setForm({ ...form, agreementId: v, resourceIds: [] })}
+                  onChange={(v) => setForm({ ...form, agreementId: v, lines: [] })}
                   options={agreementOptions}
                   disabled={!form.projectId}
                   placeholder="No PO"
@@ -830,6 +948,162 @@ export default function InvoicesClient({
             </div>
           </FormSection>
 
+          {(agreementResources.length > 0 || resources.length > 0) && (
+            <FormSection title="Billed Resources">
+              {loadingRateCard ? (
+                <p className="text-sm text-ink3">Loading rate card…</p>
+              ) : (
+                <>
+                  <p className="mb-3 text-2xs text-ink3">
+                    {agreementResources.length > 0
+                      ? 'Pulled from the agreement’s rate card. Pick who this invoice covers this period — not all of them need to be included.'
+                      : form.agreementId
+                        ? 'This agreement has no registered resources yet — pick from the full list and enter each rate.'
+                        : 'Pick who this invoice covers and enter each monthly rate.'}
+                  </p>
+
+                  {/* Selection. Rate-card entries carry a price, so they get a
+                      list with the figure alongside; the open list is 50-odd
+                      names and stays a chip cloud. */}
+                  {agreementResources.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {agreementResources.map((r) => {
+                        const on = form.lines.some((l) => l.resourceId === r.resourceId);
+                        return (
+                          <button
+                            key={r.resourceId}
+                            type="button"
+                            onClick={() => toggleLine(r.resourceId, r.billingAmount)}
+                            className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left transition-colors ${
+                              on
+                                ? 'border-brand bg-brandbg'
+                                : 'border-line bg-surface hover:bg-surface2'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5">
+                              <span
+                                aria-hidden
+                                className={`flex h-4 w-4 items-center justify-center rounded border text-2xs ${
+                                  on
+                                    ? 'border-brand bg-brand text-white'
+                                    : 'border-line text-transparent'
+                                }`}
+                              >
+                                ✓
+                              </span>
+                              <span className="text-sm text-ink">{r.resourceName}</span>
+                            </span>
+                            <span className="tnum text-xs text-ink2">
+                              {formatMoney(r.billingAmount, form.currency)}/mo
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {resources.map((r) => {
+                        const on = form.lines.some((l) => l.resourceId === r.id);
+                        return (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => toggleLine(r.id, 0)}
+                            className={`chip border transition-colors ${
+                              on
+                                ? 'border-brand bg-brandbg text-brand'
+                                : 'border-line bg-surface text-ink2 hover:bg-surface2'
+                            }`}
+                          >
+                            {r.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {form.lines.length > 0 && (
+                    <>
+                      {/* One month, one working-day count. Typed once here and
+                          pushed down, because typing 22 into six lines is how
+                          five of them end up saying 22 and one saying 2. */}
+                      <div className="mt-4 flex flex-wrap items-end gap-2 rounded-md border border-line bg-surface2/60 px-3 py-2.5">
+                        <div className="w-40">
+                          <label className="label" htmlFor="month-working-days">
+                            Working days in month
+                          </label>
+                          <input
+                            id="month-working-days"
+                            className="input"
+                            type="number"
+                            min={1}
+                            max={31}
+                            placeholder="e.g. 22"
+                            value={monthWorkingDays}
+                            onChange={(e) => setMonthWorkingDays(e.target.value)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-ghost mb-0.5"
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              lines: f.lines.map((l) => ({
+                                ...l,
+                                workingDays: monthWorkingDays,
+                              })),
+                            }))
+                          }
+                        >
+                          Apply to all {form.lines.length}
+                        </button>
+                        <p className="mb-1.5 flex-1 text-2xs text-ink3">
+                          Seeds each line as it is added, and each line can still be
+                          overridden. Leave every line blank to bill flat monthly rates
+                          with no day count behind them.
+                        </p>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        {form.lines.map((line, idx) => (
+                          <InvoiceLineRow
+                            key={line.resourceId}
+                            line={line}
+                            math={lineMath[idx]}
+                            name={
+                              agreementResources.find(
+                                (r) => r.resourceId === line.resourceId,
+                              )?.resourceName ??
+                              resources.find((r) => r.id === line.resourceId)?.name ??
+                              `Resource #${line.resourceId}`
+                            }
+                            currency={form.currency}
+                            currencySymbol={invoiceSymbol}
+                            rateLocked={agreementResources.length > 0}
+                            errors={errors}
+                            index={idx}
+                            onChange={(patch) => setLine(line.resourceId, patch)}
+                            onRemove={() => toggleLine(line.resourceId, 0)}
+                          />
+                        ))}
+                      </div>
+
+                      <div className="tnum mt-3 flex items-baseline justify-between border-t border-line pt-2 text-xs text-ink2">
+                        <span>
+                          {form.lines.length} resource
+                          {form.lines.length === 1 ? '' : 's'} billed
+                        </span>
+                        <span className="text-sm font-semibold text-ink">
+                          {formatMoney(lineTotal, form.currency)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </FormSection>
+          )}
           <FormSection title="Amounts">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field
@@ -887,19 +1161,42 @@ export default function InvoicesClient({
                 label={`Amount (pre-GST) ${invoiceSymbol}`}
                 required
                 error={errors.amount}
+                // "Entered by hand" is worth saying only when the figure has
+                // actually parted company with the lines. Re-opening a saved
+                // invoice pins the amount too, and saying so there would flag
+                // a divergence on a figure that matches to the rupee.
                 hint={
-                  agreementResources.length
-                    ? 'Sum of the selected resources’ rates below — still editable'
-                    : undefined
+                  !form.lines.length
+                    ? undefined
+                    : amountDiverges
+                      ? 'Entered by hand — no longer follows the lines above'
+                      : 'Sum of the billed lines above — still editable'
                 }
               >
-                <input
-                  className="input"
-                  type="number"
-                  min={0}
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                />
+                <div className="flex gap-2">
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    value={form.amount}
+                    onChange={(e) => {
+                      setAmountOverridden(true);
+                      setForm({ ...form, amount: e.target.value });
+                    }}
+                  />
+                  {amountDiverges && (
+                    <button
+                      type="button"
+                      className="btn-ghost shrink-0"
+                      onClick={() => {
+                        setAmountOverridden(false);
+                        setForm({ ...form, amount: String(lineTotal) });
+                      }}
+                    >
+                      Use lines
+                    </button>
+                  )}
+                </div>
               </Field>
               <Field
                 label="GST Amount ₹"
@@ -935,11 +1232,24 @@ export default function InvoicesClient({
             </div>
 
             {Number(form.amount) > 0 && (
-              <div className="tnum mt-3 flex items-baseline justify-between rounded-md border border-line bg-surface2 px-3 py-2">
-                <span className="text-xs text-ink2">Invoice total</span>
-                <span className="text-lg font-semibold text-ink">
-                  {formatMoney(Number(form.amount) + (Number(form.gstAmount) || 0), form.currency)}
-                </span>
+              <div className="tnum mt-3 rounded-md border border-line bg-surface2 px-3 py-2">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs text-ink2">Invoice total</span>
+                  <span className="text-lg font-semibold text-ink">
+                    {formatMoney(
+                      Number(form.amount) + (Number(form.gstAmount) || 0),
+                      form.currency,
+                    )}
+                  </span>
+                </div>
+                {amountDiverges && (
+                  <p className="mt-1 text-2xs text-amber-700 dark:text-amber-400">
+                    The {form.lines.length} line
+                    {form.lines.length === 1 ? '' : 's'} above add up to{' '}
+                    {formatMoney(lineTotal, form.currency)} pre-GST. Both figures are
+                    saved as they stand.
+                  </p>
+                )}
               </div>
             )}
           </FormSection>
@@ -977,106 +1287,6 @@ export default function InvoicesClient({
             </div>
           </FormSection>
 
-          {agreementResources.length > 0 ? (
-            <FormSection title="Resources Covered">
-              <p className="mb-3 text-2xs text-ink3">
-                Pulled from the agreement&apos;s rate card. Check the resources this
-                invoice covers this period — not all of them need to be included.
-              </p>
-              <div className="space-y-1.5">
-                {agreementResources.map((r) => {
-                  const on = form.resourceIds.includes(r.resourceId);
-                  return (
-                    <label
-                      key={r.resourceId}
-                      className={`flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors ${
-                        on
-                          ? 'border-brand bg-brandbg'
-                          : 'border-line bg-surface hover:bg-surface2'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          onChange={() =>
-                            setForm({
-                              ...form,
-                              resourceIds: on
-                                ? form.resourceIds.filter((x) => x !== r.resourceId)
-                                : [...form.resourceIds, r.resourceId],
-                            })
-                          }
-                          className="h-4 w-4 rounded border-line accent-[rgb(var(--accent))]"
-                        />
-                        <span className="text-sm text-ink">{r.resourceName}</span>
-                      </span>
-                      <span className="tnum text-xs text-ink2">
-                        {formatMoney(r.billingAmount, form.currency)}/mo
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              <div className="tnum mt-2 flex items-baseline justify-between text-xs text-ink2">
-                <span>
-                  {form.resourceIds.length} of {agreementResources.length} selected
-                </span>
-                <span className="font-medium text-ink">
-                  {formatMoney(
-                    agreementResources
-                      .filter((r) => form.resourceIds.includes(r.resourceId))
-                      .reduce((s, r) => s + r.billingAmount, 0),
-                    form.currency,
-                  )}
-                  /mo
-                </span>
-              </div>
-            </FormSection>
-          ) : (
-            resources.length > 0 && (
-              <FormSection title="Resources Covered">
-                {loadingRateCard ? (
-                  <p className="text-sm text-ink3">Loading rate card…</p>
-                ) : (
-                  <>
-                    {form.agreementId && (
-                      <p className="mb-2 text-2xs text-ink3">
-                        This agreement has no registered resources yet — pick from the
-                        full list instead.
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-1.5">
-                      {resources.map((r) => {
-                        const on = form.resourceIds.includes(r.id);
-                        return (
-                          <button
-                            key={r.id}
-                            type="button"
-                            onClick={() =>
-                              setForm({
-                                ...form,
-                                resourceIds: on
-                                  ? form.resourceIds.filter((x) => x !== r.id)
-                                  : [...form.resourceIds, r.id],
-                              })
-                            }
-                            className={`chip border transition-colors ${
-                              on
-                                ? 'border-brand bg-brandbg text-brand'
-                                : 'border-line bg-surface text-ink2 hover:bg-surface2'
-                            }`}
-                          >
-                            {r.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </FormSection>
-            )
-          )}
         </div>
 
         <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
@@ -1088,6 +1298,148 @@ export default function InvoicesClient({
           </button>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/**
+ * One resource's line on the invoice being edited: the four figures behind
+ * their share, and the arithmetic they produce, stated in full.
+ *
+ * The derivation is spelled out under the inputs rather than left implicit in
+ * a number — a billing figure somebody has to defend to a client's accounts
+ * team is worth showing the working for, and it is the only way the biller can
+ * see that "18 of 22" came from a mid-month start rather than from leave.
+ */
+function InvoiceLineRow({
+  line,
+  math,
+  name,
+  currency,
+  currencySymbol,
+  rateLocked,
+  errors,
+  index,
+  onChange,
+  onRemove,
+}: {
+  line: LineForm;
+  math: InvoiceLineMath;
+  name: string;
+  currency: string;
+  currencySymbol: string;
+  /** True when the rate came off an agreement's rate card. */
+  rateLocked: boolean;
+  errors: Record<string, string>;
+  index: number;
+  onChange: (patch: Partial<LineForm>) => void;
+  onRemove: () => void;
+}) {
+  const err = (field: keyof LineForm) => errors[`lines.${index}.${field}`];
+  const partMonth = math.daysOnSite > 0 && math.daysOnSite < math.daysInPeriod;
+  const leave = Number(line.leaveDays) || 0;
+
+  return (
+    <div className="rounded-md border border-line bg-surface px-3 py-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-medium text-ink">{name}</span>
+        <span className="flex items-baseline gap-2">
+          <span className="tnum text-sm font-semibold text-ink">
+            {formatMoney(math.amount, currency)}
+          </span>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="rounded p-1 text-ink3 hover:bg-surface2 hover:text-ink"
+            aria-label={`Remove ${name} from this invoice`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      </div>
+
+      <div className="mt-2 grid gap-2 sm:grid-cols-5">
+        <Field label={`Rate/mo ${currencySymbol}`} error={err('monthlyRate')}>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            value={line.monthlyRate}
+            onChange={(e) => onChange({ monthlyRate: e.target.value })}
+          />
+        </Field>
+        <Field label="Working days" error={err('workingDays')}>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            max={31}
+            placeholder="Flat"
+            value={line.workingDays}
+            onChange={(e) => onChange({ workingDays: e.target.value })}
+          />
+        </Field>
+        <Field label="Leave days" error={err('leaveDays')}>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            step="0.5"
+            value={line.leaveDays}
+            onChange={(e) => onChange({ leaveDays: e.target.value })}
+          />
+        </Field>
+        <Field label="Deployed from" error={err('deploymentDate')}>
+          <input
+            className="input"
+            type="date"
+            value={line.deploymentDate}
+            onChange={(e) => onChange({ deploymentDate: e.target.value })}
+          />
+        </Field>
+        <Field label="Last working day" error={err('lastWorkingDate')}>
+          <input
+            className="input"
+            type="date"
+            value={line.lastWorkingDate}
+            onChange={(e) => onChange({ lastWorkingDate: e.target.value })}
+          />
+        </Field>
+      </div>
+
+      <p
+        className={`tnum mt-1.5 text-2xs ${
+          math.billedDays === 0 ? 'text-amber-700 dark:text-amber-400' : 'text-ink3'
+        }`}
+      >
+        {math.billedDays == null ? (
+          <>Flat monthly rate — no working-day count entered, so nothing is pro-rated.</>
+        ) : math.billedDays === 0 ? (
+          <>
+            Bills nothing this period — the dates leave no working days inside{' '}
+            {formatDate(line.deploymentDate || null) !== '—' ||
+            formatDate(line.lastWorkingDate || null) !== '—'
+              ? 'the billing period'
+              : 'it'}
+            .
+          </>
+        ) : (
+          <>
+            {math.billedDays} of {line.workingDays} days billed
+            {partMonth && (
+              <>
+                {' · '}on the engagement {math.daysOnSite} of {math.daysInPeriod} calendar
+                days ({math.availableDays} working days)
+              </>
+            )}
+            {leave > 0 && (
+              <>
+                {' · '}less {leave} day{leave === 1 ? '' : 's'} leave
+              </>
+            )}
+          </>
+        )}
+      </p>
     </div>
   );
 }

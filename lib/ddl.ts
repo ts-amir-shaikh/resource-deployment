@@ -113,7 +113,14 @@ CREATE INDEX IF NOT EXISTS inv_status_idx ON invoices(status);
 CREATE TABLE IF NOT EXISTS invoice_resources (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
-  resource_id INTEGER NOT NULL REFERENCES resources(id)
+  resource_id INTEGER NOT NULL REFERENCES resources(id),
+  monthly_rate REAL NOT NULL DEFAULT 0,
+  working_days REAL,
+  leave_days REAL NOT NULL DEFAULT 0,
+  deployment_date TEXT,
+  last_working_date TEXT,
+  billed_days REAL,
+  amount REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS invres_invoice_idx ON invoice_resources(invoice_id);
 

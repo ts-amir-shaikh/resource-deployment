@@ -10,7 +10,7 @@ import {
 } from '@/lib/schema';
 import { invoiceSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
-import { isInvoiceOverdue } from '@/lib/utils';
+import { isInvoiceOverdue, invoiceLineRow } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +55,13 @@ export async function GET(_req: Request, { params }: Ctx) {
         resourceId: invoiceResources.resourceId,
         name: resources.name,
         designation: resources.designation,
+        monthlyRate: invoiceResources.monthlyRate,
+        workingDays: invoiceResources.workingDays,
+        leaveDays: invoiceResources.leaveDays,
+        deploymentDate: invoiceResources.deploymentDate,
+        lastWorkingDate: invoiceResources.lastWorkingDate,
+        billedDays: invoiceResources.billedDays,
+        lineAmount: invoiceResources.amount,
       })
       .from(invoiceResources)
       .innerJoin(resources, eq(invoiceResources.resourceId, resources.id))
@@ -138,8 +145,11 @@ export async function PUT(req: Request, { params }: Ctx) {
         .get();
 
       await tx.delete(invoiceResources).where(eq(invoiceResources.invoiceId, id)).run();
-      for (const rid of data.resourceIds) {
-        await tx.insert(invoiceResources).values({ invoiceId: id, resourceId: rid }).run();
+      for (const line of data.lines) {
+        await tx
+          .insert(invoiceResources)
+          .values({ invoiceId: id, ...invoiceLineRow(line, data) })
+          .run();
       }
       return row;
     });
