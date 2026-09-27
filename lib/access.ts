@@ -38,6 +38,8 @@ export const NAV: NavItem[] = [
   { href: '/deployments', label: 'Deployments', roles: BACK_OFFICE },
   { href: '/agreements', label: 'Agreements & POs', roles: BACK_OFFICE },
   { href: '/invoices', label: 'Invoices', roles: BACK_OFFICE },
+  // Admin manages logins here; Management sees the same list read-only.
+  { href: '/people', label: 'People', roles: BACK_OFFICE },
 ];
 
 export function navFor(role: Role): NavItem[] {

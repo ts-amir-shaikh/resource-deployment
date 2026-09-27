@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CANDIDATE_SOURCE_VALUES, sourceNeedsPartnerName, sourceAllowsBenchLink } from './utils';
+import { USER_ROLES } from './schema';
 
 /**
  * A link to a document that lives somewhere else.
@@ -749,3 +750,28 @@ export const interviewSchema = interviewBase.refine(
 export const interviewUpdateSchema = interviewSchema;
 
 export type InterviewInput = z.input<typeof interviewSchema>;
+
+/**
+ * The People form (R2). Only the shape is checked here; what an account may
+ * look like and who may change it is lib/accounts/policy.ts, which the form
+ * and this route share.
+ */
+export const accountSchema = z.object({
+  name: z.string().trim().min(1, 'Enter a name').max(120),
+  email: z
+    .string()
+    .trim()
+    .max(254)
+    .nullish()
+    .transform((v) => (v ? v : null)),
+  role: z.enum(USER_ROLES),
+  isTeamLead: z.boolean().default(false),
+  interviewerDuty: z.boolean().default(false),
+  accessUntil: z
+    .string()
+    .trim()
+    .nullish()
+    .transform((v) => (v ? v : null)),
+  resourceId: z.number().int().positive().nullish().transform((v) => v ?? null),
+  active: z.boolean().default(true),
+});

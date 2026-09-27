@@ -22,6 +22,7 @@ import {
   Compass,
   Handshake,
   KeyRound,
+  UserCog,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -49,6 +50,7 @@ const ICONS: Record<string, LucideIcon> = {
   '/deployments': Network,
   '/agreements': FileSignature,
   '/invoices': ReceiptIndianRupee,
+  '/people': UserCog,
 };
 
 /** M27 — the pending/new counts the Candidates link carries. */
