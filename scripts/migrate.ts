@@ -320,6 +320,46 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     // same reason; the constraint is present in ddl.ts for fresh databases.
     ddl: 'ALTER TABLE candidate_ratings ADD COLUMN interview_id INTEGER',
   },
+  // Accounts and sign-in. Every column is nullable or defaulted so the 11
+  // existing accounts keep working unchanged: no email yet (they sign in by
+  // username until Admin adds one), session version 0 (which is what a token
+  // issued before this release reads as), and has_password 1 (they all have
+  // one). The unique indexes live in ddl.ts, which runs after these.
+  {
+    table: 'users',
+    column: 'email',
+    ddl: 'ALTER TABLE users ADD COLUMN email TEXT',
+  },
+  {
+    table: 'users',
+    column: 'session_version',
+    ddl: 'ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0',
+  },
+  {
+    table: 'users',
+    column: 'interviewer_duty',
+    ddl: 'ALTER TABLE users ADD COLUMN interviewer_duty INTEGER NOT NULL DEFAULT 0',
+  },
+  {
+    table: 'users',
+    column: 'access_until',
+    ddl: 'ALTER TABLE users ADD COLUMN access_until TEXT',
+  },
+  {
+    table: 'users',
+    column: 'resource_id',
+    ddl: 'ALTER TABLE users ADD COLUMN resource_id INTEGER',
+  },
+  {
+    table: 'users',
+    column: 'has_password',
+    ddl: 'ALTER TABLE users ADD COLUMN has_password INTEGER NOT NULL DEFAULT 1',
+  },
+  {
+    table: 'users',
+    column: 'last_sign_in_at',
+    ddl: 'ALTER TABLE users ADD COLUMN last_sign_in_at TEXT',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

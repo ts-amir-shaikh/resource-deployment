@@ -3,10 +3,12 @@ import { db } from '@/lib/db';
 import { invoices, projects, clients, agreements, resources } from '@/lib/schema';
 import { isInvoiceOverdue } from '@/lib/utils';
 import InvoicesClient from './client';
+import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function InvoicesPage() {
+  await requireCurrentAccount();
   // Independent of each other — run concurrently.
   const [rows, projectOptions, agreementOptions, resourceOptions] = await Promise.all([
     db

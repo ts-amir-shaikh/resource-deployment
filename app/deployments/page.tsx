@@ -3,10 +3,12 @@ import { db } from '@/lib/db';
 import { deployments, resources, projects, clients, agreements } from '@/lib/schema';
 import { getResourceUtilisation } from '@/lib/queries';
 import DeploymentsClient from './client';
+import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DeploymentsPage() {
+  await requireCurrentAccount();
   // Independent of each other — run concurrently.
   const [rows, resourceOptions, projectOptions, agreementOptions] = await Promise.all([
     db

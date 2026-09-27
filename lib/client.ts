@@ -29,6 +29,15 @@ export async function api<T = unknown>(
   const payload = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    // The server's account check (handle() in lib/api.ts) refused a session
+    // that no longer matches the account. A changed role or password: reload,
+    // which sends the page through the refresh route for a current session.
+    // An ended account: go to sign-in. Either way the screen must not carry on
+    // as if the call merely failed.
+    if (res.status === 401 && typeof window !== 'undefined') {
+      if (payload?.sessionChanged) window.location.reload();
+      else if (payload?.signedOut) window.location.assign('/login');
+    }
     const err: ApiError = {
       message: payload?.error ?? `Request failed (${res.status})`,
       fields: payload?.fields,

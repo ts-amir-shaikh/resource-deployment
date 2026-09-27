@@ -870,7 +870,21 @@ export const prospects = sqliteTable(
 
 /* ── M10: Users & roles ────────────────────────────────────── */
 
-export const USER_ROLES = ['admin', 'management', 'ta', 'leadgen', 'sales'] as const;
+/**
+ * The last four are assignable now but carry no access yet beyond a holding
+ * page — see ROLES in lib/auth.ts. Keep the two lists identical.
+ */
+export const USER_ROLES = [
+  'admin',
+  'management',
+  'ta',
+  'leadgen',
+  'sales',
+  'accounts',
+  'resource_manager',
+  'interviewer',
+  'resource',
+] as const;
 
 export const users = sqliteTable(
   'users',
@@ -897,10 +911,99 @@ export const users = sqliteTable(
      */
     applicationsSeenAt: text('applications_seen_at'),
     active: integer('active', { mode: 'boolean' }).notNull().default(true),
+    /**
+     * The sign-in identifier, stored lower-case. Null only on accounts that
+     * predate it — those keep signing in by username until Admin adds one.
+     */
+    email: text('email'),
+    /**
+     * Incremented by every change that must take effect on the person's next
+     * request: deactivation, role, head flag, interviewer duty, email, and any
+     * password set or change. A session token carries the value it was issued
+     * with; a mismatch means the session is out of date.
+     */
+    sessionVersion: integer('session_version').notNull().default(0),
+    /** An internal account that also sits on interview panels. */
+    interviewerDuty: integer('interviewer_duty', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * Last day the account works, inclusive, as YYYY-MM-DD in India time.
+     * Required for outside interviewers; null means no end.
+     */
+    accessUntil: text('access_until'),
+    /** The resource record a Resource account belongs to. */
+    resourceId: integer('resource_id').references(() => resources.id),
+    /**
+     * False for an account invited but not yet given a password — it can sign
+     * in with Google only. Its stored hash is random and matches nothing.
+     */
+    hasPassword: integer('has_password', { mode: 'boolean' }).notNull().default(true),
+    lastSignInAt: text('last_sign_in_at'),
     ...timestamps,
   },
   (t) => ({
     usernameIdx: index('users_username_idx').on(t.username),
+    emailUq: uniqueIndex('users_email_uq').on(t.email),
+    resourceUq: uniqueIndex('users_resource_uq').on(t.resourceId),
+  }),
+);
+
+/**
+ * One emailed password link. Only a hash of the token is kept, so the table
+ * cannot be used to sign in as anyone.
+ */
+export const passwordLinks = sqliteTable(
+  'password_links',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: text('expires_at').notNull(),
+    usedAt: text('used_at'),
+    cancelledAt: text('cancelled_at'),
+    createdByUserId: integer('created_by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    userIdx: index('password_links_user_idx').on(t.userId),
+  }),
+);
+
+export const ACCOUNT_EVENT_KINDS = [
+  'account_created',
+  'account_updated',
+  'account_deactivated',
+  'account_reactivated',
+  'link_sent',
+  'link_failed',
+  'password_set',
+  'password_changed',
+  'sign_in',
+  'sign_in_failed',
+] as const;
+
+/**
+ * The account log. `subjectUserId` is null for a failed sign-in against an
+ * address no account has, which is recorded by what was typed instead.
+ */
+export const accountEvents = sqliteTable(
+  'account_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    subjectUserId: integer('subject_user_id'),
+    actorUserId: integer('actor_user_id'),
+    kind: text('kind', { enum: ACCOUNT_EVENT_KINDS }).notNull(),
+    /** 'google' or 'password' for sign-ins; null otherwise. */
+    method: text('method'),
+    attemptedIdentifier: text('attempted_identifier'),
+    /** JSON: before/after values for edits, a reason for failures. */
+    detail: text('detail').notNull().default('{}'),
+    ...timestamps,
+  },
+  (t) => ({
+    subjectIdx: index('account_events_subject_idx').on(t.subjectUserId),
+    createdIdx: index('account_events_created_idx').on(t.createdAt),
   }),
 );
 

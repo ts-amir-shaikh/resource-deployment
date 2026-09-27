@@ -25,6 +25,7 @@ import {
   ACTIVE_STAGES,
 } from '@/lib/utils';
 import { Badge, Stat, AllocationBar, PageHeader, TableShell, KpiCard } from '@/components/ui';
+import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ const STATUS_TONE = {
 } as const;
 
 export default async function DashboardPage() {
+  await requireCurrentAccount();
   // The sync write must finish before anything reads agreement status; the
   // eight reads below don't depend on each other, so they run concurrently
   // rather than as eight sequential round trips to the database.

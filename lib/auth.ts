@@ -10,6 +10,16 @@ import { SignJWT, jwtVerify } from 'jose';
  */
 
 export const SESSION_COOKIE = 'rd_session';
+
+/**
+ * Set by middleware on every signed-in request (and stripped from anything
+ * arriving from outside), so server code knows the request needs the account
+ * check. Defined here because middleware runs on the Edge and cannot import
+ * lib/session.ts.
+ */
+export const SIGNED_IN_HEADER = 'x-rd-auth';
+/** The requested path, so a page can return to it after a session refresh. */
+export const PATH_HEADER = 'x-rd-path';
 const SESSION_HOURS = 12;
 
 /**
@@ -17,8 +27,26 @@ const SESSION_HOURS = 12;
  * flag on the corresponding role, not roles of their own — a head is a working
  * member with a wider view, which is what a flag is for.
  */
-export const ROLES = ['admin', 'management', 'ta', 'leadgen', 'sales'] as const;
+export const ROLES = [
+  'admin',
+  'management',
+  'ta',
+  'leadgen',
+  'sales',
+  'accounts',
+  'resource_manager',
+  'interviewer',
+  'resource',
+] as const;
 export type Role = (typeof ROLES)[number];
+
+/**
+ * Roles that can be assigned today but whose screens are not built yet. A
+ * person holding one sees only the holding page until the "New roles" plan
+ * defines their access. Listed once here so the access table, the landing
+ * path and the tests all read the same set.
+ */
+export const PENDING_ROLES: readonly Role[] = ['accounts', 'resource_manager', 'interviewer', 'resource'];
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Admin',
@@ -26,6 +54,10 @@ export const ROLE_LABELS: Record<Role, string> = {
   ta: 'TA Team',
   leadgen: 'Lead Generation',
   sales: 'Sales',
+  accounts: 'Accounts',
+  resource_manager: 'Resource Manager',
+  interviewer: 'Interviewer',
+  resource: 'Resource',
 };
 
 /** Roles on which `is_team_lead` means something. */
@@ -36,6 +68,12 @@ export type Session = {
   uid: number;
   name: string;
   role: Role;
+  /**
+   * The account's session version when this token was issued. A token from
+   * before versions existed has none, which reads as 0 — the value every
+   * account starts at — so nobody is signed out by the release itself.
+   */
+  sv: number;
 };
 
 function secretKey() {
@@ -71,6 +109,7 @@ export async function verifySession(
       uid: typeof payload.uid === 'number' ? payload.uid : 0,
       name: typeof payload.name === 'string' ? payload.name : 'User',
       role: role as Role,
+      sv: typeof payload.sv === 'number' ? payload.sv : 0,
     };
   } catch {
     return null;

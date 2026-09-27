@@ -2,10 +2,12 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { resources, deployments } from '@/lib/schema';
 import ResourcesClient from './client';
+import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ResourcesPage() {
+  await requireCurrentAccount();
   // Independent of each other — run concurrently rather than as two
   // sequential round trips to the database.
   const [rows, alloc] = await Promise.all([

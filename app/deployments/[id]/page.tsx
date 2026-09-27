@@ -14,6 +14,7 @@ import { getResourceAllocation } from '@/lib/queries';
 import { formatMoney, formatDate, deploymentMoney, effectiveCtc, monthlyOf } from '@/lib/utils';
 import { Badge, AllocationBar } from '@/components/ui';
 import { DetailHeader, DetailSection, DetailFacts } from '@/components/detail';
+import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,7 @@ export default async function DeploymentDetailPage({
 }: {
   params: { id: string };
 }) {
+  await requireCurrentAccount();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
 

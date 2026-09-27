@@ -3,10 +3,12 @@ import { db } from '@/lib/db';
 import { projects, clients, deployments } from '@/lib/schema';
 import { sumByCurrency } from '@/lib/utils';
 import ProjectsClient from './client';
+import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ProjectsPage() {
+  await requireCurrentAccount();
   // Independent of each other — run concurrently.
   const [rows, stats, clientOptions] = await Promise.all([
     db

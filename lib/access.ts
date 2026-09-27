@@ -1,4 +1,4 @@
-import type { Role } from './auth';
+import { PENDING_ROLES, type Role } from './auth';
 
 /**
  * The single source of truth for who can see and change what.
@@ -44,8 +44,17 @@ export function navFor(role: Role): NavItem[] {
   return NAV.filter((item) => item.roles.includes(role));
 }
 
+/**
+ * The only page a role in PENDING_ROLES may open until its screens are built.
+ * Kept explicit rather than left to the fall-through below, which treats any
+ * role it does not recognise as TA — exactly the access these roles must not
+ * inherit by accident.
+ */
+export const HOLDING_PATH = '/welcome';
+
 /** Where a role lands after login — each team role starts on its own board. */
 export function landingPath(role: Role): string {
+  if (PENDING_ROLES.includes(role)) return HOLDING_PATH;
   switch (role) {
     case 'ta':
       return '/my';
@@ -130,6 +139,7 @@ function matchesPrefix(pathname: string, prefixes: string[]): boolean {
 /** Can this role reach this path at all? Applies to pages and API alike. */
 export function canAccess(role: Role, pathname: string): boolean {
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
+  if (PENDING_ROLES.includes(role)) return pathname === HOLDING_PATH;
   if (role === 'admin' || role === 'management') return true;
   if (role === 'leadgen') return matchesPrefix(pathname, LEADGEN_READ_PREFIXES);
   if (role === 'sales') return matchesPrefix(pathname, SALES_READ_PREFIXES);
@@ -215,6 +225,8 @@ export function canWrite(role: Role, pathname: string): boolean {
   if (role === 'admin') return true;
   // Management mirrors Admin's view with every write withheld.
   if (role === 'management') return false;
+  // Nothing to write until these roles' screens exist.
+  if (PENDING_ROLES.includes(role)) return false;
   const rules =
     role === 'leadgen' ? LEADGEN_WRITE_RULES : role === 'sales' ? SALES_WRITE_RULES : TA_WRITE_RULES;
   for (const rule of rules) {

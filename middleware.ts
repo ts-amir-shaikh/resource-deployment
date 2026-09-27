@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { SESSION_COOKIE, verifySession } from '@/lib/auth';
+import { PATH_HEADER, SESSION_COOKIE, SIGNED_IN_HEADER, verifySession } from '@/lib/auth';
 import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
 
 /**
@@ -19,18 +19,24 @@ import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
  * route is covered by the policy the moment it exists, instead of being open
  * until someone remembers to add a guard to it.
  */
-const PUBLIC_PREFIXES = ['/share/', '/api/share/', '/jobs/', '/api/jobs/'];
-const PUBLIC_EXACT = ['/login', '/api/auth/login', '/jobs', '/api/jobs', '/api/health'];
+export const PUBLIC_PREFIXES = ['/share/', '/api/share/', '/jobs/', '/api/jobs/'];
+export const PUBLIC_EXACT = ['/login', '/api/auth/login', '/jobs', '/api/jobs', '/api/health'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith('/api/');
 
+  // Never trust these from outside: server code reads them as "this request
+  // passed the sign-in gate", so a forged one must not survive.
+  const forwarded = new Headers(req.headers);
+  forwarded.delete(SIGNED_IN_HEADER);
+  forwarded.delete(PATH_HEADER);
+
   if (
     PUBLIC_EXACT.includes(pathname) ||
     PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
   ) {
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: forwarded } });
   }
 
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
@@ -71,11 +77,14 @@ export async function middleware(req: NextRequest) {
     );
   }
 
-  // Server components and route handlers read the identity by verifying the
-  // cookie themselves (lib/session.ts) rather than trusting a header set here
-  // — a forwarded header is only as trustworthy as every path that forwards
-  // it, and /share/* deliberately passes requests through untouched.
-  return NextResponse.next();
+  // Server components and route handlers still read the identity by verifying
+  // the cookie themselves (lib/session.ts) rather than trusting anything set
+  // here. The marker only tells them the request needs the account check —
+  // whether this person may still be signed in, which Edge code cannot answer
+  // because it cannot open the AWS host's SQLite file.
+  forwarded.set(SIGNED_IN_HEADER, '1');
+  forwarded.set(PATH_HEADER, pathname + req.nextUrl.search);
+  return NextResponse.next({ request: { headers: forwarded } });
 }
 
 export const config = {

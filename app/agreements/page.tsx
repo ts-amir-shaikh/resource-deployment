@@ -10,10 +10,12 @@ import {
 import { syncExpiredAgreements } from '@/lib/queries';
 import { daysUntil } from '@/lib/utils';
 import AgreementsClient from './client';
+import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AgreementsPage() {
+  await requireCurrentAccount();
   // `rows` reads agreement status, so it must wait for the sync write to
   // finish — but the other three queries never touch the agreements table,
   // so they're kicked off immediately rather than waiting behind the sync.

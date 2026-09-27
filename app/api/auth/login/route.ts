@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       );
     }
     if (!legacyPasswordMatches(password)) return reject('Incorrect password');
-    session = { uid: 0, name: 'Admin', role: 'admin' };
+    session = { uid: 0, name: 'Admin', role: 'admin', sv: 0 };
   } else {
     if (!username) return reject('Enter your username');
     const user = accounts.find(
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     const hash = user?.passwordHash ?? '0'.repeat(64);
     const ok = await verifyPassword(password, salt, hash);
     if (!user || !ok) return reject();
-    session = { uid: user.id, name: user.name, role: user.role };
+    session = { uid: user.id, name: user.name, role: user.role, sv: user.sessionVersion };
   }
 
   const token = await createSession(session);

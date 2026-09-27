@@ -10,6 +10,11 @@
  *   npm run db:user -- --role   --username mamta --set admin
  *   npm run db:user -- --disable --username mamta
  *   npm run db:user -- --enable  --username mamta
+ *   npm run db:user -- --set-email --username mamta --email mamta@techstalwarts.com
+ *
+ * Disable, role, head-flag, email and password changes also increment the
+ * account's session version, so they take effect on the person's next request
+ * rather than when their 12-hour session happens to run out.
  *
  * The password is always typed at the prompt, never passed as a flag: a flag
  * lands in shell history and in the process list, where anyone on the machine
@@ -182,6 +187,16 @@ async function main() {
   });
   const found = existing[0];
 
+  // The accounts-and-sign-in columns exist only once `db:migrate` has run.
+  // Checked rather than assumed, so this tool still works against an older
+  // database — it just cannot revoke sessions there, and says so.
+  const { rows: cols } = await client.execute('PRAGMA table_info(users)');
+  const colNames = new Set(cols.map((c) => String(c.name)));
+  const bump = colNames.has('session_version') ? ', session_version = session_version + 1' : '';
+  if (!bump) {
+    console.log('\n(Note: this database predates session versions — run db:migrate so changes end open sessions.)');
+  }
+
   if (has('create')) {
     if (found) {
       console.error(`\nUser "${username}" already exists. Use --reset to change the password.`);
@@ -225,14 +240,14 @@ async function main() {
     const salt = newSalt();
     const hash = await hashPassword(password, salt);
     await client.execute({
-      sql: 'update users set password_hash = ?, password_salt = ? where id = ?',
+      sql: `update users set password_hash = ?, password_salt = ?${colNames.has('has_password') ? ', has_password = 1' : ''}${bump} where id = ?`,
       args: [hash, salt, found.id],
     });
     console.log('\nPassword updated.');
   } else if (has('role')) {
     const role = parseRole(flag('set'));
     await client.execute({
-      sql: 'update users set role = ? where id = ?',
+      sql: `update users set role = ?${bump} where id = ?`,
       args: [role, found.id],
     });
     console.log(`\n${username} is now ${role}.`);
@@ -240,7 +255,7 @@ async function main() {
     const grant = has('lead');
     if (grant) assertTaBeforeLead(String(found.role), username);
     await client.execute({
-      sql: 'update users set is_team_lead = ? where id = ?',
+      sql: `update users set is_team_lead = ?${bump} where id = ?`,
       args: [grant ? 1 : 0, found.id],
     });
     console.log(
@@ -251,12 +266,35 @@ async function main() {
   } else if (has('disable') || has('enable')) {
     const active = has('enable') ? 1 : 0;
     await client.execute({
-      sql: 'update users set active = ? where id = ?',
+      sql: `update users set active = ?${bump} where id = ?`,
       args: [active, found.id],
     });
     console.log(`\n${username} is now ${active ? 'enabled' : 'disabled'}.`);
+  } else if (has('set-email')) {
+    if (!colNames.has('email')) {
+      console.error('\nThis database has no email column yet. Run `npm run db:migrate` first.');
+      process.exit(1);
+    }
+    const email = (flag('email') || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.endsWith('@placeholder.local')) {
+      console.error('\n--email must be a real address, e.g. --email mamta@techstalwarts.com');
+      process.exit(1);
+    }
+    const { rows: clash } = await client.execute({
+      sql: 'select username from users where email = ? and id <> ?',
+      args: [email, found.id],
+    });
+    if (clash.length) {
+      console.error(`\n${email} already belongs to "${clash[0].username}". Nothing was changed.`);
+      process.exit(1);
+    }
+    await client.execute({
+      sql: `update users set email = ?${bump} where id = ?`,
+      args: [email, found.id],
+    });
+    console.log(`\n${username} now signs in as ${email}.`);
   } else {
-    console.error('\nNothing to do. Pass one of --create, --reset, --role, --lead, --no-lead, --disable, --enable, --list.');
+    console.error('\nNothing to do. Pass one of --create, --reset, --role, --lead, --no-lead, --disable, --enable, --set-email, --list.');
     process.exit(1);
   }
 

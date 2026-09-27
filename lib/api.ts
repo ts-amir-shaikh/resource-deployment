@@ -1,7 +1,10 @@
 import 'server-only';
 import { NextResponse } from 'next/server';
 import { ZodError, type ZodTypeAny, type output } from 'zod';
+import { headers } from 'next/headers';
+import { isRedirectError } from 'next/dist/client/components/redirect';
 import { AllocationError } from './queries';
+import { getSessionState, SIGNED_IN_HEADER } from './session';
 
 export function ok<T>(data: T, status = 200) {
   return NextResponse.json(data, { status });
@@ -49,11 +52,32 @@ export async function parseBody<S extends ZodTypeAny>(
   return { data: result.data };
 }
 
-/** Wraps a handler so known domain errors become clean HTTP responses. */
+/**
+ * Wraps a handler so known domain errors become clean HTTP responses.
+ *
+ * It is also the API's account check. Middleware marks every signed-in request
+ * (and strips the marker from anything arriving from outside); for those,
+ * the account must still be current before the handler runs. A stale session
+ * on a usable account answers "session changed" so the screen reloads and
+ * picks up the fresh one; an ended account answers "signed out". Public routes
+ * carry no marker and are untouched. `tests/chokepoints.test.ts` fails the
+ * build if a signed-in route stops going through here.
+ */
 export async function handle(fn: () => Promise<Response> | Response): Promise<Response> {
+  if (headers().get(SIGNED_IN_HEADER)) {
+    const state = await getSessionState();
+    if (state.verdict === 'refresh') {
+      return fail('Your access changed. Reload the page to continue.', 401, { sessionChanged: true });
+    }
+    if (state.verdict !== 'ok') {
+      return fail('You have been signed out.', 401, { signedOut: true });
+    }
+  }
   try {
     return await fn();
   } catch (err) {
+    // A redirect from inside a handler is control flow, not a failure.
+    if (isRedirectError(err)) throw err;
     if (err instanceof AllocationError) {
       return fail(err.message, 409, {
         headroom: err.headroom,

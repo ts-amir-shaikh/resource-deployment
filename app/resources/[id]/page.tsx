@@ -13,10 +13,12 @@ import {
   DetailEmpty,
   AnnualWithMonthly,
 } from '@/components/detail';
+import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ResourceDetailPage({ params }: { params: { id: string } }) {
+  await requireCurrentAccount();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
 

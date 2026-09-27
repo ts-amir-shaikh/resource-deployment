@@ -279,9 +279,43 @@ CREATE TABLE IF NOT EXISTS users (
   is_team_lead INTEGER NOT NULL DEFAULT 0,
   applications_seen_at TEXT,
   active INTEGER NOT NULL DEFAULT 1,
+  email TEXT,
+  session_version INTEGER NOT NULL DEFAULT 0,
+  interviewer_duty INTEGER NOT NULL DEFAULT 0,
+  access_until TEXT,
+  resource_id INTEGER REFERENCES resources(id),
+  has_password INTEGER NOT NULL DEFAULT 1,
+  last_sign_in_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS users_username_idx ON users(username);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_uq ON users(email);
+CREATE UNIQUE INDEX IF NOT EXISTS users_resource_uq ON users(resource_id);
+
+CREATE TABLE IF NOT EXISTS password_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  cancelled_at TEXT,
+  created_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS password_links_user_idx ON password_links(user_id);
+
+CREATE TABLE IF NOT EXISTS account_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subject_user_id INTEGER,
+  actor_user_id INTEGER,
+  kind TEXT NOT NULL,
+  method TEXT,
+  attempted_identifier TEXT,
+  detail TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS account_events_subject_idx ON account_events(subject_user_id);
+CREATE INDEX IF NOT EXISTS account_events_created_idx ON account_events(created_at);
 
 CREATE TABLE IF NOT EXISTS referrals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
