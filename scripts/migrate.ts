@@ -296,6 +296,21 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'amount',
     ddl: 'ALTER TABLE invoice_resources ADD COLUMN amount REAL NOT NULL DEFAULT 0',
   },
+  // M59 — leave splits in two. Both default to zero, so every line priced
+  // before this reads as "no leave recorded", which is what it was. The old
+  // leave_days is retired rather than dropped and its value is lifted into
+  // unpaid_leave_days below: leave that came off the bill is, by definition,
+  // the unpaid kind.
+  {
+    table: 'invoice_resources',
+    column: 'paid_leave_days',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN paid_leave_days REAL NOT NULL DEFAULT 0',
+  },
+  {
+    table: 'invoice_resources',
+    column: 'unpaid_leave_days',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN unpaid_leave_days REAL NOT NULL DEFAULT 0',
+  },
   {
     table: 'candidate_ratings',
     column: 'interview_id',
@@ -432,6 +447,16 @@ async function main() {
     });
   }
   if (orphanNames.length > 0) console.log(`  linked ${orphanNames.length} prospect(s) from typed company names`);
+
+  // M59 lift. Leave recorded before the split reduced the invoice, so it was
+  // unpaid leave under the new meaning. Idempotent: only rows that still carry
+  // the old figure with nothing in the new column are touched, so re-running
+  // cannot double-count and an edited line is never overwritten.
+  const { rowsAffected: leaveLifted } = await client.execute(
+    'update invoice_resources set unpaid_leave_days = leave_days where leave_days > 0 and unpaid_leave_days = 0',
+  );
+  if (leaveLifted > 0)
+    console.log(`  lifted leave_days into unpaid_leave_days on ${leaveLifted} invoice line(s)`);
 
   // M30-3 backfill. Idempotent: only rows with no stamp are touched.
   const { rowsAffected: stamped } = await client.execute(

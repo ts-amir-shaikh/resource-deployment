@@ -117,6 +117,8 @@ CREATE TABLE IF NOT EXISTS invoice_resources (
   monthly_rate REAL NOT NULL DEFAULT 0,
   working_days REAL,
   leave_days REAL NOT NULL DEFAULT 0,
+  paid_leave_days REAL NOT NULL DEFAULT 0,
+  unpaid_leave_days REAL NOT NULL DEFAULT 0,
   deployment_date TEXT,
   last_working_date TEXT,
   billed_days REAL,

@@ -537,8 +537,13 @@ export type InvoiceLineBasis = {
    * is a flat monthly rate and the three fields below are ignored.
    */
   workingDays: number | null;
-  /** Days of leave taken inside the period. Half days are allowed. */
-  leaveDays: number;
+  /**
+   * Leave the client pays for under the SOW. Recorded, not deducted — see
+   * invoiceLineMath. Half days are allowed.
+   */
+  paidLeaveDays: number;
+  /** Leave that comes off the bill. The term that moves money. */
+  unpaidLeaveDays: number;
   /** First day on the engagement, when the resource joined mid-period. */
   deploymentDate: string | null;
   /** Last day, when the resource rolled off mid-period. */
@@ -554,8 +559,10 @@ export type InvoiceLineMath = {
   daysOnSite: number;
   /** Working days that window is worth, before leave. Null when not pro-rated. */
   availableDays: number | null;
-  /** What the client is billed for: available days less leave. */
+  /** What the client is billed for: available days less UNPAID leave. */
   billedDays: number | null;
+  /** Paid leave inside the period — billed, but worth showing on the line. */
+  paidLeaveDays: number;
   amount: number;
   /** True when the line came out below a full month, for whatever reason. */
   prorated: boolean;
@@ -569,8 +576,16 @@ function roundHalf(n: number): number {
 /**
  * What one resource is worth on one invoice.
  *
- *   billed days = (working days × share of the period they were on) − leave
+ *   billed days = (working days × share of the period they were on) − unpaid leave
  *   amount      = monthly rate × billed days ÷ working days
+ *
+ * Paid and unpaid leave are separate terms and only one of them is in that
+ * sum (M59). Paid leave is leave the client agreed to cover, so the day stays
+ * billable; unpaid leave comes off. The figure is still recorded because the
+ * salary is paid either way, which is a cost the margin carries, and because
+ * a monthly allowance can only be enforced once the number exists. If your
+ * contracts mean the opposite — that "paid" describes the payslip and the
+ * client is billed for neither — this is the one line to change.
  *
  * Three decisions the sentence leaves open, settled here so the form preview
  * and the saved record cannot settle them differently:
@@ -611,6 +626,7 @@ export function invoiceLineMath(b: InvoiceLineBasis): InvoiceLineMath {
       daysOnSite,
       availableDays: null,
       billedDays: null,
+      paidLeaveDays: Math.max(0, b.paidLeaveDays),
       amount: Math.round(b.monthlyRate),
       prorated: false,
     };
@@ -620,7 +636,7 @@ export function invoiceLineMath(b: InvoiceLineBasis): InvoiceLineMath {
   const availableDays = roundHalf(b.workingDays * share);
   const billedDays = Math.min(
     b.workingDays,
-    Math.max(0, availableDays - Math.max(0, b.leaveDays)),
+    Math.max(0, availableDays - Math.max(0, b.unpaidLeaveDays)),
   );
 
   return {
@@ -628,6 +644,7 @@ export function invoiceLineMath(b: InvoiceLineBasis): InvoiceLineMath {
     daysOnSite,
     availableDays,
     billedDays,
+    paidLeaveDays: Math.max(0, b.paidLeaveDays),
     amount: Math.round((b.monthlyRate * billedDays) / b.workingDays),
     prorated: billedDays < b.workingDays,
   };
@@ -652,7 +669,8 @@ export function invoiceLineRow(
     resourceId: number;
     monthlyRate: number;
     workingDays?: number;
-    leaveDays: number;
+    paidLeaveDays: number;
+    unpaidLeaveDays: number;
     deploymentDate?: string;
     lastWorkingDate?: string;
   },
@@ -661,7 +679,8 @@ export function invoiceLineRow(
   const math = invoiceLineMath({
     monthlyRate: line.monthlyRate,
     workingDays: line.workingDays ?? null,
-    leaveDays: line.leaveDays,
+    paidLeaveDays: line.paidLeaveDays,
+    unpaidLeaveDays: line.unpaidLeaveDays,
     deploymentDate: line.deploymentDate ?? null,
     lastWorkingDate: line.lastWorkingDate ?? null,
     periodFrom: period.periodFrom,
@@ -671,7 +690,8 @@ export function invoiceLineRow(
     resourceId: line.resourceId,
     monthlyRate: line.monthlyRate,
     workingDays: line.workingDays ?? null,
-    leaveDays: line.leaveDays,
+    paidLeaveDays: line.paidLeaveDays,
+    unpaidLeaveDays: line.unpaidLeaveDays,
     deploymentDate: line.deploymentDate ?? null,
     lastWorkingDate: line.lastWorkingDate ?? null,
     billedDays: math.billedDays,

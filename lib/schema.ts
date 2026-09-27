@@ -299,7 +299,22 @@ export const invoiceResources = sqliteTable(
      * which is how every invoice raised before this feature was priced.
      */
     workingDays: real('working_days'),
+    /**
+     * Retired in M59, kept so lines priced before the split still read. Its
+     * value was leave that came off the bill, which is now
+     * `unpaidLeaveDays`; nothing writes this column any more.
+     */
     leaveDays: real('leave_days').notNull().default(0),
+    /**
+     * Leave the client has agreed to pay for under the SOW. Recorded, and
+     * deliberately NOT deducted: the day is billable. It is held because the
+     * salary goes out either way — a real cost against margin — and because an
+     * allowance ("five paid days a month") can only be enforced once the
+     * figure exists.
+     */
+    paidLeaveDays: real('paid_leave_days').notNull().default(0),
+    /** Leave that comes off the invoice. This is the term that moves money. */
+    unpaidLeaveDays: real('unpaid_leave_days').notNull().default(0),
     /** The resource's first day on the engagement, when it falls inside the
      *  billing period. NULL means they were already on it at period start. */
     deploymentDate: text('deployment_date'),

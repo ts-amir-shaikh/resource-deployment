@@ -73,6 +73,8 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
       monthlyRate: invoiceResources.monthlyRate,
       workingDays: invoiceResources.workingDays,
       leaveDays: invoiceResources.leaveDays,
+      paidLeaveDays: invoiceResources.paidLeaveDays,
+      unpaidLeaveDays: invoiceResources.unpaidLeaveDays,
       deploymentDate: invoiceResources.deploymentDate,
       lastWorkingDate: invoiceResources.lastWorkingDate,
       billedDays: invoiceResources.billedDays,
@@ -232,7 +234,21 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
                           )}
                         </td>
                         <td className="td tnum text-xs text-ink2">
-                          {c.leaveDays > 0 ? `${c.leaveDays}d` : '—'}
+                          {/* Lines priced before M59 carry their leave in the
+                              retired column; it was deducted, so it reads as
+                              unpaid. */}
+                          {(() => {
+                            const unpaid = c.unpaidLeaveDays || c.leaveDays;
+                            if (!unpaid && !c.paidLeaveDays) return '—';
+                            return (
+                              <>
+                                {unpaid > 0 && <div>{unpaid}d unpaid</div>}
+                                {c.paidLeaveDays > 0 && (
+                                  <div className="text-ink3">{c.paidLeaveDays}d paid</div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </td>
                         <td className="td text-xs text-ink2">
                           {c.deploymentDate || c.lastWorkingDate ? (

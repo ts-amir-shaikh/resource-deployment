@@ -58,6 +58,8 @@ export async function GET(_req: Request, { params }: Ctx) {
         monthlyRate: invoiceResources.monthlyRate,
         workingDays: invoiceResources.workingDays,
         leaveDays: invoiceResources.leaveDays,
+        paidLeaveDays: invoiceResources.paidLeaveDays,
+        unpaidLeaveDays: invoiceResources.unpaidLeaveDays,
         deploymentDate: invoiceResources.deploymentDate,
         lastWorkingDate: invoiceResources.lastWorkingDate,
         billedDays: invoiceResources.billedDays,

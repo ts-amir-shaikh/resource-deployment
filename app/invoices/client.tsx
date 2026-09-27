@@ -98,7 +98,8 @@ type LineForm = {
   resourceId: number;
   monthlyRate: string;
   workingDays: string;
-  leaveDays: string;
+  paidLeaveDays: string;
+  unpaidLeaveDays: string;
   deploymentDate: string;
   lastWorkingDate: string;
 };
@@ -132,7 +133,8 @@ function blankLine(resourceId: number, monthlyRate: number, workingDays: string)
     resourceId,
     monthlyRate: monthlyRate ? String(monthlyRate) : '',
     workingDays,
-    leaveDays: '',
+    paidLeaveDays: '',
+    unpaidLeaveDays: '',
     deploymentDate: '',
     lastWorkingDate: '',
   };
@@ -315,7 +317,8 @@ export default function InvoicesClient({
         invoiceLineMath({
           monthlyRate: Number(l.monthlyRate) || 0,
           workingDays: l.workingDays === '' ? null : Number(l.workingDays) || null,
-          leaveDays: Number(l.leaveDays) || 0,
+          paidLeaveDays: Number(l.paidLeaveDays) || 0,
+          unpaidLeaveDays: Number(l.unpaidLeaveDays) || 0,
           deploymentDate: l.deploymentDate || null,
           lastWorkingDate: l.lastWorkingDate || null,
           periodFrom: form.periodFrom,
@@ -408,7 +411,8 @@ export default function InvoicesClient({
           resourceId: number;
           monthlyRate: number;
           workingDays: number | null;
-          leaveDays: number;
+          paidLeaveDays: number;
+          unpaidLeaveDays: number;
           deploymentDate: string | null;
           lastWorkingDate: string | null;
         }[];
@@ -419,7 +423,8 @@ export default function InvoicesClient({
           resourceId: r.resourceId,
           monthlyRate: r.monthlyRate ? String(r.monthlyRate) : '',
           workingDays: r.workingDays == null ? '' : String(r.workingDays),
-          leaveDays: r.leaveDays ? String(r.leaveDays) : '',
+          paidLeaveDays: r.paidLeaveDays ? String(r.paidLeaveDays) : '',
+          unpaidLeaveDays: r.unpaidLeaveDays ? String(r.unpaidLeaveDays) : '',
           deploymentDate: r.deploymentDate ?? '',
           lastWorkingDate: r.lastWorkingDate ?? '',
         })),
@@ -451,7 +456,8 @@ export default function InvoicesClient({
           resourceId: l.resourceId,
           monthlyRate: Number(l.monthlyRate) || 0,
           workingDays: l.workingDays === '' ? null : Number(l.workingDays),
-          leaveDays: Number(l.leaveDays) || 0,
+          paidLeaveDays: Number(l.paidLeaveDays) || 0,
+          unpaidLeaveDays: Number(l.unpaidLeaveDays) || 0,
           deploymentDate: l.deploymentDate,
           lastWorkingDate: l.lastWorkingDate,
         })),
@@ -1337,7 +1343,8 @@ function InvoiceLineRow({
 }) {
   const err = (field: keyof LineForm) => errors[`lines.${index}.${field}`];
   const partMonth = math.daysOnSite > 0 && math.daysOnSite < math.daysInPeriod;
-  const leave = Number(line.leaveDays) || 0;
+  const paidLeave = Number(line.paidLeaveDays) || 0;
+  const unpaidLeave = Number(line.unpaidLeaveDays) || 0;
 
   return (
     <div className="rounded-md border border-line bg-surface px-3 py-2.5">
@@ -1358,7 +1365,7 @@ function InvoiceLineRow({
         </span>
       </div>
 
-      <div className="mt-2 grid gap-2 sm:grid-cols-5">
+      <div className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Field label={`Rate/mo ${currencySymbol}`} error={err('monthlyRate')}>
           <input
             className="input"
@@ -1379,14 +1386,24 @@ function InvoiceLineRow({
             onChange={(e) => onChange({ workingDays: e.target.value })}
           />
         </Field>
-        <Field label="Leave days" error={err('leaveDays')}>
+        <Field label="Paid leave" error={err('paidLeaveDays')} hint="Billed">
           <input
             className="input"
             type="number"
             min={0}
             step="0.5"
-            value={line.leaveDays}
-            onChange={(e) => onChange({ leaveDays: e.target.value })}
+            value={line.paidLeaveDays}
+            onChange={(e) => onChange({ paidLeaveDays: e.target.value })}
+          />
+        </Field>
+        <Field label="Unpaid leave" error={err('unpaidLeaveDays')} hint="Deducted">
+          <input
+            className="input"
+            type="number"
+            min={0}
+            step="0.5"
+            value={line.unpaidLeaveDays}
+            onChange={(e) => onChange({ unpaidLeaveDays: e.target.value })}
           />
         </Field>
         <Field label="Deployed from" error={err('deploymentDate')}>
@@ -1432,9 +1449,15 @@ function InvoiceLineRow({
                 days ({math.availableDays} working days)
               </>
             )}
-            {leave > 0 && (
+            {unpaidLeave > 0 && (
               <>
-                {' · '}less {leave} day{leave === 1 ? '' : 's'} leave
+                {' · '}less {unpaidLeave} day{unpaidLeave === 1 ? '' : 's'} unpaid leave
+              </>
+            )}
+            {paidLeave > 0 && (
+              <>
+                {' · '}
+                {paidLeave} day{paidLeave === 1 ? '' : 's'} paid leave, billed
               </>
             )}
           </>

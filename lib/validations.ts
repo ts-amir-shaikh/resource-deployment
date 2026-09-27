@@ -267,7 +267,8 @@ const invoiceLineEntry = z
       .refine((v) => v === undefined || (v > 0 && v <= 31), {
         message: 'Working days must be between 1 and 31',
       }),
-    leaveDays: z.coerce.number().min(0, 'Leave days cannot be negative').default(0),
+    paidLeaveDays: z.coerce.number().min(0, 'Paid leave cannot be negative').default(0),
+    unpaidLeaveDays: z.coerce.number().min(0, 'Unpaid leave cannot be negative').default(0),
     deploymentDate: optionalDate,
     lastWorkingDate: optionalDate,
   })
@@ -278,10 +279,29 @@ const invoiceLineEntry = z
       path: ['lastWorkingDate'],
     },
   )
-  .refine((d) => d.workingDays === undefined || d.leaveDays <= d.workingDays, {
-    message: 'Leave cannot exceed the working days in the month',
-    path: ['leaveDays'],
-  });
+  .refine(
+    (d) =>
+      d.workingDays === undefined ||
+      d.paidLeaveDays + d.unpaidLeaveDays <= d.workingDays,
+    {
+      message: 'Paid and unpaid leave together cannot exceed the working days in the month',
+      path: ['unpaidLeaveDays'],
+    },
+  )
+  // M59: closes the silent case M57 shipped with. Without a day count the line
+  // is a flat month and every leave figure on it is ignored — so a biller who
+  // recorded leave and skipped the day count was billing a full month while
+  // believing they had deducted something. Refused rather than resolved
+  // quietly: the fix is one field, and only they know which way they meant it.
+  .refine(
+    (d) =>
+      d.workingDays !== undefined ||
+      (d.paidLeaveDays === 0 && d.unpaidLeaveDays === 0),
+    {
+      message: 'Enter the working days in the month before recording leave against this line',
+      path: ['workingDays'],
+    },
+  );
 
 export const invoiceSchema = z
   .object({
