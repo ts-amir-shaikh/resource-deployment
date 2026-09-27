@@ -2,7 +2,7 @@
 
 > Source of truth for the module FSDs. The shared web copy (https://claude.ai/artifact/X1aigvJXqU4CopKdMQvQNr) is republished from these files. Every implementation plan ends by updating the FSDs it touches.
 
-`FSD Register · Rev 1.0`
+`FSD Register · Rev 1.1`
 
 Each document below describes one module of the Resource Deployment Management System: what is live in production today, the rules it applies, and what is planned next. They describe the application as it runs at commit `5e43f82` on 27 September 2026.
 
@@ -24,8 +24,8 @@ Documents are issued in order. FSD-00 checks the whole set against the platform 
 | No. | Module | Code | Module ver. | Doc rev. | Status | Plan modules |
 |---|---|---|---|---|---|---|
 | FSD-00 | [Platform Vision & Coverage](FSD-00-platform-vision-coverage.md) | VIS | — | Rev 1.1 | `Issued` | — |
-| FSD-00A | [Feature Gap Register](FSD-00A-feature-gap-register.md) | GAP | — | Rev 1.2 | `Issued` | — |
-| FSD-01 | [Platform, Roles & Access](FSD-01-platform-roles-access.md) | PLT | v3.1 | Rev 1.0 | `Issued` | M0 · M10 · M21 · M37 · M41 · M47 · M49 |
+| FSD-00A | [Feature Gap Register](FSD-00A-feature-gap-register.md) | GAP | — | Rev 1.3 | `Issued` | — |
+| FSD-01 | [Platform, Roles & Access](FSD-01-platform-roles-access.md) | PLT | v4.0 (built; v3.1 live) | Rev 2.0 | `Issued` | M0 · M10 · M21 · M37 · M41 · M47 · M49 · Accounts & sign-in |
 | FSD-02 | [Staffing Pipeline](FSD-02-staffing-pipeline.md) | PIP | v4.0 | Rev 1.0 | `Issued` | M8 M12 M13 M17 M18 M42 M46 M48 M52–M56 |
 | FSD-03 | [Candidates & Interviews](FSD-03-candidates-interviews.md) | CAN | v3.1 | Rev 1.0 | `Issued` | M9 M22 M26–M29 M32–M36 |
 | FSD-04 | [Job Board & Referrals](FSD-04-job-board-referrals.md) | JOB | v3.0 | Rev 1.0 | `Issued` | M13 M16 M23 M24 |
@@ -85,6 +85,7 @@ The edition of one FSD. Each document keeps its own revision history.
 ### Status values
 
 - `Live` in production now
+- `Built` merged and verified, awaiting the production migration or deploy; becomes `Live` when released
 - `Planned` agreed, not yet built
 - `Proposed` suggested, needs a decision
 - `Deferred` logged, deliberately not scheduled
@@ -110,7 +111,7 @@ The edition of one FSD. Each document keeps its own revision history.
 
 ## 4. Roles referenced throughout
 
-Five roles exist. A **head** is a flag on a TA, Lead Generation or Sales account that widens what they can see across their team. It is not a separate role. FSD-01 defines these in full.
+Five roles are live. A **head** is a flag on a TA, Lead Generation or Sales account that widens what they can see across their team. It is not a separate role. FSD-01 defines these in full. FSD-01 v4.0 adds four more (Accounts, Resource Manager, Interviewer and Resource), which see only a holding page until their modules are specified.
 
 | Role | In short | Lands on |
 |---|---|---|
@@ -138,4 +139,4 @@ Every FSD was written against the code, not against earlier documents. That turn
 | FS-PIP-04 | Converting a prospect's won requirement leaves the prospect unmarked. | Defect | Medium |
 | FS-JOB-01 | The step to confirm which employee referred an applicant (M23) was never built. | Not built | Medium |
 | FS-AGT-02 | Attaching a resume validation to a requirement (M20) was never built. | Not built | Medium |
-| FS-PLT-04 | Disabling an account or changing its role takes effect only at the next sign-in, up to 12 hours later. | Access | Medium |
+| FS-PLT-04 | Disabling an account or changing its role takes effect only at the next sign-in, up to 12 hours later. **Built** in FSD-01 v4.0, awaiting release. | Access | Medium |

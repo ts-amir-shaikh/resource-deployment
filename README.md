@@ -7,13 +7,15 @@ agreements/POs, and invoice collection.
 
 ```bash
 npm install
-cp .env.example .env.local   # set APP_PASSWORD and AUTH_SECRET
+cp .env.example .env.local   # set AUTH_SECRET (and APP_PASSWORD for first sign-in)
 npm run db:migrate           # creates the schema
 npm run db:seed              # optional — loads a realistic demo dataset
 npm run dev
 ```
 
-Opens at http://localhost:3000 and asks for the password in `APP_PASSWORD`.
+Opens at http://localhost:3000. Until the first account exists it asks for
+the shared password in `APP_PASSWORD`; create accounts with `npm run db:user`
+or, once signed in as Admin, on the People screen.
 With no Turso variables set, the database is a local libSQL file at
 `data/deployment.db`.
 
@@ -21,16 +23,45 @@ Generate a signing secret with `openssl rand -base64 32`.
 
 ## Authentication
 
-A single shared password gates the whole app. `middleware.ts` checks a signed,
-httpOnly session cookie (JWT via `jose`, so it runs in the Edge runtime) on
-every route, with two deliberate exceptions:
+People sign in with their email address and a password, or with **Sign in with
+Google**. The full rules are FSD-01 (`docs/fsd/FSD-01-platform-roles-access.md`).
 
-- `/share/*` and `/api/share/*` stay **public** — consultants must be able to
-  open a shared requirement without an account.
+- `middleware.ts` checks a signed, httpOnly session cookie (JWT via `jose`) on
+  every route and applies the role policy in `lib/access.ts`. Public
+  exceptions: `/share/*`, `/jobs/*`, `/login`, `/set-password`, the Google
+  sign-in steps and `/api/health`.
+- Every signed-in page (`requireCurrentAccount()`) and API route (`handle()`)
+  then checks the account itself, so deactivating someone, changing their
+  role, or passing their access-until date applies on their next click.
+  `tests/chokepoints.test.ts` fails if a page or route skips that check.
+- Admin manages logins on the **People** screen and sends each person a
+  single-use link to set their password. `npm run db:user` remains as the
+  fallback; passwords are prompted, never passed as flags.
+- Until the first account exists, the shared `APP_PASSWORD` signs in as Admin.
+  That path closes by itself once an account is created.
 
-API routes return `401` JSON rather than an HTML redirect. Sessions last 12
-hours. There is one role and no per-user identity: everyone who signs in sees
-everything, which is a scope choice for a small internal team.
+**Setting up email (password links).** Create a Workspace mailbox such as
+`no-reply@techstalwarts.com`, switch on 2-step verification for it, then
+create an app password at myaccount.google.com/apppasswords. Set `MAIL_USER`,
+`MAIL_APP_PASSWORD` and optionally `MAIL_FROM`. Without them, Send link says
+email is not configured and sends nothing.
+
+**Setting up Google sign-in.** In Google Cloud Console → APIs & Services:
+
+1. OAuth consent screen: audience **External** (otherwise Gmail addresses are
+   refused), scopes `openid`, `email`, `profile`.
+2. Credentials → Create OAuth client ID → Web application. Add one authorised
+   redirect URI per environment, exactly:
+   `https://staffing.techstalwarts.com/api/auth/google/callback`,
+   `https://staffing-test.techstalwarts.com/api/auth/google/callback`, and
+   `http://localhost:3000/api/auth/google/callback` for local work.
+3. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `APP_BASE_URL` (the
+   environment's public address, no trailing slash). The button stays hidden
+   until all three are set. `APP_BASE_URL` is also the address used in
+   password-link emails.
+
+Sign-in matches the Google address to an account's email exactly. Nobody can
+create an account by signing in.
 
 ## Deploying
 
@@ -96,6 +127,7 @@ docker run --rm -p 3000:3000 --env-file .env resource-deployment
 | Deployments | `/deployments` | Resource→project mapping, billable & shadow |
 | Agreements | `/agreements` | POs with immutable renewal history |
 | Invoices | `/invoices` | Billing periods with 4-stage collection status |
+| People | `/people` | Logins, roles, password links and the account log (Admin; Management view-only) |
 | Share view | `/share/[token]` | Public, read-only requirement page for consultants |
 
 ## Business rules

@@ -1,6 +1,6 @@
 # Feature gap register
 
-`FSD-00A · GAP · Rev 1.2`
+`FSD-00A · GAP · Rev 1.3`
 
 What each department still needs before it can run its part of the journey on this platform. Each gap is marked `Must` (the operation cannot run on the platform without it) or `Good to have` (it works without it, but slower or with less insight). This list comes before any plan. Plans are cut from the Must items first.
 
@@ -81,17 +81,17 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | ID | Gap | Today | Priority | Source |
 |---|---|---|---|---|
 | **Platform & access · All departments** | | | | |
-| G-PLT-01 | Four new roles: Accounts, Interviewer (internal and external), Resource Manager, Resource | Five roles. None of these exist. | `Must` | FSD-00 D1 D5 |
-| G-PLT-02 | Account management in the app: invite, activate, deactivate, change role or head flag | Command-line tool only | `Must` | FS-PLT-05 · D1 |
-| G-PLT-03 | Self-service password set, reset and change, by emailed link | Operator resets by hand | `Must` | FS-PLT-06 · D1 |
-| G-PLT-04 | End sessions at once when an account is disabled or its role changes | Up to 12 hours late | `Must` | FS-PLT-04 |
+| G-PLT-01 | Four new roles: Accounts, Interviewer (internal and external), Resource Manager, Resource | **Part built** (FSD-01 v4.0): the roles, interviewer duty and access-until exist and can be assigned, behind a holding page. What each may open comes with FSD-11/12 and FSD-16 to 18. | `Must` | FSD-00 D1 D5 |
+| G-PLT-02 | Account management in the app: invite, activate, deactivate, change role or head flag | **Built** (FSD-01 v4.0, FR-PLT-029 to 031), awaiting release | `Must` | FS-PLT-05 · D1 |
+| G-PLT-03 | Self-service password set, reset and change, by emailed link | **Built** (FR-PLT-032 to 034), awaiting release. Links are sent by Admin; there is no self-service "forgot password" by decision. | `Must` | FS-PLT-06 · D1 |
+| G-PLT-04 | End sessions at once when an account is disabled or its role changes | **Built** (FR-PLT-027, 028): takes effect on the next request. Awaiting release. | `Must` | FS-PLT-04 |
 | G-PLT-05 | Sensitive-field model and access requests: request with a reason, approve, time-limited grant, enforced on the server | Fixed role rules only | `Must` | FSD-00 §7 |
-| G-PLT-06 | Email service for invites, password links, approvals, interview bookings and reminders | No mail provider | `Must` | FS-PLT-09 |
-| G-PLT-07 | Audit log of overrides, grants, approvals and financial edits | Author fields only | `Must` | This review |
+| G-PLT-06 | Email service for invites, password links, approvals, interview bookings and reminders | **Built** for password links (BR-PLT-12: Workspace mailbox over SMTP). Other emails reuse it as their modules ship. Awaiting release. | `Must` | FS-PLT-09 |
+| G-PLT-07 | Audit log of overrides, grants, approvals and financial edits | **Part built**: the account log covers every account change and sign-in (FR-PLT-035). Overrides, grants, approvals and financial edits still need it. | `Must` | This review |
 | G-PLT-08 | Close the access gaps found in the FSDs (Lead Generation deal value, requirement deletion) | Open. Fix task running | `Must` | FS-PIP-01 · 02 |
 | G-PLT-09 | Scheduled backups on the AWS server before production moves there | None scheduled | `Must` | FS-PLT-02 |
 | G-PLT-10 | In-app notification centre (bell, unread count), beyond the applicant badge | Applicant badge only | `Good to have` | This review |
-| G-PLT-11 | Google Workspace sign-in for internal staff | Password only | `Good to have` | This review |
+| G-PLT-11 | Google Workspace sign-in for internal staff | **Built** (FR-PLT-026) for Gmail and techstalwarts.com addresses alike. Awaiting release. | `Good to have` | This review |
 | G-PLT-12 | Lock out repeated failed sign-ins | 0.4-second delay only | `Good to have` | FS-PLT-07 |
 | G-PLT-13 | Activity timeline on each record (client, requirement, candidate, resource) | Scattered across tables | `Good to have` | This review |
 | G-PLT-14 | Bulk import from the app instead of the command line | CSV import tool for operators | `Good to have` | This review |
@@ -202,3 +202,4 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | 1.0 | 27 Sep 2026 | First issue: 56 Must and 35 Good-to-have gaps across 11 areas, including the Tally bridge approach. |
 | 1.1 | 27 Sep 2026 | Tally connectivity test confirmed. Added the TallyPrime facts, two constraints, and G-TLY-13 to 17 (now 60 Must and 36 Good to have). |
 | 1.2 | 28 Sep 2026 | Sync schedule and laptop availability confirmed. G-TLY-10 is now Must, and G-TLY-17 is resolved (61 Must, 35 Good to have). |
+| 1.3 | 28 Sep 2026 | Accounts & sign-in built (FSD-01 v4.0): G-PLT-02, 03, 04, 06 and 11 built; G-PLT-01 and 07 part built. Counts unchanged until release. |
