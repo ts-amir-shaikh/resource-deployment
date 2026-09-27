@@ -15,6 +15,7 @@ import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
  *   /api/jobs/*   the matching read and apply endpoints
  *   /api/health   liveness/readiness for the deploy script and proxy
  *   /set-password the landing page of an emailed password link, and its API
+ *   /api/auth/google/*  Google sign-in's start and callback
  *
  * Enforcing writes here rather than in each route handler means a new API
  * route is covered by the policy the moment it exists, instead of being open
@@ -31,6 +32,9 @@ export const PUBLIC_EXACT = [
   // has no session yet; the link's own code is what authorises the change.
   '/set-password',
   '/api/auth/set-password',
+  // Google sign-in: the person has no session until the callback issues one.
+  '/api/auth/google/start',
+  '/api/auth/google/callback',
 ];
 
 export async function middleware(req: NextRequest) {

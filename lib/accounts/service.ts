@@ -2,7 +2,7 @@ import 'server-only';
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { accountEvents, passwordLinks, users, ACCOUNT_EVENT_KINDS } from '@/lib/schema';
-import { hashPassword, newSalt, verifyPassword } from '@/lib/auth';
+import { createSession, hashPassword, newSalt, verifyPassword, type Session } from '@/lib/auth';
 import { sendMail } from '@/lib/mail';
 import { passwordLinkEmail } from '@/lib/mail-templates';
 import { canSignIn, revocationStamp } from './eligibility';
@@ -172,4 +172,18 @@ export async function changeOwnPassword(userId: number, current: string, next: s
   const row = await storePassword(userId, next);
   await logEvent({ kind: 'password_changed', subjectUserId: userId, actorUserId: userId, method: 'password' });
   return { ok: true, sessionVersion: row.sessionVersion, name: row.name, role: row.role };
+}
+
+/**
+ * The last step of every successful sign-in, whichever way in (R12, R19):
+ * record it and issue the session at the account's current version.
+ */
+export async function completeSignIn(
+  account: Pick<typeof users.$inferSelect, 'id' | 'name' | 'role' | 'sessionVersion'>,
+  method: 'google' | 'password',
+): Promise<{ token: string; session: Session }> {
+  await db.update(users).set({ lastSignInAt: new Date().toISOString() }).where(eq(users.id, account.id)).run();
+  await logEvent({ kind: 'sign_in', subjectUserId: account.id, actorUserId: account.id, method });
+  const session: Session = { uid: account.id, name: account.name, role: account.role, sv: account.sessionVersion };
+  return { token: await createSession(session), session };
 }

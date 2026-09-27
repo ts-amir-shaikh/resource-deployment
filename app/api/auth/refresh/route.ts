@@ -5,6 +5,7 @@ import { users } from '@/lib/schema';
 import { SESSION_COOKIE, SESSION_MAX_AGE, createSession } from '@/lib/auth';
 import { canAccess, landingPath } from '@/lib/access';
 import { getSessionState } from '@/lib/session';
+import { pathOf, safeNext } from '@/lib/accounts/redirect';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,16 +15,6 @@ const cookieOptions = {
   secure: process.env.NODE_ENV === 'production',
   path: '/',
 };
-
-/** Only same-site paths; never an absolute or protocol-relative URL. */
-function safeNext(raw: string | null): string | null {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return null;
-  return raw;
-}
-
-function pathOf(next: string): string {
-  return next.split('?')[0];
-}
 
 /**
  * Where a page sends someone whose session no longer matches their account.

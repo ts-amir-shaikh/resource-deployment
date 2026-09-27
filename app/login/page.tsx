@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users } from '@/lib/schema';
+import { googleConfig } from '@/lib/accounts/google';
 import LoginClient from './client';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +25,7 @@ export default async function LoginPage() {
 
   return (
     <Suspense>
-      <LoginClient hasAccounts={hasAccounts} />
+      <LoginClient hasAccounts={hasAccounts} googleEnabled={hasAccounts && googleConfig() !== null} />
     </Suspense>
   );
 }

@@ -120,6 +120,32 @@ export async function verifySession(
   }
 }
 
+/* ── Short-lived signed values (the Google sign-in round trip) ─ */
+
+/**
+ * Signs a small value the browser carries for a few minutes and hands back
+ * unchanged. The `purpose` claim keeps one kind from being accepted as
+ * another; a session never has one, and one of these never has a role, so
+ * neither passes for the other.
+ */
+export async function signShortLived(purpose: string, value: Record<string, unknown>, minutes: number) {
+  return new SignJWT({ ...value, purpose })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(`${minutes}m`)
+    .sign(secretKey());
+}
+
+export async function verifyShortLived(purpose: string, token: string | undefined) {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secretKey());
+    return payload.purpose === purpose ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
 /* ── Password hashing (PBKDF2-SHA256 via Web Crypto) ────────── */
 
 const PBKDF2_ITERATIONS = 210_000;

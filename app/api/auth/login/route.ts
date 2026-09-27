@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users } from '@/lib/schema';
 import {
@@ -14,7 +13,7 @@ import {
 import { landingPath } from '@/lib/access';
 import { canSignIn } from '@/lib/accounts/eligibility';
 import { findSignInAccount, signInLookup } from '@/lib/accounts/identity';
-import { logEvent } from '@/lib/accounts/service';
+import { completeSignIn, logEvent } from '@/lib/accounts/service';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +56,7 @@ export async function POST(req: Request) {
   const accounts = await db.select().from(users);
 
   let session: Session;
+  let token: string;
 
   if (!accounts.some((u) => u.active)) {
     // Bootstrap path: no accounts exist yet, so the pre-roles shared password
@@ -72,6 +72,7 @@ export async function POST(req: Request) {
     }
     if (!legacyPasswordMatches(password)) return reject('Incorrect password');
     session = { uid: 0, name: 'Admin', role: 'admin', sv: 0 };
+    token = await createSession(session);
   } else {
     if (!identifier) return reject('Enter your email address');
     const user = findSignInAccount(accounts, signInLookup(identifier));
@@ -101,12 +102,9 @@ export async function POST(req: Request) {
       });
       return reject();
     }
-    await db.update(users).set({ lastSignInAt: new Date().toISOString() }).where(eq(users.id, user.id)).run();
-    await logEvent({ kind: 'sign_in', subjectUserId: user.id, actorUserId: user.id, method: 'password' });
-    session = { uid: user.id, name: user.name, role: user.role, sv: user.sessionVersion };
+    ({ token, session } = await completeSignIn(user, 'password'));
   }
 
-  const token = await createSession(session);
   const res = NextResponse.json({
     ok: true,
     role: session.role,
