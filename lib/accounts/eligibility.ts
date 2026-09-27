@@ -14,17 +14,34 @@ export type AccountState = {
   /** Last working day, inclusive, as YYYY-MM-DD in India time. */
   accessUntil: string | null;
   role: Role;
+  /**
+   * Set when a password is set or changed (R21). Every session issued before
+   * this moment is signed out, not refreshed: a password change exists to cut
+   * off whoever else holds a session, so re-issuing theirs would defeat it.
+   */
+  sessionsRevokedAt: string | null;
 };
 
-export type SessionClaims = { role: Role; sv: number };
+/** `iat` is the token's issue time in seconds, as the JWT carries it. */
+export type SessionClaims = { role: Role; sv: number; iat?: number };
 
 /**
  * - `ok`: serve the request.
  * - `refresh`: the account is fine but the token describes an older state of
- *   it (a role change, a password change elsewhere) — issue a fresh session.
+ *   it (a changed role, head flag, interviewer duty or email) — issue a fresh
+ *   session carrying the current state.
  * - `signout`: the account can no longer sign in at all.
  */
 export type Verdict = 'ok' | 'refresh' | 'signout';
+
+/**
+ * The moment to record as "sessions revoked": the current second, so a token
+ * issued in this same second by the device that made the change (JWT `iat`
+ * has one-second resolution) still counts as issued after it.
+ */
+export function revocationStamp(now: Date = new Date()): string {
+  return new Date(Math.floor(now.getTime() / 1000) * 1000).toISOString();
+}
 
 /** Today's date in India, where every access-until date is set. */
 export function todayInIndia(now: Date = new Date()): string {
@@ -53,6 +70,9 @@ export function checkSession(
   now: Date = new Date(),
 ): Verdict {
   if (!account || !canSignIn(account, now)) return 'signout';
+  if (account.sessionsRevokedAt && (claims.iat ?? 0) * 1000 < Date.parse(account.sessionsRevokedAt)) {
+    return 'signout';
+  }
   // The role check is belt and braces: every role change also bumps the
   // version, but a row edited by hand would otherwise keep its old access.
   if (claims.sv !== account.sessionVersion || claims.role !== account.role) return 'refresh';

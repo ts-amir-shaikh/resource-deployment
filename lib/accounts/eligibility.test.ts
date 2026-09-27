@@ -6,6 +6,7 @@ const account = (over: Partial<AccountState> = {}): AccountState => ({
   sessionVersion: 0,
   accessUntil: null,
   role: 'ta',
+  sessionsRevokedAt: null,
   ...over,
 });
 
@@ -33,6 +34,8 @@ describe('withinAccess (R5)', () => {
 
 describe('checkSession (R16)', () => {
   const now = lastMinuteOf30Sep;
+  // Seconds since the epoch, as a JWT's iat carries it.
+  const at = (iso: string) => Math.floor(Date.parse(iso) / 1000);
 
   it('an active account at the token version with no end date is current', () => {
     expect(checkSession({ role: 'ta', sv: 0 }, account(), now)).toBe('ok');
@@ -66,5 +69,20 @@ describe('checkSession (R16)', () => {
 
   it('Covers AE6. a role that no longer matches asks for a fresh session even at the same version', () => {
     expect(checkSession({ role: 'ta', sv: 1 }, account({ role: 'sales', sessionVersion: 1 }), now)).toBe('refresh');
+  });
+
+  it('Covers AE8. a token issued before a password change is signed out, not refreshed (R21)', () => {
+    const revoked = account({ sessionsRevokedAt: '2026-09-28T10:00:00.000Z' });
+    expect(checkSession({ role: 'ta', sv: 0, iat: at('2026-09-28T09:59:59Z') }, revoked, now)).toBe('signout');
+  });
+
+  it('Covers AE8. the device that changed the password keeps its fresh session', () => {
+    const revoked = account({ sessionsRevokedAt: '2026-09-28T10:00:00.000Z' });
+    expect(checkSession({ role: 'ta', sv: 0, iat: at('2026-09-28T10:00:00Z') }, revoked, now)).toBe('ok');
+  });
+
+  it('a revocation still signs out a token that is also on an old version', () => {
+    const revoked = account({ sessionVersion: 4, sessionsRevokedAt: '2026-09-28T10:00:00.000Z' });
+    expect(checkSession({ role: 'ta', sv: 3, iat: at('2026-09-28T09:00:00Z') }, revoked, now)).toBe('signout');
   });
 });

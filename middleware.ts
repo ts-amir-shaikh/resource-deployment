@@ -14,13 +14,24 @@ import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
  *   /jobs/*       the public job board and its apply form
  *   /api/jobs/*   the matching read and apply endpoints
  *   /api/health   liveness/readiness for the deploy script and proxy
+ *   /set-password the landing page of an emailed password link, and its API
  *
  * Enforcing writes here rather than in each route handler means a new API
  * route is covered by the policy the moment it exists, instead of being open
  * until someone remembers to add a guard to it.
  */
 export const PUBLIC_PREFIXES = ['/share/', '/api/share/', '/jobs/', '/api/jobs/'];
-export const PUBLIC_EXACT = ['/login', '/api/auth/login', '/jobs', '/api/jobs', '/api/health'];
+export const PUBLIC_EXACT = [
+  '/login',
+  '/api/auth/login',
+  '/jobs',
+  '/api/jobs',
+  '/api/health',
+  // Where an emailed password link lands, and the call it makes. The person
+  // has no session yet; the link's own code is what authorises the change.
+  '/set-password',
+  '/api/auth/set-password',
+];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

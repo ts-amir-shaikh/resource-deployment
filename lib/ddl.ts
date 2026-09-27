@@ -285,6 +285,7 @@ CREATE TABLE IF NOT EXISTS users (
   access_until TEXT,
   resource_id INTEGER REFERENCES resources(id),
   has_password INTEGER NOT NULL DEFAULT 1,
+  sessions_revoked_at TEXT,
   last_sign_in_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

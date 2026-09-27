@@ -21,12 +21,14 @@ import {
   PanelLeftOpen,
   Compass,
   Handshake,
+  KeyRound,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { navFor } from '@/lib/access';
 import { ROLE_LABELS, type Session } from '@/lib/auth';
 import { SIDEBAR_COOKIE } from '@/lib/prefs';
+import ChangePasswordDialog from '@/components/change-password';
 
 /**
  * Which links exist is decided by lib/access.ts — the same table middleware
@@ -74,6 +76,7 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   function toggle() {
     const next = !collapsed;
@@ -91,7 +94,7 @@ export default function Sidebar({
 
   // The public stakeholder view and the sign-in screen get no app chrome.
   if (pathname.startsWith('/share/') || pathname.startsWith('/jobs')) return null;
-  if (pathname === '/login') return null;
+  if (pathname === '/login' || pathname === '/set-password') return null;
   if (!session) return null;
 
   const items = navFor(session.role);
@@ -208,6 +211,16 @@ export default function Sidebar({
             </span>
           </div>
         </div>
+        {session.uid > 0 && (
+          <button
+            onClick={() => setChangingPassword(true)}
+            title="Change password"
+            className="mb-0.5 flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-ink2 transition-colors hover:bg-surface2 hover:text-ink"
+          >
+            <KeyRound className="h-4 w-4 shrink-0" strokeWidth={2} />
+            <span className={wide}>Change password</span>
+          </button>
+        )}
         <button
           onClick={signOut}
           title="Sign out"
@@ -217,6 +230,7 @@ export default function Sidebar({
           <span className={wide}>Sign out</span>
         </button>
       </div>
+      <ChangePasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />
     </nav>
   );
 }

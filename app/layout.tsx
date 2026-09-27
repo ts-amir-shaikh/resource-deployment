@@ -7,7 +7,7 @@ import { cookies } from 'next/headers';
 import { getSession } from '@/lib/session';
 import { applicantBadge } from '@/lib/badges';
 import ViewOnlyBanner from '@/components/view-only-banner';
-import { Analytics } from '@vercel/analytics/next';
+import SiteAnalytics from '@/components/analytics';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -51,7 +51,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {children}
           </main>
         </div>
-        <Analytics />
+        <SiteAnalytics />
       </body>
     </html>
   );

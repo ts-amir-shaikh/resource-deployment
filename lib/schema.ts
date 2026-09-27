@@ -918,9 +918,9 @@ export const users = sqliteTable(
     email: text('email'),
     /**
      * Incremented by every change that must take effect on the person's next
-     * request: deactivation, role, head flag, interviewer duty, email, and any
-     * password set or change. A session token carries the value it was issued
-     * with; a mismatch means the session is out of date.
+     * request: deactivation, role, head flag, interviewer duty and email. A
+     * session token carries the value it was issued with; a mismatch means the
+     * session is out of date and is re-issued with the current state.
      */
     sessionVersion: integer('session_version').notNull().default(0),
     /** An internal account that also sits on interview panels. */
@@ -937,6 +937,11 @@ export const users = sqliteTable(
      * in with Google only. Its stored hash is random and matches nothing.
      */
     hasPassword: integer('has_password', { mode: 'boolean' }).notNull().default(true),
+    /**
+     * Set when a password is set or changed. Sessions issued before it are
+     * signed out (R21) — unlike a session-version change, which re-issues.
+     */
+    sessionsRevokedAt: text('sessions_revoked_at'),
     lastSignInAt: text('last_sign_in_at'),
     ...timestamps,
   },

@@ -74,6 +74,8 @@ export type Session = {
    * account starts at — so nobody is signed out by the release itself.
    */
   sv: number;
+  /** Issue time in seconds (the JWT's own `iat`); absent before signing. */
+  iat?: number;
 };
 
 function secretKey() {
@@ -87,7 +89,8 @@ function secretKey() {
 }
 
 export async function createSession(session: Session): Promise<string> {
-  return new SignJWT({ ...session })
+  const { iat: _stale, ...claims } = session;
+  return new SignJWT({ ...claims })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_HOURS}h`)
@@ -110,6 +113,7 @@ export async function verifySession(
       name: typeof payload.name === 'string' ? payload.name : 'User',
       role: role as Role,
       sv: typeof payload.sv === 'number' ? payload.sv : 0,
+      iat: typeof payload.iat === 'number' ? payload.iat : 0,
     };
   } catch {
     return null;

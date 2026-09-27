@@ -55,6 +55,7 @@ export const getSessionState = cache(async (): Promise<SessionState> => {
       sessionVersion: users.sessionVersion,
       accessUntil: users.accessUntil,
       role: users.role,
+      sessionsRevokedAt: users.sessionsRevokedAt,
     })
     .from(users)
     .where(eq(users.id, session.uid))

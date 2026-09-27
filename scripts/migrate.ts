@@ -357,6 +357,11 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
   },
   {
     table: 'users',
+    column: 'sessions_revoked_at',
+    ddl: 'ALTER TABLE users ADD COLUMN sessions_revoked_at TEXT',
+  },
+  {
+    table: 'users',
     column: 'last_sign_in_at',
     ddl: 'ALTER TABLE users ADD COLUMN last_sign_in_at TEXT',
   },

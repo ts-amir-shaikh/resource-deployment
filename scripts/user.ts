@@ -12,9 +12,10 @@
  *   npm run db:user -- --enable  --username mamta
  *   npm run db:user -- --set-email --username mamta --email mamta@techstalwarts.com
  *
- * Disable, role, head-flag, email and password changes also increment the
- * account's session version, so they take effect on the person's next request
- * rather than when their 12-hour session happens to run out.
+ * Disable, role, head-flag and email changes increment the account's session
+ * version, and a password reset revokes every open session, so each takes
+ * effect on the person's next request rather than when their 12-hour session
+ * happens to run out.
  *
  * The password is always typed at the prompt, never passed as a flag: a flag
  * lands in shell history and in the process list, where anyone on the machine
@@ -240,8 +241,10 @@ async function main() {
     const salt = newSalt();
     const hash = await hashPassword(password, salt);
     await client.execute({
-      sql: `update users set password_hash = ?, password_salt = ?${colNames.has('has_password') ? ', has_password = 1' : ''}${bump} where id = ?`,
-      args: [hash, salt, found.id],
+      sql: `update users set password_hash = ?, password_salt = ?${colNames.has('has_password') ? ', has_password = 1' : ''}${colNames.has('sessions_revoked_at') ? ', sessions_revoked_at = ?' : ''} where id = ?`,
+      args: colNames.has('sessions_revoked_at')
+        ? [hash, salt, new Date(Math.floor(Date.now() / 1000) * 1000).toISOString(), found.id]
+        : [hash, salt, found.id],
     });
     console.log('\nPassword updated.');
   } else if (has('role')) {
