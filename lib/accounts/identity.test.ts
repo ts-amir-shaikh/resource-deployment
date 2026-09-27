@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isPlaceholderEmail, isUsableEmail, normaliseEmail, signInLookup } from './identity';
+import { findSignInAccount, isPlaceholderEmail, isUsableEmail, normaliseEmail, signInLookup } from './identity';
 
 describe('email handling (R2, R12)', () => {
   it('stores and compares addresses lower-case and trimmed', () => {
@@ -36,5 +36,40 @@ describe('signInLookup (R12, R14)', () => {
 
   it('blank input is no identifier', () => {
     expect(signInLookup('   ')).toBeNull();
+  });
+});
+
+describe('findSignInAccount (R12, R14, R15)', () => {
+  const priya = { id: 1, username: 'priya', email: 'priya@techstalwarts.com' };
+  const mamta = { id: 2, username: 'mamta', email: null };
+  const accounts = [priya, mamta];
+
+  it('an address in any case finds the account stored lower-case', () => {
+    expect(findSignInAccount(accounts, signInLookup('Priya@TechStalwarts.com'))).toBe(priya);
+  });
+
+  it('Covers AE4. a username finds an account while it has no email', () => {
+    expect(findSignInAccount(accounts, signInLookup('Mamta'))).toBe(mamta);
+  });
+
+  it('Covers AE4. once an email is set, the username no longer signs in but the email does', () => {
+    const withEmail = [priya, { ...mamta, email: 'mamta@techstalwarts.com' }];
+    expect(findSignInAccount(withEmail, signInLookup('mamta'))).toBeNull();
+    expect(findSignInAccount(withEmail, signInLookup('mamta@techstalwarts.com'))?.id).toBe(2);
+  });
+
+  it('the username of an account with an email is refused even though the account exists', () => {
+    expect(findSignInAccount(accounts, signInLookup('priya'))).toBeNull();
+  });
+
+  it('an unknown address, a placeholder and blank input find nothing', () => {
+    expect(findSignInAccount(accounts, signInLookup('nobody@techstalwarts.com'))).toBeNull();
+    expect(findSignInAccount(accounts, signInLookup('priya@placeholder.local'))).toBeNull();
+    expect(findSignInAccount(accounts, signInLookup(''))).toBeNull();
+  });
+
+  it('a stored placeholder email counts as no email, so the username still works', () => {
+    const joined = { id: 3, username: 'ravi', email: 'ravi.k@placeholder.local' };
+    expect(findSignInAccount([joined], signInLookup('ravi'))).toBe(joined);
   });
 });

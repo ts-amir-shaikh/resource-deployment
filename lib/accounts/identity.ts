@@ -33,3 +33,22 @@ export function signInLookup(raw: string): SignInLookup {
   if (value.includes('@')) return isPlaceholderEmail(value) ? null : { by: 'email', value };
   return { by: 'username', value };
 }
+
+type Identifiable = { username: string; email: string | null };
+
+/**
+ * The account a sign-in attempt names, or null. A username only answers for
+ * an account with no usable email: once Admin sets one, the email is the only
+ * identifier (AE4). A placeholder address counts as no email.
+ */
+export function findSignInAccount<T extends Identifiable>(accounts: T[], lookup: SignInLookup): T | null {
+  if (!lookup) return null;
+  if (lookup.by === 'email') {
+    return accounts.find((a) => a.email != null && normaliseEmail(a.email) === lookup.value) ?? null;
+  }
+  return (
+    accounts.find(
+      (a) => a.username.toLowerCase() === lookup.value && !(a.email && isUsableEmail(a.email)),
+    ) ?? null
+  );
+}

@@ -15,7 +15,7 @@ export default function LoginClient({ hasAccounts }: { hasAccounts: boolean }) {
   const params = useSearchParams();
   const next = params.get('next') || '/';
 
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,7 +27,7 @@ export default function LoginClient({ hasAccounts }: { hasAccounts: boolean }) {
     try {
       const result = (await api('/api/auth/login', {
         method: 'POST',
-        json: hasAccounts ? { username, password } : { password },
+        json: hasAccounts ? { identifier, password } : { password },
       })) as LoginResult;
 
       // A TA who was bounced to /login from a page their role can't open must
@@ -77,13 +77,16 @@ export default function LoginClient({ hasAccounts }: { hasAccounts: boolean }) {
             )}
 
             {hasAccounts && (
-              <Field label="Username" required>
+              <Field label="Email" required hint="Until Admin adds your email, your username still works.">
                 <input
                   className="input"
                   autoFocus
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   autoComplete="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                 />
               </Field>
             )}
@@ -102,7 +105,7 @@ export default function LoginClient({ hasAccounts }: { hasAccounts: boolean }) {
             <button
               type="submit"
               className="btn-primary w-full"
-              disabled={busy || !password || (hasAccounts && !username)}
+              disabled={busy || !password || (hasAccounts && !identifier.trim())}
             >
               <LogIn className="h-4 w-4" />
               {busy ? 'Signing in…' : 'Sign in'}

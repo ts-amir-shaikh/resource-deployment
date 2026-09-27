@@ -12,16 +12,22 @@ import {
   type Session,
 } from '@/lib/auth';
 import { landingPath } from '@/lib/access';
+import { canSignIn } from '@/lib/accounts/eligibility';
+import { findSignInAccount, signInLookup } from '@/lib/accounts/identity';
+import { logEvent } from '@/lib/accounts/service';
 
 export const dynamic = 'force-dynamic';
 
 const schema = z.object({
+  // `username` is what the form sent before email sign-in; still accepted so
+  // an open tab from before a deploy can sign in.
+  identifier: z.string().trim().optional(),
   username: z.string().trim().optional(),
   password: z.string().min(1, 'Enter the password'),
 });
 
 /** Deliberately vague, and slowed slightly to blunt brute forcing. */
-async function reject(message = 'Incorrect username or password') {
+async function reject(message = 'Incorrect email or password') {
   await new Promise((r) => setTimeout(r, 400));
   return NextResponse.json({ error: message }, { status: 401 });
 }
@@ -43,15 +49,16 @@ export async function POST(req: Request) {
 
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Enter your username and password' }, { status: 422 });
+    return NextResponse.json({ error: 'Enter your email and password' }, { status: 422 });
   }
-  const { username, password } = parsed.data;
+  const { password } = parsed.data;
+  const identifier = parsed.data.identifier || parsed.data.username || '';
 
-  const accounts = await db.select().from(users).where(eq(users.active, true));
+  const accounts = await db.select().from(users);
 
   let session: Session;
 
-  if (accounts.length === 0) {
+  if (!accounts.some((u) => u.active)) {
     // Bootstrap path: no accounts exist yet, so the pre-roles shared password
     // still works and signs in as admin. This keeps the deployed app reachable
     // during the changeover — the moment the first user is created with
@@ -66,16 +73,36 @@ export async function POST(req: Request) {
     if (!legacyPasswordMatches(password)) return reject('Incorrect password');
     session = { uid: 0, name: 'Admin', role: 'admin', sv: 0 };
   } else {
-    if (!username) return reject('Enter your username');
-    const user = accounts.find(
-      (u) => u.username.toLowerCase() === username.toLowerCase(),
-    );
-    // Hash even when the username is unknown, so a missing account and a wrong
+    if (!identifier) return reject('Enter your email address');
+    const user = findSignInAccount(accounts, signInLookup(identifier));
+    // Hash even when no account matches, so a missing account and a wrong
     // password take the same amount of time to reject.
     const salt = user?.passwordSalt ?? 'no-such-user';
     const hash = user?.passwordHash ?? '0'.repeat(64);
     const ok = await verifyPassword(password, salt, hash);
-    if (!user || !ok) return reject();
+    // Every refusal reads the same to the person signing in (R15); the log
+    // records which rule refused it.
+    const refusal = !user
+      ? 'no_account'
+      : !user.hasPassword
+        ? 'no_password'
+        : !ok
+          ? 'wrong_password'
+          : !canSignIn(user)
+            ? 'not_eligible'
+            : null;
+    if (refusal || !user) {
+      await logEvent({
+        kind: 'sign_in_failed',
+        subjectUserId: user?.id ?? null,
+        method: 'password',
+        attemptedIdentifier: identifier.slice(0, 200),
+        detail: { reason: refusal },
+      });
+      return reject();
+    }
+    await db.update(users).set({ lastSignInAt: new Date().toISOString() }).where(eq(users.id, user.id)).run();
+    await logEvent({ kind: 'sign_in', subjectUserId: user.id, actorUserId: user.id, method: 'password' });
     session = { uid: user.id, name: user.name, role: user.role, sv: user.sessionVersion };
   }
 
