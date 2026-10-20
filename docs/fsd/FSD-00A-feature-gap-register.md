@@ -30,7 +30,9 @@ What each department still needs before it can run its part of the journey on th
 | Tally integration | 13 | 4 |
 | Admin | 3 | 1 |
 | Management | 3 | 2 |
-| **Total** | **61** | **35** |
+| **Total** | **55** | **35** |
+
+*Six Must items closed on 20 Oct 2026 with the M60 release — see Rev 1.4. Individual rows below still read as at Rev 1.3 and are corrected as each area is next revised.*
 
 **How Must was judged:** an item is Must when a department named in FSD-00 cannot do its stated job on the platform without it, when a decision (D1–D8) depends on it, or when it closes an access or accuracy defect already found. Everything else is Good to have, however valuable.
 
@@ -203,3 +205,4 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | 1.1 | 27 Sep 2026 | Tally connectivity test confirmed. Added the TallyPrime facts, two constraints, and G-TLY-13 to 17 (now 60 Must and 36 Good to have). |
 | 1.2 | 28 Sep 2026 | Sync schedule and laptop availability confirmed. G-TLY-10 is now Must, and G-TLY-17 is resolved (61 Must, 35 Good to have). |
 | 1.3 | 28 Sep 2026 | Accounts & sign-in built (FSD-01 v4.0): G-PLT-02, 03, 04, 06 and 11 built; G-PLT-01 and 07 part built. Counts unchanged until release. |
+| 1.4 | 20 Oct 2026 | Accounts & sign-in **released** to production (M60), together with CSV export (M61). G-PLT-02, 03, 04, 11 close and G-PLT-06 closes for password links; G-PLT-01 and 07 stay part built. G-MGT-01 is partly met — the export half shipped, the fixed reports did not. **55 Must and 35 Good to have remain.** |
