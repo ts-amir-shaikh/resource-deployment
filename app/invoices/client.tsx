@@ -44,34 +44,14 @@ import {
   Pagination,
   type Tone,
 } from '@/components/ui';
+import { ExportButton } from '@/components/export-dialog';
+import { invoicesList, type InvoiceFilters } from '@/lib/lists/invoices';
+import type { InvoiceRow } from '@/lib/lists/load/invoices';
 import { Combobox, type ComboOption } from '@/components/combobox';
 
 type Status = 'not_raised' | 'raised' | 'pending_collection' | 'collected';
 
-type Row = {
-  id: number;
-  projectId: number;
-  agreementId: number | null;
-  invoiceNumber: string | null;
-  scope: 'individual' | 'team';
-  periodFrom: string;
-  periodTo: string;
-  currency: string;
-  fxRateToInr: number;
-  amount: number;
-  gstAmount: number;
-  invoiceDate: string | null;
-  dueDate: string | null;
-  collectedDate: string | null;
-  status: Status;
-  notes: string | null;
-  projectName: string;
-  clientName: string;
-  agreementTitle: string | null;
-  agreementNumber: string | null;
-  totalAmount: number;
-  overdue: boolean;
-};
+type Row = InvoiceRow;
 
 type ProjectOption = { id: number; projectName: string; clientName: string };
 type AgreementOption = {
@@ -145,8 +125,10 @@ export default function InvoicesClient({
   projects,
   agreements,
   resources,
+  canExport,
 }: {
   initial: Row[];
+  canExport: boolean;
   projects: ProjectOption[];
   agreements: AgreementOption[];
   resources: ResourceOption[];
@@ -199,20 +181,11 @@ export default function InvoicesClient({
     [projects],
   );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((i) => {
-      if (statusFilter !== 'all' && i.status !== statusFilter) return false;
-      if (onlyOverdue && !i.overdue) return false;
-      if (clientFilter && i.clientName !== clientFilter) return false;
-      if (!q) return true;
-      return (
-        (i.invoiceNumber ?? '').toLowerCase().includes(q) ||
-        i.clientName.toLowerCase().includes(q) ||
-        i.projectName.toLowerCase().includes(q)
-      );
-    });
-  }, [initial, search, statusFilter, onlyOverdue, clientFilter]);
+  const filters: InvoiceFilters = useMemo(
+    () => ({ search, status: statusFilter, overdue: onlyOverdue, client: clientFilter }),
+    [search, statusFilter, onlyOverdue, clientFilter],
+  );
+  const filtered = useMemo(() => invoicesList.filterRows(initial, filters), [initial, filters]);
 
   useEffect(
     () => setPage(1),
@@ -532,9 +505,22 @@ export default function InvoicesClient({
         title="Invoices"
         subtitle="Billing periods and collection status"
         action={
-          <button className="btn-primary" onClick={openCreate} disabled={!projects.length}>
-            <Plus className="h-4 w-4" /> Add Invoice
-          </button>
+          <div className="flex gap-2">
+            {/* Exports the same ticks the bulk-advance bar uses. Collected
+                invoices cannot be ticked, so they export by filter instead. */}
+            {canExport && (
+              <ExportButton
+                def={invoicesList}
+                endpoint="/api/invoices/export"
+                filters={filters}
+                filteredCount={filtered.length}
+                ticks={selected}
+              />
+            )}
+            <button className="btn-primary" onClick={openCreate} disabled={!projects.length}>
+              <Plus className="h-4 w-4" /> Add Invoice
+            </button>
+          </div>
         }
       />
 

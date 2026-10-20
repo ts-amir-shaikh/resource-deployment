@@ -4,6 +4,7 @@ import { resources } from '@/lib/schema';
 import { requireCurrentAccount } from '@/lib/session';
 import { listPeople } from '@/lib/accounts/people';
 import { isMailConfigured } from '@/lib/mail';
+import { canExport } from '@/lib/access';
 import PeopleClient from './client';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,7 @@ export default async function PeoplePage() {
       canEdit={session.role === 'admin'}
       viewerId={session.uid}
       mailReady={isMailConfigured()}
+      canExport={canExport(session.role)}
     />
   );
 }

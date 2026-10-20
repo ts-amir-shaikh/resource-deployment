@@ -26,31 +26,12 @@ import {
   Pagination,
   type Tone,
 } from '@/components/ui';
+import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { candidatesList, type CandidateFilters } from '@/lib/lists/candidates';
+import type { CandidateRow } from '@/lib/lists/load/candidates';
 import { Combobox, type ComboOption } from '@/components/combobox';
 
-type Row = {
-  id: number;
-  resourceId: number | null;
-  name: string;
-  email: string | null;
-  mobile: string | null;
-  currentDesignation: string | null;
-  experienceYears: number | null;
-  primarySkill: string | null;
-  secondarySkill: string | null;
-  otherSkills: string;
-  currentCtc: number | null;
-  expectedCtc: number | null;
-  noticePeriodDays: number | null;
-  lastWorkingDate: string | null;
-  location: string | null;
-  resumeUrl: string | null;
-  source: (typeof CANDIDATE_SOURCE_VALUES)[number];
-  sourceName: string | null;
-  notes: string | null;
-  mappedCount: number;
-  activeCount: number;
-};
+type Row = CandidateRow;
 
 type ResourceOption = {
   id: number;
@@ -94,9 +75,11 @@ const BLANK = {
 
 export default function CandidatesClient({
   initial,
+  canExport,
   resources,
 }: {
   initial: Row[];
+  canExport: boolean;
   resources: ResourceOption[];
 }) {
   const router = useRouter();
@@ -120,20 +103,12 @@ export default function CandidatesClient({
     return [...set].sort();
   }, [initial]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((c) => {
-      if (sourceFilter !== 'all' && c.source !== sourceFilter) return false;
-      if (skillFilter && c.primarySkill !== skillFilter) return false;
-      if (!q) return true;
-      return (
-        c.name.toLowerCase().includes(q) ||
-        (c.primarySkill ?? '').toLowerCase().includes(q) ||
-        (c.currentDesignation ?? '').toLowerCase().includes(q) ||
-        (c.sourceName ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [initial, search, sourceFilter, skillFilter]);
+  const filters: CandidateFilters = useMemo(
+    () => ({ search, source: sourceFilter, skill: skillFilter }),
+    [search, sourceFilter, skillFilter],
+  );
+  const filtered = useMemo(() => candidatesList.filterRows(initial, filters), [initial, filters]);
+  const { ticks, toggle, setMany } = useTicks();
 
   useEffect(() => setPage(1), [search, sourceFilter, skillFilter]);
 
@@ -276,9 +251,20 @@ export default function CandidatesClient({
         title="Candidate Pool"
         subtitle="Bench and externally sourced candidates for open requirements"
         action={
-          <button className="btn-primary" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add Candidate
-          </button>
+          <div className="flex gap-2">
+            {canExport && (
+              <ExportButton
+                def={candidatesList}
+                endpoint="/api/candidates/export"
+                filters={filters}
+                filteredCount={filtered.length}
+                ticks={ticks}
+              />
+            )}
+            <button className="btn-primary" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add Candidate
+            </button>
+          </div>
         }
       />
 
@@ -354,6 +340,9 @@ export default function CandidatesClient({
             <TableShell>
               <thead className="border-b border-line bg-surface2">
                 <tr>
+                  {canExport && (
+                    <TickAllHeader ids={pageItems.map((c) => c.id)} ticks={ticks} setMany={setMany} />
+                  )}
                   <th className="th">Candidate</th>
                   <th className="th">Skills</th>
                   <th className="th">Source</th>
@@ -366,6 +355,7 @@ export default function CandidatesClient({
               <tbody className="divide-y divide-line">
                 {pageItems.map((c) => (
                   <tr key={c.id} className="hover:bg-surface2/50">
+                    {canExport && <TickCell id={c.id} label={c.name} ticks={ticks} toggle={toggle} />}
                     <td className="td">
                       <div className="flex items-center gap-1.5">
                         <Link

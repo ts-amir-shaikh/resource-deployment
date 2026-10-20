@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canAccess, canWrite, landingPath, HOLDING_PATH } from '@/lib/access';
+import { canAccess, canExport, canWrite, isExportPath, landingPath, HOLDING_PATH } from '@/lib/access';
 import { PENDING_ROLES, ROLES } from '@/lib/auth';
 import { USER_ROLES } from '@/lib/schema';
 
@@ -59,5 +59,40 @@ describe('existing roles are unchanged (characterisation)', () => {
   it('Admin reads and writes everything', () => {
     expect(canAccess('admin', '/resources')).toBe(true);
     expect(canWrite('admin', '/api/invoices/2')).toBe(true);
+  });
+});
+
+describe('CSV export is back office only', () => {
+  const exportPaths = [
+    '/api/candidates/export',
+    '/api/applications/export',
+    '/api/opportunities/export',
+    '/api/resources/export',
+    '/api/users/export',
+    '/api/exports',
+  ];
+
+  it('Admin and Management may export', () => {
+    for (const role of ['admin', 'management'] as const) {
+      expect(canExport(role)).toBe(true);
+      for (const path of exportPaths) expect(canAccess(role, path), path).toBe(true);
+    }
+  });
+
+  it('every other role is refused, even on lists it can read (AE3)', () => {
+    for (const role of ROLES.filter((r) => r !== 'admin' && r !== 'management')) {
+      expect(canExport(role)).toBe(false);
+      for (const path of exportPaths) expect(canAccess(role, path), `${role} ${path}`).toBe(false);
+    }
+    // The list itself stays readable.
+    expect(canAccess('ta', '/api/candidates')).toBe(true);
+    expect(canAccess('sales', '/api/opportunities')).toBe(true);
+  });
+
+  it('only a module-level export segment counts as an export', () => {
+    expect(isExportPath('/api/candidates/export')).toBe(true);
+    expect(isExportPath('/api/candidates/12')).toBe(false);
+    expect(isExportPath('/api/opportunities/3/export')).toBe(false);
+    expect(isExportPath('/api/exportsfoo')).toBe(false);
   });
 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pencil, Search, UserCog, Mail, History, X } from 'lucide-react';
+import { Plus, Pencil, Search, UserCog, Mail, History, X, FileClock } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import { formatDate, LIST_PAGE_SIZE } from '@/lib/utils';
 import { ROLES, ROLE_LABELS, TEAM_ROLES, type Role } from '@/lib/auth';
@@ -10,6 +10,8 @@ import { checkAccount, type AccountDraft } from '@/lib/accounts/policy';
 import type { PersonRow } from '@/lib/accounts/people';
 import { Combobox } from '@/components/combobox';
 import { PageHeader, Modal, Field, Badge, EmptyState, TableShell, Pagination, type Tone } from '@/components/ui';
+import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { peopleList, personStatus, PERSON_STATUS_LABELS, type PeopleFilters, type PersonStatus } from '@/lib/lists/people';
 
 type ResourceOption = { id: number; name: string; email: string };
 
@@ -45,11 +47,32 @@ function formatWhen(s: string | null): string {
   return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+const STATUS_TONE: Record<PersonStatus, Tone> = {
+  deactivated: 'rose',
+  ended: 'amber',
+  link_sent: 'blue',
+  ok: 'green',
+};
+
 function status(p: PersonRow): { label: string; tone: Tone } {
-  if (!p.active) return { label: 'Deactivated', tone: 'rose' };
-  if (!p.canSignInNow) return { label: 'Access ended', tone: 'amber' };
-  if (!p.hasPassword && p.linkExpiresAt) return { label: 'Link sent', tone: 'blue' };
-  return { label: 'Can sign in', tone: 'green' };
+  const s = personStatus(p);
+  return { label: PERSON_STATUS_LABELS[s], tone: STATUS_TONE[s] };
+}
+
+type ExportLogRow = {
+  id: number;
+  actorName: string;
+  list: string;
+  mode: 'filtered' | 'ticked';
+  fields: string[];
+  filters: Record<string, string>;
+  rowCount: number;
+  createdAt: string;
+};
+
+function describeFilters(f: Record<string, string>): string {
+  const parts = Object.entries(f).map(([k, v]) => `${k}: ${v}`);
+  return parts.length ? parts.join(' · ') : 'no filters';
 }
 
 const EVENT_LABELS: Record<string, string> = {
@@ -103,12 +126,14 @@ export default function PeopleClient({
   canEdit,
   viewerId,
   mailReady,
+  canExport,
 }: {
   initial: PersonRow[];
   resources: ResourceOption[];
   canEdit: boolean;
   viewerId: number;
   mailReady: boolean;
+  canExport: boolean;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
@@ -128,18 +153,24 @@ export default function PeopleClient({
   const [events, setEvents] = useState<EventRow[] | null>(null);
   const [logError, setLogError] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((p) => {
-      if (roleFilter && p.role !== roleFilter) return false;
-      if (!q) return true;
-      return (
-        p.name.toLowerCase().includes(q) ||
-        (p.email ?? '').includes(q) ||
-        (p.username ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [initial, search, roleFilter]);
+  const filters: PeopleFilters = useMemo(() => ({ search, role: roleFilter }), [search, roleFilter]);
+  const filtered = useMemo(() => peopleList.filterRows(initial, filters), [initial, filters]);
+  const { ticks, toggle, setMany } = useTicks();
+
+  const [exportLogOpen, setExportLogOpen] = useState(false);
+  const [exportLog, setExportLog] = useState<ExportLogRow[] | null>(null);
+  const [exportLogError, setExportLogError] = useState<string | null>(null);
+
+  async function openExportLog() {
+    setExportLogOpen(true);
+    setExportLog(null);
+    setExportLogError(null);
+    try {
+      setExportLog(await api<ExportLogRow[]>('/api/exports'));
+    } catch (e) {
+      setExportLogError(errorMessage(e));
+    }
+  }
 
   useEffect(() => setPage(1), [search, roleFilter]);
 
@@ -267,11 +298,27 @@ export default function PeopleClient({
         title="People"
         subtitle={`${initial.filter((p) => p.active).length} active logins${canEdit ? '' : ' · view only'}`}
         action={
-          canEdit && (
-            <button className="btn-primary" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add person
-            </button>
-          )
+          <div className="flex gap-2">
+            {canExport && (
+              <>
+                <button className="btn-ghost" onClick={openExportLog}>
+                  <FileClock className="h-4 w-4" /> Export log
+                </button>
+                <ExportButton
+                  def={peopleList}
+                  endpoint="/api/users/export"
+                  filters={filters}
+                  filteredCount={filtered.length}
+                  ticks={ticks}
+                />
+              </>
+            )}
+            {canEdit && (
+              <button className="btn-primary" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add person
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -346,6 +393,9 @@ export default function PeopleClient({
             <TableShell>
               <thead className="border-b border-line bg-surface2">
                 <tr>
+                  {canExport && (
+                    <TickAllHeader ids={pageItems.map((p) => p.id)} ticks={ticks} setMany={setMany} />
+                  )}
                   <th className="th">Person</th>
                   <th className="th">Role</th>
                   <th className="th">Status</th>
@@ -358,6 +408,7 @@ export default function PeopleClient({
                   const s = status(p);
                   return (
                     <tr key={p.id} className="hover:bg-surface2/50">
+                      {canExport && <TickCell id={p.id} label={p.name} ticks={ticks} toggle={toggle} />}
                       <td className="td">
                         <div className="font-medium text-ink">{p.name}</div>
                         <div className="text-2xs text-ink3">
@@ -599,6 +650,41 @@ export default function PeopleClient({
                 <div className="tnum text-2xs text-ink3">
                   {formatWhen(e.createdAt)}
                   {e.actorName && ` · by ${e.actorName}`}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
+
+      <Modal
+        open={exportLogOpen}
+        onClose={() => setExportLogOpen(false)}
+        title="Export log"
+        description="Every CSV download from any list, newest first. Times are in your local time."
+        wide
+      >
+        {exportLogError ? (
+          <p className="text-sm text-rose-600 dark:text-rose-400">{exportLogError}</p>
+        ) : !exportLog ? (
+          <p className="text-sm text-ink3">Loading…</p>
+        ) : exportLog.length === 0 ? (
+          <p className="text-sm text-ink3">Nothing has been exported yet.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {exportLog.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-2">
+                <div className="min-w-0">
+                  <div className="text-sm text-ink">
+                    <span className="capitalize">{e.list}</span> · {e.rowCount} row{e.rowCount === 1 ? '' : 's'} ·{' '}
+                    {e.mode === 'ticked' ? 'ticked rows' : describeFilters(e.filters)}
+                  </div>
+                  <div className="text-2xs text-ink3">
+                    {e.fields.length} field{e.fields.length === 1 ? '' : 's'}: {e.fields.join(', ')}
+                  </div>
+                </div>
+                <div className="tnum text-2xs text-ink3">
+                  {formatWhen(e.createdAt)} · by {e.actorName}
                 </div>
               </li>
             ))}

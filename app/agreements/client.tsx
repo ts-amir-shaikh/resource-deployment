@@ -36,27 +36,12 @@ import {
   Pagination,
   type Tone,
 } from '@/components/ui';
+import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { agreementsList, type AgreementFilters } from '@/lib/lists/agreements';
+import type { AgreementRow } from '@/lib/lists/load/agreements';
 import { Combobox, type ComboOption } from '@/components/combobox';
 
-type Row = {
-  id: number;
-  projectId: number;
-  parentAgreementId: number | null;
-  agreementNumber: string | null;
-  title: string;
-  scope: 'individual' | 'team';
-  currency: string;
-  value: number;
-  startDate: string;
-  endDate: string;
-  renewalVersion: number;
-  status: 'active' | 'expired' | 'renewed';
-  notes: string | null;
-  projectName: string;
-  clientName: string;
-  resourceCount: number;
-  daysToExpiry: number | null;
-};
+type Row = AgreementRow;
 
 type ProjectOption = { id: number; projectName: string; clientName: string };
 type ResourceOption = { id: number; name: string; designation: string | null };
@@ -103,10 +88,12 @@ const BLANK = {
 
 export default function AgreementsClient({
   initial,
+  canExport,
   projects,
   resources,
 }: {
   initial: Row[];
+  canExport: boolean;
   projects: ProjectOption[];
   resources: ResourceOption[];
 }) {
@@ -176,24 +163,12 @@ export default function AgreementsClient({
   const [ackInvoices, setAckInvoices] = useState(false);
   const [invoiceWarning, setInvoiceWarning] = useState<number | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((a) => {
-      if (statusFilter !== 'all' && a.status !== statusFilter) return false;
-      if (
-        expiringSoonOnly &&
-        (a.status !== 'active' || a.daysToExpiry === null || a.daysToExpiry > 30)
-      )
-        return false;
-      if (!q) return true;
-      return (
-        a.title.toLowerCase().includes(q) ||
-        (a.agreementNumber ?? '').toLowerCase().includes(q) ||
-        a.clientName.toLowerCase().includes(q) ||
-        a.projectName.toLowerCase().includes(q)
-      );
-    });
-  }, [initial, search, statusFilter, expiringSoonOnly]);
+  const filters: AgreementFilters = useMemo(
+    () => ({ search, status: statusFilter, expiringSoon: expiringSoonOnly }),
+    [search, statusFilter, expiringSoonOnly],
+  );
+  const filtered = useMemo(() => agreementsList.filterRows(initial, filters), [initial, filters]);
+  const { ticks, toggle, setMany } = useTicks();
 
   useEffect(() => setPage(1), [search, statusFilter, expiringSoonOnly]);
 
@@ -410,9 +385,20 @@ export default function AgreementsClient({
         title="Agreements & POs"
         subtitle="Purchase orders and agreements, with full renewal history"
         action={
-          <button className="btn-primary" onClick={openCreate} disabled={!projects.length}>
-            <Plus className="h-4 w-4" /> Add Agreement
-          </button>
+          <div className="flex gap-2">
+            {canExport && (
+              <ExportButton
+                def={agreementsList}
+                endpoint="/api/agreements/export"
+                filters={filters}
+                filteredCount={filtered.length}
+                ticks={ticks}
+              />
+            )}
+            <button className="btn-primary" onClick={openCreate} disabled={!projects.length}>
+              <Plus className="h-4 w-4" /> Add Agreement
+            </button>
+          </div>
         }
       />
 
@@ -469,6 +455,9 @@ export default function AgreementsClient({
             <TableShell>
               <thead className="border-b border-line bg-surface2">
                 <tr>
+                  {canExport && (
+                    <TickAllHeader ids={pageItems.map((a) => a.id)} ticks={ticks} setMany={setMany} />
+                  )}
                   <th className="th">Agreement</th>
                   <th className="th">Project / Client</th>
                   <th className="th">Scope</th>
@@ -486,6 +475,7 @@ export default function AgreementsClient({
                     a.daysToExpiry <= 30;
                   return (
                     <tr key={a.id} className="hover:bg-surface2/50">
+                      {canExport && <TickCell id={a.id} label={a.agreementNumber ?? a.title} ticks={ticks} toggle={toggle} />}
                       <td className="td">
                         <div className="flex items-center gap-2">
                           <Link

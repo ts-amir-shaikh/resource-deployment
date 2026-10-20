@@ -17,23 +17,11 @@ import {
   FormSection,
   Pagination,
 } from '@/components/ui';
+import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { resourcesList, type ResourceFilters } from '@/lib/lists/resources';
+import type { ResourceRow } from '@/lib/lists/load/resources';
 
-type Row = {
-  id: number;
-  name: string;
-  email: string;
-  mobile: string | null;
-  designation: string | null;
-  currentCtc: number | null;
-  revisedCtc: number | null;
-  revisedEffectiveFrom: string | null;
-  primarySkill: string | null;
-  secondarySkill: string | null;
-  otherSkills: string;
-  billable: number;
-  shadow: number;
-  allocated: number;
-};
+type Row = ResourceRow;
 
 const BLANK = {
   name: '',
@@ -48,7 +36,13 @@ const BLANK = {
   otherSkills: [] as string[],
 };
 
-export default function ResourcesClient({ initial }: { initial: Row[] }) {
+export default function ResourcesClient({
+  initial,
+  canExport,
+}: {
+  initial: Row[];
+  canExport: boolean;
+}) {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [skillFilter, setSkillFilter] = useState<string | null>(null);
@@ -72,22 +66,12 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
     return [...set].sort();
   }, [initial]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((r) => {
-      if (skillFilter && r.primarySkill !== skillFilter) return false;
-      if (availability === 'available' && r.allocated !== 0) return false;
-      if (availability === 'full' && r.allocated < 100) return false;
-      if (availability === 'partial' && (r.allocated === 0 || r.allocated >= 100)) return false;
-      if (!q) return true;
-      return (
-        r.name.toLowerCase().includes(q) ||
-        r.email.toLowerCase().includes(q) ||
-        (r.designation ?? '').toLowerCase().includes(q) ||
-        (r.primarySkill ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [initial, search, skillFilter, availability]);
+  const filters: ResourceFilters = useMemo(
+    () => ({ search, skill: skillFilter, availability }),
+    [search, skillFilter, availability],
+  );
+  const filtered = useMemo(() => resourcesList.filterRows(initial, filters), [initial, filters]);
+  const { ticks, toggle, setMany } = useTicks();
 
   // Any filter change should land the user back on page 1 rather than a now
   // out-of-range page.
@@ -175,9 +159,20 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
         title="Resources"
         subtitle={`${initial.length} consultants on the bench`}
         action={
-          <button className="btn-primary" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add Resource
-          </button>
+          <div className="flex gap-2">
+            {canExport && (
+              <ExportButton
+                def={resourcesList}
+                endpoint="/api/resources/export"
+                filters={filters}
+                filteredCount={filtered.length}
+                ticks={ticks}
+              />
+            )}
+            <button className="btn-primary" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add Resource
+            </button>
+          </div>
         }
       />
 
@@ -252,6 +247,9 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
             <TableShell>
               <thead className="border-b border-line bg-surface2">
                 <tr>
+                  {canExport && (
+                    <TickAllHeader ids={pageItems.map((r) => r.id)} ticks={ticks} setMany={setMany} />
+                  )}
                   <th className="th">Resource</th>
                   <th className="th">Primary Skill</th>
                   <th className="th">CTC</th>
@@ -262,6 +260,7 @@ export default function ResourcesClient({ initial }: { initial: Row[] }) {
               <tbody className="divide-y divide-line">
                 {pageItems.map((r) => (
                   <tr key={r.id} className="hover:bg-surface2/50">
+                    {canExport && <TickCell id={r.id} label={r.name} ticks={ticks} toggle={toggle} />}
                     <td className="td">
                       <Link
                         href={`/resources/${r.id}`}

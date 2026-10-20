@@ -16,24 +16,11 @@ import {
   Badge,
   Pagination,
 } from '@/components/ui';
+import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { clientsList, type ClientFilters } from '@/lib/lists/clients';
+import type { ClientRow } from '@/lib/lists/load/clients';
 
-type Row = {
-  id: number;
-  companyName: string;
-  spocName: string | null;
-  spocEmail: string | null;
-  spocMobile: string | null;
-  spocDesignation: string | null;
-  accountName: string | null;
-  accountEmail: string | null;
-  accountMobile: string | null;
-  altSpocName: string | null;
-  altSpocEmail: string | null;
-  altSpocMobile: string | null;
-  altSpocDesignation: string | null;
-  projectCount: number;
-  monthlyBilling: MoneyByCurrency;
-};
+type Row = ClientRow;
 
 const BLANK = {
   companyName: '',
@@ -52,7 +39,13 @@ const BLANK = {
 
 type Tab = 'spoc' | 'account' | 'alt';
 
-export default function ClientsClient({ initial }: { initial: Row[] }) {
+export default function ClientsClient({
+  initial,
+  canExport,
+}: {
+  initial: Row[];
+  canExport: boolean;
+}) {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [hasProjects, setHasProjects] = useState<'all' | 'with' | 'without'>('all');
@@ -65,18 +58,12 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((c) => {
-      if (hasProjects === 'with' && c.projectCount === 0) return false;
-      if (hasProjects === 'without' && c.projectCount > 0) return false;
-      if (!q) return true;
-      return (
-        c.companyName.toLowerCase().includes(q) ||
-        (c.spocName ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [initial, search, hasProjects]);
+  const filters: ClientFilters = useMemo(
+    () => ({ search, hasProjects }),
+    [search, hasProjects],
+  );
+  const filtered = useMemo(() => clientsList.filterRows(initial, filters), [initial, filters]);
+  const { ticks, toggle, setMany } = useTicks();
 
   useEffect(() => setPage(1), [search, hasProjects]);
 
@@ -165,9 +152,20 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
         title="Clients"
         subtitle={`${initial.length} client companies`}
         action={
-          <button className="btn-primary" onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add Client
-          </button>
+          <div className="flex gap-2">
+            {canExport && (
+              <ExportButton
+                def={clientsList}
+                endpoint="/api/clients/export"
+                filters={filters}
+                filteredCount={filtered.length}
+                ticks={ticks}
+              />
+            )}
+            <button className="btn-primary" onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add Client
+            </button>
+          </div>
         }
       />
 
@@ -219,6 +217,9 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
             <TableShell>
               <thead className="border-b border-line bg-surface2">
                 <tr>
+                  {canExport && (
+                    <TickAllHeader ids={pageItems.map((c) => c.id)} ticks={ticks} setMany={setMany} />
+                  )}
                   <th className="th">Company</th>
                   <th className="th">Primary SPOC</th>
                   <th className="th">Account Manager</th>
@@ -230,6 +231,7 @@ export default function ClientsClient({ initial }: { initial: Row[] }) {
               <tbody className="divide-y divide-line">
                 {pageItems.map((c) => (
                   <tr key={c.id} className="hover:bg-surface2/50">
+                    {canExport && <TickCell id={c.id} label={c.companyName} ticks={ticks} toggle={toggle} />}
                     <td className="td">
                       <Link
                         href={`/clients/${c.id}`}

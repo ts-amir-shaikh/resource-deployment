@@ -27,30 +27,12 @@ import {
   AllocationBar,
   Pagination,
 } from '@/components/ui';
+import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { deploymentsList, type DeploymentFilters } from '@/lib/lists/deployments';
+import type { DeploymentRow } from '@/lib/lists/load/deployments';
 import { Combobox, type ComboOption } from '@/components/combobox';
 
-type Row = {
-  id: number;
-  resourceId: number;
-  projectId: number;
-  agreementId: number | null;
-  resourceName: string;
-  designation: string | null;
-  projectName: string;
-  clientName: string;
-  agreementNumber: string | null;
-  agreementTitle: string | null;
-  deploymentType: 'billable' | 'shadow';
-  allocationPercentage: number;
-  startDate: string;
-  endDate: string | null;
-  currency: string;
-  billingAmount: number;
-  commissionAmount: number;
-  operationsOverhead: number;
-  gstApplicable: boolean;
-  status: 'active' | 'ended';
-};
+type Row = DeploymentRow;
 
 type ResourceOption = {
   id: number;
@@ -95,11 +77,13 @@ const BLANK = {
 
 export default function DeploymentsClient({
   initial,
+  canExport,
   resources,
   projects,
   agreements,
 }: {
   initial: Row[];
+  canExport: boolean;
   resources: ResourceOption[];
   projects: ProjectOption[];
   agreements: AgreementOption[];
@@ -147,20 +131,12 @@ export default function DeploymentsClient({
     [projects],
   );
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((d) => {
-      if (statusFilter !== 'all' && d.status !== statusFilter) return false;
-      if (typeFilter !== 'all' && d.deploymentType !== typeFilter) return false;
-      if (clientFilter && d.clientName !== clientFilter) return false;
-      if (!q) return true;
-      return (
-        d.resourceName.toLowerCase().includes(q) ||
-        d.projectName.toLowerCase().includes(q) ||
-        d.clientName.toLowerCase().includes(q)
-      );
-    });
-  }, [initial, statusFilter, typeFilter, clientFilter, search]);
+  const filters: DeploymentFilters = useMemo(
+    () => ({ search, status: statusFilter, type: typeFilter, client: clientFilter }),
+    [statusFilter, typeFilter, clientFilter, search],
+  );
+  const filtered = useMemo(() => deploymentsList.filterRows(initial, filters), [initial, filters]);
+  const { ticks, toggle, setMany } = useTicks();
 
   useEffect(() => setPage(1), [search, statusFilter, typeFilter, clientFilter]);
 
@@ -403,13 +379,24 @@ export default function DeploymentsClient({
         title="Deployments"
         subtitle="Resource-to-project mappings, billable and shadow"
         action={
-          <button
-            className="btn-primary"
-            onClick={openCreate}
-            disabled={!resources.length || !projects.length}
-          >
-            <Plus className="h-4 w-4" /> Add Deployment
-          </button>
+          <div className="flex gap-2">
+            {canExport && (
+              <ExportButton
+                def={deploymentsList}
+                endpoint="/api/deployments/export"
+                filters={filters}
+                filteredCount={filtered.length}
+                ticks={ticks}
+              />
+            )}
+            <button
+              className="btn-primary"
+              onClick={openCreate}
+              disabled={!resources.length || !projects.length}
+            >
+              <Plus className="h-4 w-4" /> Add Deployment
+            </button>
+          </div>
         }
       />
 
@@ -481,6 +468,9 @@ export default function DeploymentsClient({
             <TableShell>
               <thead className="border-b border-line bg-surface2">
                 <tr>
+                  {canExport && (
+                    <TickAllHeader ids={pageItems.map((d) => d.id)} ticks={ticks} setMany={setMany} />
+                  )}
                   <th className="th">Resource</th>
                   <th className="th">Project / Client</th>
                   <th className="th">Type</th>
@@ -495,6 +485,7 @@ export default function DeploymentsClient({
                     key={d.id}
                     className={`hover:bg-surface2/50 ${d.status === 'ended' ? 'opacity-60' : ''}`}
                   >
+                    {canExport && <TickCell id={d.id} label={`${d.resourceName} on ${d.projectName}`} ticks={ticks} toggle={toggle} />}
                     <td className="td">
                       <Link
                         href={`/deployments/${d.id}`}

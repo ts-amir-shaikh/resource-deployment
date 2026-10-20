@@ -18,13 +18,9 @@ import { formatDate, formatMoneyCompact } from '@/lib/utils';
 import { Badge, PageHeader, Field, Modal, EmptyState, type Tone } from '@/components/ui';
 import type { Role } from '@/lib/auth';
 import type { ApplicationRow } from '@/lib/queries';
+import { ExportButton, useTicks } from '@/components/export-dialog';
+import { applicationsList, CONTACT_LABELS, type ApplicationFilters } from '@/lib/lists/applications';
 
-const CONTACT_LABELS: Record<string, string> = {
-  not_contacted: 'Not called',
-  attempted: 'Tried, no answer',
-  reached: 'Spoke to them',
-  unreachable: 'Unreachable',
-};
 
 const CONTACT_TONE: Record<string, Tone> = {
   not_contacted: 'neutral',
@@ -48,10 +44,12 @@ export default function ApplicantsClient({
   applications,
   role,
   waiting,
+  canExport,
 }: {
   applications: ApplicationRow[];
   role: Role;
   waiting: number;
+  canExport: boolean;
 }) {
   const router = useRouter();
   const readOnly = role === 'management';
@@ -79,21 +77,15 @@ export default function ApplicantsClient({
     [applications],
   );
 
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return applications.filter((a) => {
-      if (decision !== 'all' && a.status !== decision) return false;
-      if (kind !== 'all' && a.kind !== kind) return false;
-      if (contact !== 'all' && a.contactStatus !== contact) return false;
-      if (!q) return true;
-      return (
-        a.candidateName.toLowerCase().includes(q) ||
-        (a.candidateEmail ?? '').toLowerCase().includes(q) ||
-        (a.candidateMobile ?? '').toLowerCase().includes(q) ||
-        a.requirementTitle.toLowerCase().includes(q)
-      );
-    });
-  }, [applications, decision, kind, contact, search]);
+  const filters: ApplicationFilters = useMemo(
+    () => ({ search, decision, kind, contact }),
+    [search, decision, kind, contact],
+  );
+  const rows = useMemo(
+    () => applicationsList.filterRows(applications, filters),
+    [applications, filters],
+  );
+  const { ticks, toggle } = useTicks();
 
   // Counts follow the decision and kind filters, so the dropdown describes the
   // rows currently in front of you rather than the whole table.
@@ -156,6 +148,17 @@ export default function ApplicantsClient({
           waiting === 0
             ? 'Nothing waiting for a decision.'
             : `${waiting} waiting for a decision before they join the pool`
+        }
+        action={
+          canExport && (
+            <ExportButton
+              def={applicationsList}
+              endpoint="/api/applications/export"
+              filters={filters}
+              filteredCount={rows.length}
+              ticks={ticks}
+            />
+          )
         }
       />
 
@@ -241,71 +244,82 @@ export default function ApplicantsClient({
             {rows.map((a) => (
               <li key={a.id} className="card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {a.convertedCandidateId ? (
-                        <Link
-                          href={`/candidates/${a.convertedCandidateId}`}
-                          className="text-sm font-semibold text-ink hover:text-brand"
-                        >
-                          {a.candidateName}
-                        </Link>
-                      ) : (
-                        <span className="text-sm font-semibold text-ink">
-                          {a.candidateName}
-                        </span>
-                      )}
-                      {a.kind === 'application' ? (
-                        <Badge tone="blue">Applied</Badge>
-                      ) : (
-                        <Badge tone="violet">Referred</Badge>
-                      )}
-                      {a.status === 'new' && <Badge tone="amber">Waiting</Badge>}
-                      {a.status === 'accepted' && <Badge tone="green">In pool</Badge>}
-                      {a.status === 'dismissed' && <Badge tone="neutral">Dismissed</Badge>}
-                      <Badge tone={CONTACT_TONE[a.contactStatus]}>
-                        {CONTACT_LABELS[a.contactStatus]}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-1 text-xs text-ink2">
-                      for{' '}
-                      <Link
-                        href={`/pipeline/${a.opportunityId}`}
-                        className="font-medium text-brand hover:underline"
-                      >
-                        {a.requirementTitle}
-                      </Link>{' '}
-                      <span className="text-ink3">
-                        · {a.companyName}
-                        {a.assigneeNames.length > 0 && ` · ${a.assigneeNames.join(', ')}`}
-                      </span>
-                    </div>
-
-                    <div className="tnum mt-1 text-2xs text-ink3">
-                      {[a.candidateEmail, a.candidateMobile].filter(Boolean).join(' · ') ||
-                        'No contact details given'}
-                    </div>
-
-                    <div className="tnum mt-0.5 text-2xs text-ink3">
-                      {[
-                        a.experienceYears !== null && `${a.experienceYears} yrs`,
-                        a.noticePeriodDays !== null && `${a.noticePeriodDays}d notice`,
-                        a.currentCtc !== null &&
-                          `current ${formatMoneyCompact(a.currentCtc, 'INR')}`,
-                        a.expectedCtc !== null &&
-                          `expected ${formatMoneyCompact(a.expectedCtc, 'INR')}`,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ') || '—'}
-                    </div>
-
-                    {a.kind === 'referral' || a.referrerName !== a.candidateName ? (
-                      <div className="mt-0.5 text-2xs text-ink3">
-                        Referred by {a.referrerName}
-                        {a.referrerEmail && ` · ${a.referrerEmail}`}
+                  <div className="flex min-w-0 items-start gap-3">
+                    {canExport && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Tick ${a.candidateName}`}
+                        className="mt-1 h-3.5 w-3.5 rounded border-line accent-[rgb(var(--accent))]"
+                        checked={ticks.has(a.id)}
+                        onChange={(e) => toggle(a.id, e.target.checked)}
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {a.convertedCandidateId ? (
+                          <Link
+                            href={`/candidates/${a.convertedCandidateId}`}
+                            className="text-sm font-semibold text-ink hover:text-brand"
+                          >
+                            {a.candidateName}
+                          </Link>
+                        ) : (
+                          <span className="text-sm font-semibold text-ink">
+                            {a.candidateName}
+                          </span>
+                        )}
+                        {a.kind === 'application' ? (
+                          <Badge tone="blue">Applied</Badge>
+                        ) : (
+                          <Badge tone="violet">Referred</Badge>
+                        )}
+                        {a.status === 'new' && <Badge tone="amber">Waiting</Badge>}
+                        {a.status === 'accepted' && <Badge tone="green">In pool</Badge>}
+                        {a.status === 'dismissed' && <Badge tone="neutral">Dismissed</Badge>}
+                        <Badge tone={CONTACT_TONE[a.contactStatus]}>
+                          {CONTACT_LABELS[a.contactStatus]}
+                        </Badge>
                       </div>
-                    ) : null}
+
+                      <div className="mt-1 text-xs text-ink2">
+                        for{' '}
+                        <Link
+                          href={`/pipeline/${a.opportunityId}`}
+                          className="font-medium text-brand hover:underline"
+                        >
+                          {a.requirementTitle}
+                        </Link>{' '}
+                        <span className="text-ink3">
+                          · {a.companyName}
+                          {a.assigneeNames.length > 0 && ` · ${a.assigneeNames.join(', ')}`}
+                        </span>
+                      </div>
+
+                      <div className="tnum mt-1 text-2xs text-ink3">
+                        {[a.candidateEmail, a.candidateMobile].filter(Boolean).join(' · ') ||
+                          'No contact details given'}
+                      </div>
+
+                      <div className="tnum mt-0.5 text-2xs text-ink3">
+                        {[
+                          a.experienceYears !== null && `${a.experienceYears} yrs`,
+                          a.noticePeriodDays !== null && `${a.noticePeriodDays}d notice`,
+                          a.currentCtc !== null &&
+                            `current ${formatMoneyCompact(a.currentCtc, 'INR')}`,
+                          a.expectedCtc !== null &&
+                            `expected ${formatMoneyCompact(a.expectedCtc, 'INR')}`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || '—'}
+                      </div>
+
+                      {a.kind === 'referral' || a.referrerName !== a.candidateName ? (
+                        <div className="mt-0.5 text-2xs text-ink3">
+                          Referred by {a.referrerName}
+                          {a.referrerEmail && ` · ${a.referrerEmail}`}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="tnum shrink-0 text-2xs text-ink3">

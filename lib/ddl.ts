@@ -318,6 +318,19 @@ CREATE TABLE IF NOT EXISTS account_events (
 CREATE INDEX IF NOT EXISTS account_events_subject_idx ON account_events(subject_user_id);
 CREATE INDEX IF NOT EXISTS account_events_created_idx ON account_events(created_at);
 
+CREATE TABLE IF NOT EXISTS export_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_user_id INTEGER,
+  actor_name TEXT NOT NULL,
+  list TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  fields TEXT NOT NULL,
+  filters TEXT NOT NULL DEFAULT '{}',
+  row_count INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS export_events_created_idx ON export_events(created_at);
+
 CREATE TABLE IF NOT EXISTS referrals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,

@@ -1,11 +1,9 @@
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { candidates, resources, users } from '@/lib/schema';
-import {
-  getCandidateOpportunityCounts,
-  getApplicationQueue,
-  getApplicantAlert,
-} from '@/lib/queries';
+import { resources, users } from '@/lib/schema';
+import { getApplicantAlert } from '@/lib/queries';
+import { loadCandidates, loadApplications } from '@/lib/lists/load/candidates';
+import { canExport } from '@/lib/access';
 import { requireSession } from '@/lib/session';
 import CandidateTabs from '@/components/candidate-tabs';
 import CandidatesClient from './client';
@@ -42,7 +40,7 @@ export default async function CandidatesPage({
   const alert = await getApplicantAlert(scope, me?.seenAt ?? null);
 
   if (showApplicants) {
-    const applications = await getApplicationQueue();
+    const applications = await loadApplications();
     return (
       <div>
         <CandidateTabs active="applicants" waiting={alert.pending} />
@@ -53,15 +51,15 @@ export default async function CandidatesPage({
           applications={applications}
           role={session.role}
           waiting={alert.pending}
+          canExport={canExport(session.role)}
         />
       </div>
     );
   }
 
   // Independent of each other — run concurrently.
-  const [rows, counts, resourceOptions] = await Promise.all([
-    db.select().from(candidates).orderBy(desc(candidates.id)).all(),
-    getCandidateOpportunityCounts(),
+  const [initial, resourceOptions] = await Promise.all([
+    loadCandidates(),
     db
       .select({
         id: resources.id,
@@ -78,15 +76,14 @@ export default async function CandidatesPage({
       .all(),
   ]);
 
-  const initial = rows.map((c) => {
-    const n = counts.find((x) => x.candidateId === c.id);
-    return { ...c, mappedCount: n?.mapped ?? 0, activeCount: n?.active ?? 0 };
-  });
-
   return (
     <div>
       <CandidateTabs active="pool" waiting={alert.pending} />
-      <CandidatesClient initial={initial} resources={resourceOptions} />
+      <CandidatesClient
+        initial={initial}
+        resources={resourceOptions}
+        canExport={canExport(session.role)}
+      />
     </div>
   );
 }

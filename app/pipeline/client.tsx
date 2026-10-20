@@ -55,44 +55,12 @@ import {
   KpiCard,
   type Tone,
 } from '@/components/ui';
+import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { pipelineList, type PipelineFilters } from '@/lib/lists/pipeline';
+import type { PipelineRow } from '@/lib/lists/load/pipeline';
 import { Combobox, type ComboOption } from '@/components/combobox';
 
-type Row = {
-  id: number;
-  clientId: number | null;
-  companyName: string;
-  title: string;
-  experienceMin: number | null;
-  experienceMax: number | null;
-  primarySkill: string | null;
-  secondarySkill: string | null;
-  workMode: string | null;
-  location: string | null;
-  timezone: string | null;
-  engagementType: string | null;
-  requiredCount: number;
-  currency: string;
-  dealValue: number | null;
-  budgetMin: number | null;
-  budgetMax: number | null;
-  hiringBudgetMin: number | null;
-  hiringBudgetMax: number | null;
-  isListed: boolean;
-  stage: string;
-  priority: string | null;
-  leadOwnerUserId: number | null;
-  salesOwnerUserId: number | null;
-  nextStep: string | null;
-  nextStepDate: string | null;
-  closedReason: string | null;
-  convertedProjectId: number | null;
-  clientName: string | null;
-  isProspect: boolean;
-  mappedCount: number;
-  filledCount: number;
-  stageSince: string;
-  followUpDue: boolean;
-};
+type Row = PipelineRow;
 
 const PRIORITY_TONE: Record<string, Tone> = {
   high: 'rose',
@@ -124,11 +92,13 @@ export default function PipelineClient({
   clients,
   prospects,
   role,
+  canExport,
 }: {
   initial: Row[];
   clients: ClientOption[];
   prospects: ProspectOption[];
   role: Role;
+  canExport: boolean;
 }) {
   const router = useRouter();
   // TA fulfils requirements but does not raise them, and Management is
@@ -164,20 +134,17 @@ export default function PipelineClient({
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((o) => {
-      if (!showClosed && ['won', 'lost'].includes(o.stage)) return false;
-      if (companyFilter && o.companyName !== companyFilter) return false;
-      if (!q) return true;
-      return (
-        o.title.toLowerCase().includes(q) ||
-        o.companyName.toLowerCase().includes(q) ||
-        (o.primarySkill ?? '').toLowerCase().includes(q) ||
-        (o.location ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [initial, search, showClosed, companyFilter]);
+  // The board: search, company and closed. Stage and sort are list-only.
+  const boardFilters: PipelineFilters = useMemo(
+    () => ({ search, showClosed, company: companyFilter, stage: 'all', oldestFirst: false }),
+    [search, showClosed, companyFilter],
+  );
+  const listFilters: PipelineFilters = useMemo(
+    () => ({ ...boardFilters, stage: stageFilter, oldestFirst: sortOldest }),
+    [boardFilters, stageFilter, sortOldest],
+  );
+  const filtered = useMemo(() => pipelineList.filterRows(initial, boardFilters), [initial, boardFilters]);
+  const { ticks, toggle, setMany } = useTicks();
 
   // Only companies that actually appear on the board this viewer can see: a
   // list of mostly dead ends is worse than no list. Grouped the way the
@@ -201,20 +168,9 @@ export default function PipelineClient({
       .sort((a, b) => (a.group === b.group ? 0 : a.group === 'Clients' ? -1 : 1));
   }, [initial, showClosed]);
 
-  const listFiltered = useMemo(
-    () => (stageFilter === 'all' ? filtered : filtered.filter((o) => o.stage === stageFilter)),
-    [filtered, stageFilter],
-  );
-
   useEffect(() => setPage(1), [search, showClosed, stageFilter, companyFilter]);
 
-  const listSorted = useMemo(
-    () =>
-      sortOldest
-        ? [...listFiltered].sort((a, b) => a.stageSince.localeCompare(b.stageSince))
-        : listFiltered,
-    [listFiltered, sortOldest],
-  );
+  const listSorted = useMemo(() => pipelineList.filterRows(initial, listFilters), [initial, listFilters]);
 
   const pageItems = useMemo(
     () => listSorted.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
@@ -315,11 +271,24 @@ export default function PipelineClient({
         title="Staffing Pipeline"
         subtitle="Open requirements from first brief through to won"
         action={
-          canCreate ? (
-            <button className="btn-primary" onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add Opportunity
-            </button>
-          ) : null
+          <div className="flex gap-2">
+            {/* Exports what the open view shows: the list view's stage filter
+                and sort apply only there, as on screen. */}
+            {canExport && (
+              <ExportButton
+                def={pipelineList}
+                endpoint="/api/opportunities/export"
+                filters={view === 'list' ? listFilters : boardFilters}
+                filteredCount={view === 'list' ? listSorted.length : filtered.length}
+                ticks={ticks}
+              />
+            )}
+            {canCreate && (
+              <button className="btn-primary" onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add Opportunity
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -483,7 +452,7 @@ export default function PipelineClient({
       </div>
 
       <div className="px-6">
-        {(view === 'list' ? listFiltered.length === 0 : filtered.length === 0) ? (
+        {(view === 'list' ? listSorted.length === 0 : filtered.length === 0) ? (
           <div className="card">
             <EmptyState
               icon={Target}
@@ -654,6 +623,9 @@ export default function PipelineClient({
             <TableShell>
               <thead className="border-b border-line bg-surface2">
                 <tr>
+                  {canExport && (
+                    <TickAllHeader ids={pageItems.map((o) => o.id)} ticks={ticks} setMany={setMany} />
+                  )}
                   <th className="th">Requirement</th>
                   <th className="th">Company</th>
                   <th className="th">Stage</th>
@@ -675,6 +647,7 @@ export default function PipelineClient({
                         : 'hover:bg-surface2/50'
                     }
                   >
+                    {canExport && <TickCell id={o.id} label={o.title} ticks={ticks} toggle={toggle} />}
                     <td className="td">
                       <span className="inline-flex items-center gap-1.5">
                         <Link
@@ -760,11 +733,11 @@ export default function PipelineClient({
                 ))}
               </tbody>
             </TableShell>
-            {listFiltered.length > 0 && (
+            {listSorted.length > 0 && (
               <Pagination
                 page={page}
                 pageSize={LIST_PAGE_SIZE}
-                total={listFiltered.length}
+                total={listSorted.length}
                 onPageChange={setPage}
               />
             )}

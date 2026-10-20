@@ -1,45 +1,18 @@
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { invoices, projects, clients, agreements, resources } from '@/lib/schema';
-import { isInvoiceOverdue } from '@/lib/utils';
+import { projects, clients, agreements, resources } from '@/lib/schema';
+import { loadInvoices } from '@/lib/lists/load/invoices';
+import { canExport } from '@/lib/access';
 import InvoicesClient from './client';
 import { requireCurrentAccount } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function InvoicesPage() {
-  await requireCurrentAccount();
+  const session = await requireCurrentAccount();
   // Independent of each other — run concurrently.
-  const [rows, projectOptions, agreementOptions, resourceOptions] = await Promise.all([
-    db
-      .select({
-        id: invoices.id,
-        projectId: invoices.projectId,
-        agreementId: invoices.agreementId,
-        invoiceNumber: invoices.invoiceNumber,
-        scope: invoices.scope,
-        periodFrom: invoices.periodFrom,
-        periodTo: invoices.periodTo,
-        currency: invoices.currency,
-      fxRateToInr: invoices.fxRateToInr,
-      amount: invoices.amount,
-        gstAmount: invoices.gstAmount,
-        invoiceDate: invoices.invoiceDate,
-        dueDate: invoices.dueDate,
-        collectedDate: invoices.collectedDate,
-        status: invoices.status,
-        notes: invoices.notes,
-        projectName: projects.projectName,
-        clientName: clients.companyName,
-        agreementTitle: agreements.title,
-        agreementNumber: agreements.agreementNumber,
-      })
-      .from(invoices)
-      .innerJoin(projects, eq(invoices.projectId, projects.id))
-      .innerJoin(clients, eq(projects.clientId, clients.id))
-      .leftJoin(agreements, eq(invoices.agreementId, agreements.id))
-      .orderBy(desc(invoices.periodFrom), desc(invoices.id))
-      .all(),
+  const [initial, projectOptions, agreementOptions, resourceOptions] = await Promise.all([
+    loadInvoices(),
     db
       .select({
         id: projects.id,
@@ -68,18 +41,13 @@ export default async function InvoicesPage() {
       .all(),
   ]);
 
-  const initial = rows.map((r) => ({
-    ...r,
-    totalAmount: r.amount + r.gstAmount,
-    overdue: isInvoiceOverdue(r.status, r.dueDate),
-  }));
-
   return (
     <InvoicesClient
       initial={initial}
       projects={projectOptions}
       agreements={agreementOptions}
       resources={resourceOptions}
+      canExport={canExport(session.role)}
     />
   );
 }

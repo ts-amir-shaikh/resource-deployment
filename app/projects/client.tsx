@@ -16,20 +16,12 @@ import {
   Badge,
   Pagination,
 } from '@/components/ui';
+import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { projectsList, type ProjectFilters } from '@/lib/lists/projects';
+import type { ProjectRow } from '@/lib/lists/load/projects';
 import { Combobox, type ComboOption } from '@/components/combobox';
 
-type Row = {
-  id: number;
-  clientId: number;
-  projectName: string;
-  managerName: string | null;
-  managerEmail: string | null;
-  managerMobile: string | null;
-  managerDesignation: string | null;
-  clientName: string;
-  headcount: number;
-  monthlyBilling: MoneyByCurrency;
-};
+type Row = ProjectRow;
 
 type ClientOption = { id: number; companyName: string };
 
@@ -44,9 +36,11 @@ const BLANK = {
 
 export default function ProjectsClient({
   initial,
+  canExport,
   clients,
 }: {
   initial: Row[];
+  canExport: boolean;
   clients: ClientOption[];
 }) {
   const router = useRouter();
@@ -66,20 +60,12 @@ export default function ProjectsClient({
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return initial.filter((p) => {
-      if (clientFilter && p.clientId !== Number(clientFilter)) return false;
-      if (deployedFilter === 'deployed' && p.headcount === 0) return false;
-      if (deployedFilter === 'none' && p.headcount > 0) return false;
-      if (!q) return true;
-      return (
-        p.projectName.toLowerCase().includes(q) ||
-        p.clientName.toLowerCase().includes(q) ||
-        (p.managerName ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [initial, search, clientFilter, deployedFilter]);
+  const filters: ProjectFilters = useMemo(
+    () => ({ search, client: clientFilter, deployed: deployedFilter }),
+    [search, clientFilter, deployedFilter],
+  );
+  const filtered = useMemo(() => projectsList.filterRows(initial, filters), [initial, filters]);
+  const { ticks, toggle, setMany } = useTicks();
 
   useEffect(() => setPage(1), [search, clientFilter, deployedFilter]);
 
@@ -147,9 +133,20 @@ export default function ProjectsClient({
         title="Projects"
         subtitle={`${initial.length} engagements across ${clients.length} clients`}
         action={
-          <button className="btn-primary" onClick={openCreate} disabled={!clients.length}>
-            <Plus className="h-4 w-4" /> Add Project
-          </button>
+          <div className="flex gap-2">
+            {canExport && (
+              <ExportButton
+                def={projectsList}
+                endpoint="/api/projects/export"
+                filters={filters}
+                filteredCount={filtered.length}
+                ticks={ticks}
+              />
+            )}
+            <button className="btn-primary" onClick={openCreate} disabled={!clients.length}>
+              <Plus className="h-4 w-4" /> Add Project
+            </button>
+          </div>
         }
       />
 
@@ -213,6 +210,9 @@ export default function ProjectsClient({
             <TableShell>
               <thead className="border-b border-line bg-surface2">
                 <tr>
+                  {canExport && (
+                    <TickAllHeader ids={pageItems.map((p) => p.id)} ticks={ticks} setMany={setMany} />
+                  )}
                   <th className="th">Project</th>
                   <th className="th">Client</th>
                   <th className="th">Project Manager</th>
@@ -224,6 +224,7 @@ export default function ProjectsClient({
               <tbody className="divide-y divide-line">
                 {pageItems.map((p) => (
                   <tr key={p.id} className="hover:bg-surface2/50">
+                    {canExport && <TickCell id={p.id} label={p.projectName} ticks={ticks} toggle={toggle} />}
                     <td className="td">
                       <Link
                         href={`/projects/${p.id}`}

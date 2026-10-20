@@ -1012,6 +1012,37 @@ export const accountEvents = sqliteTable(
   }),
 );
 
+/* ── CSV export log ─────────────────────────────────────────── */
+
+export const EXPORT_MODES = ['filtered', 'ticked'] as const;
+
+/**
+ * One CSV download. Kept apart from `account_events`, whose subject is always
+ * one account: an export is about a list, and Admin reads it as "what data
+ * left the platform", not as any one person's account history.
+ */
+export const exportEvents = sqliteTable(
+  'export_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    actorUserId: integer('actor_user_id'),
+    /** Denormalised so the log still reads correctly after a rename. */
+    actorName: text('actor_name').notNull(),
+    /** The list's slug: 'resources', 'candidates', 'pipeline', … */
+    list: text('list').notNull(),
+    mode: text('mode', { enum: EXPORT_MODES }).notNull(),
+    /** JSON array of column keys, in file order. */
+    fields: text('fields').notNull(),
+    /** JSON object of the filters applied; '{}' for a ticked export. */
+    filters: text('filters').notNull().default('{}'),
+    rowCount: integer('row_count').notNull(),
+    ...timestamps,
+  },
+  (t) => ({
+    createdIdx: index('export_events_created_idx').on(t.createdAt),
+  }),
+);
+
 /* ── M13: Referrals from the public share link ─────────────── */
 
 export const REFERRAL_STATUSES = ['new', 'accepted', 'dismissed'] as const;

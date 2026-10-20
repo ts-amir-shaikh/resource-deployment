@@ -138,9 +138,27 @@ function matchesPrefix(pathname: string, prefixes: string[]): boolean {
   return prefixes.some((p) => pathname === p || pathname.startsWith(p.endsWith('/') ? p : `${p}/`));
 }
 
+/**
+ * Bulk CSV export, and the log of who exported what. A download of a whole
+ * list is the easiest way for data to leave the company, so it stays with the
+ * back office even on lists other roles can read — a TA may open Candidates,
+ * but not `/api/candidates/export`. Checked here, above the role prefixes,
+ * because those prefixes would otherwise let the export route through.
+ */
+export const EXPORT_ROLES: readonly Role[] = BACK_OFFICE;
+
+export function canExport(role: Role): boolean {
+  return EXPORT_ROLES.includes(role);
+}
+
+export function isExportPath(pathname: string): boolean {
+  return /^\/api\/[^/]+\/export$/.test(pathname) || matchesPrefix(pathname, ['/api/exports']);
+}
+
 /** Can this role reach this path at all? Applies to pages and API alike. */
 export function canAccess(role: Role, pathname: string): boolean {
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
+  if (isExportPath(pathname)) return canExport(role);
   if (PENDING_ROLES.includes(role)) return pathname === HOLDING_PATH;
   if (role === 'admin' || role === 'management') return true;
   if (role === 'leadgen') return matchesPrefix(pathname, LEADGEN_READ_PREFIXES);
