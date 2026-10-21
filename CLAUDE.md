@@ -17,23 +17,24 @@ the known-issues list.
 owner's approval before writing code. This holds for mid-project additions, not
 just kickoff. Details and the living-plan URL: `docs/WAYS-OF-WORKING.md`.
 
-**Never point local development at production.** `.env` holds the production
-Turso credentials, and `npm run dev` reads it. A plain `npm run dev` is editing
-live client, salary and invoice data.
+**Never point local development at production.** In this clone, `.env` holds
+the credentials of a **test** Turso database, not the Vercel production one
+(confirmed 21 Oct 2026). `npm run dev` and every `npm run db:*` script read it,
+so a plain `npm run dev` works against shared test data: fine to seed with mock
+data, but `db:seed` and `db:clean --commit` still wipe it for everyone using it.
 
-Development is **local-database-and-mock-data only** (decided 21 Oct 2026).
-Only the Product Owner holds production credentials, deploys, and runs
-migrations against Turso. If your clone has no `.env`, you are already safe.
+Development uses **mock data only** (decided 21 Oct 2026). Only the Product
+Owner holds production credentials, deploys, and runs migrations against the
+production database. Never put production credentials in `.env`. If a clone's
+`.env` might hold them, check with the Product Owner before running anything.
 
-Work against a local file database instead:
+To work against a private local file database instead:
 
 ```bash
 TURSO_DATABASE_URL="" TURSO_AUTH_TOKEN="" npm run dev
 ```
 
-With both unset the app uses `./data/deployment.db`. Every `npm run db:*`
-script has the same hazard — `db:clean --commit` against Turso is an
-irreversible production wipe.
+With both unset the app uses `./data/deployment.db`.
 
 **`npm run db:seed` is destructive.** It clears tables before loading demo data.
 
