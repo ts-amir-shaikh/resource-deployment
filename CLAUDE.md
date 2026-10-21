@@ -21,6 +21,10 @@ just kickoff. Details and the living-plan URL: `docs/WAYS-OF-WORKING.md`.
 Turso credentials, and `npm run dev` reads it. A plain `npm run dev` is editing
 live client, salary and invoice data.
 
+Development is **local-database-and-mock-data only** (decided 21 Oct 2026).
+Only the Product Owner holds production credentials, deploys, and runs
+migrations against Turso. If your clone has no `.env`, you are already safe.
+
 Work against a local file database instead:
 
 ```bash

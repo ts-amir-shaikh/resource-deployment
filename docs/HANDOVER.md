@@ -8,38 +8,69 @@ Written 2026-10-21 against commit `8045c27`.
 
 ## 1. First hour
 
+**You work against a local database and mock data. You are not given production
+or Vercel credentials, and you do not need them** (Product Owner's decision,
+21 Oct 2026). Everything below runs with two values you generate yourself.
+
 ```bash
-git clone <repo> && cd deployment
+git clone <repo> && cd resource-deployment
 npm install
-cp .env.example .env.local        # set AUTH_SECRET and APP_PASSWORD
+cp .env.example .env.local        # set AUTH_SECRET and APP_PASSWORD, nothing else
 npm run db:migrate                # creates the schema in ./data/deployment.db
 npm run db:seed                   # demo dataset (destructive — clears tables)
 npm test                          # expect 196 passing, ~2s
-TURSO_DATABASE_URL="" TURSO_AUTH_TOKEN="" npm run dev
+npm run dev
 ```
 
 Generate the signing secret with `openssl rand -base64 32`.
 
-Opens at http://localhost:3000. Until the first account exists it accepts the
-shared `APP_PASSWORD` as Admin; that path closes by itself once a real account
-is created. Create accounts with `npm run db:user`, or on the **People** screen
-once signed in as Admin.
+Leave `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` **unset**. With both empty the
+app uses the local file at `./data/deployment.db`. As long as no `.env` file
+exists in your clone, `npm run dev` cannot reach production — there is nothing
+for it to read.
 
-**Do not skip the empty Turso variables.** See the next section for why.
+Opens at http://localhost:3000. `scripts/seed.ts` creates **no accounts**, so
+the shared `APP_PASSWORD` signs you in as Admin. Google sign-in and SMTP stay
+unconfigured and unneeded.
+
+**One trap.** Creating your first real account closes the `APP_PASSWORD` door
+permanently, and with no SMTP configured the People screen's *Send link* cannot
+deliver a password. Create accounts with **`npm run db:user`** instead, which
+prompts for the password directly and never takes it as a flag:
+
+```bash
+npm run db:user -- --list
+npm run db:user -- --create --name "QA Accounts" --username qa-acc --role accounts
+npm run db:user -- --reset --username qa-acc      # recovers a lost password
+```
+
+`--reset` is the way out of a lockout — it needs no email. Note that
+`npm run db:clean` will *not* help: it deliberately excludes the `users` table,
+so accounts survive a wipe. To start completely fresh, delete
+`data/deployment.db` and re-run `db:migrate` and `db:seed`.
+
+You will need one account per role to exercise the role-specific screens, since
+four roles (`accounts`, `resource_manager`, `interviewer`, `resource`) currently
+land on `/welcome`.
+
+Deploys are not yours. The Product Owner pushes to production and runs every
+migration against Turso.
 
 ---
 
 ## 2. The environment hazards, in order of damage
 
-### `.env` holds production credentials
+### `.env` holds production credentials — on the owner's machine
 
-`.env` (untracked, local to the owner's machine) contains the live Turso
-database URL and auth token. `npm run dev` and every `npm run db:*` script read
-it. A plain `npm run dev` is a live editing session against real client,
-salary and invoice data.
+`.env` is untracked and exists only on the Product Owner's machine, where it
+holds the live Turso URL and auth token. `npm run dev` and every `npm run db:*`
+script read it, so on *that* machine a plain `npm run dev` is a live editing
+session against real client, salary and invoice data.
 
-Always override both variables to empty, or keep your own `.env.local` and no
-`.env` at all. With both unset the app falls back to `./data/deployment.db`.
+**In your clone this file does not exist, which is the point of the local-only
+setup.** Keep it that way: use `.env.local`, and never create a `.env`. If
+someone sends you production values, you have been handed the hazard rather than
+the fix — the Product Owner's decision was that you do not need them.
 
 ### `npm run db:clean --commit` against Turso is irreversible
 

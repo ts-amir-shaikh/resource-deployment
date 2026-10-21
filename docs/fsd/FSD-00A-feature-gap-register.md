@@ -6,12 +6,12 @@ What each department still needs before it can run its part of the journey on th
 
 | Field | Value |
 |---|---|
-| Date | 27 Sep 2026 |
-| Against | FSD-00 Rev 1.1 · code 5e43f82 |
-| Must | 61 |
+| Date | 27 Sep 2026, last revised 21 Oct 2026 |
+| Against | FSD-00 Rev 1.2 · code f029715 |
+| Must | 57 |
 | Good to have | 35 |
 | Areas | 11 |
-| Tally approach | Bridge app, inbound first |
+| Tally approach | Bridge app, inbound then outbound (D14) |
 | Status | `For review` |
 | Owner | Product Owner |
 
@@ -24,15 +24,17 @@ What each department still needs before it can run its part of the journey on th
 | Inside sales / Sales | 4 | 3 |
 | Recruitment / TA | 3 | 4 |
 | Interviewer panel | 5 | 3 |
-| Resource management | 5 | 3 |
+| Resource management | 5 | 4 |
 | Resources (deployed) | 4 | 4 |
-| Accounts | 6 | 3 |
-| Tally integration | 13 | 4 |
+| Accounts | 7 | 3 |
+| Tally integration | 14 | 3 |
 | Admin | 3 | 1 |
 | Management | 3 | 2 |
-| **Total** | **55** | **35** |
+| **Total** | **57** | **35** |
 
 *Six Must items closed on 20 Oct 2026 with the M60 release — see Rev 1.4. Individual rows below still read as at Rev 1.3 and are corrected as each area is next revised.*
+
+*The **Total row is authoritative**. The per-area rows for **Platform & access** and **Management** still carry Rev 1.3 figures and together overstate Must by six — that difference is the M60 release. They are corrected when those areas are next revised. The Lead generation, Resource management, Accounts and Tally rows are current as at Rev 1.5.*
 
 **How Must was judged:** an item is Must when a department named in FSD-00 cannot do its stated job on the platform without it, when a decision (D1–D8) depends on it, or when it closes an access or accuracy defect already found. Everything else is Good to have, however valuable.
 
@@ -138,6 +140,7 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-RM-03 | Utilisation desk: bench, partial, roll-offs, deployments past end date | Admin-only view, no past-date flag | `Must` | FS-DEP-01 |
 | G-RM-04 | Mark a resource as having left, removing them from pickers and headcount | Not possible | `Must` | FS-RES-01 |
 | G-RM-05 | Monthly reviews: account review per client and performance review per resource, with completion tracked | None | `Must` | FSD-17 |
+| G-RM-09 | Client login for entering resource feedback directly, invited and expiring, on the D5 pattern. Deferred: the Account Manager records it on their behalf for now | Account Manager records it (D13) | `Good to have` | D13 |
 | G-RM-06 | Bench ageing and a capacity forecast from end dates | None | `Good to have` | FS-RES-02 |
 | G-RM-07 | Review templates and score trends over months | None | `Good to have` | This review |
 | G-RM-08 | Certification and training tracking | None | `Good to have` | This review |
@@ -157,6 +160,7 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-ACC-04 | Receipts: amount received, TDS, short payment, partial collection | All-or-nothing Collected | `Must` | FS-INV-03 |
 | G-ACC-05 | PO consumption: invoiced against value, remaining, warning when running low | None | `Must` | FS-AGR-01 |
 | G-ACC-06 | Draft the month's invoices from approved timesheets and active deployments | Built by hand | `Must` | FS-INV-04 |
+| G-ACC-10 | **Proforma invoice** as an app-owned pre-invoice state ahead of `Raised`, keeping the lifecycle forward-only | Not possible | `Must` | D15 |
 | G-ACC-07 | Invoice PDF from the app (if Tally is not the document of record) | None | `Good to have` | FS-INV-05 |
 | G-ACC-08 | Overdue reminders and receivables ageing alerts | Overdue flag only | `Good to have` | This review |
 | G-ACC-09 | Revenue in INR at each invoice's stored exchange rate | Rate stored, unused | `Good to have` | FS-INV-06 |
@@ -168,14 +172,15 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-TLY-05 | Mapping: Tally ledger ↔ client (one-time mapping screen), Tally voucher ↔ app invoice (by invoice number, then by hand) | None | `Must` | FSD-20 |
 | G-TLY-06 | Sync log: each run with counts, failures with reasons, unmatched items, retry | None | `Must` | FSD-20 |
 | G-TLY-07 | Reconciliation view: app against Tally per client and period (invoiced, received, outstanding), with mismatches listed | None | `Must` | FSD-20 · D6 |
-| G-TLY-08 | Tally is read-only in phase 1: nothing is written back until phase 2 is approved | None | `Must` | This brief |
+| G-TLY-08 | ~~Tally is read-only in phase 1: nothing is written back until phase 2 is approved~~ | **Superseded by D14** (21 Oct 2026): outbound writes are in scope, behind an approval gate. Not counted. | `Superseded` | This brief · D14 |
 | G-TLY-13 | The bridge runs as a Windows service: starts with Windows, restarts on failure, has a small memory footprint, and resumes after sleep or loss of network | Test script run by hand | `Must` | Test · About |
 | G-TLY-14 | Filter ledgers by group (Sundry Debtors and sub-groups) before matching them to clients | Test returns all 529 ledgers | `Must` | Test |
 | G-TLY-15 | Health status distinguishes *bridge offline*, *Tally not running* and *company not loaded*, and shows the last successful sync | None | `Must` | Test · About |
 | G-TLY-16 | Port 9000 limited to the local machine by Windows Firewall, with the bridge on localhost (after checking ODBC users on the network) | Open to anything that can reach it | `Must` | About |
 | G-TLY-17 | Move the bridge and Tally to a machine that is always on. Not needed now: the laptop stays on during working hours, and syncs are scheduled within them. | A laptop, on during working hours | `Good to have` | Resolved 28 Sep |
-| G-TLY-09 | Phase 2 outbound: post approved invoices as sales vouchers, create ledgers for new clients, each approved before posting | None | `Good to have` | This brief |
+| G-TLY-09 | Outbound: post vouchers, **proforma** and tax invoices, create ledgers for new clients, and update status. Each queued posting is reviewed and released by Accounts; nothing posts automatically. **No delete or deactivate capability exists in the bridge** — permitted actions are an allowlist, not a filter | None | `Must` | D14 · M64 |
 | G-TLY-10 | Two scheduled syncs a day within working hours, plus **Sync now** for Accounts: the bridge checks the app for requests and reports queued, running, done or failed. Missed runs catch up. | None | `Must` | Confirmed 28 Sep |
+| G-TLY-18 | Inbound **expense** ledgers: Direct and Indirect Expenses groups, for reporting. Margin reconciliation against CTC stays separate (G-TLY-11) | None | `Must` | D16 |
 | G-TLY-11 | Payroll actuals from Tally to replace CTC estimates in margin | None | `Good to have` | This review |
 | G-TLY-12 | Several Tally companies (entities) in one bridge | None | `Good to have` | This review |
 | **Admin · Admin** | | | | |
@@ -205,4 +210,5 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | 1.1 | 27 Sep 2026 | Tally connectivity test confirmed. Added the TallyPrime facts, two constraints, and G-TLY-13 to 17 (now 60 Must and 36 Good to have). |
 | 1.2 | 28 Sep 2026 | Sync schedule and laptop availability confirmed. G-TLY-10 is now Must, and G-TLY-17 is resolved (61 Must, 35 Good to have). |
 | 1.3 | 28 Sep 2026 | Accounts & sign-in built (FSD-01 v4.0): G-PLT-02, 03, 04, 06 and 11 built; G-PLT-01 and 07 part built. Counts unchanged until release. |
+| 1.5 | 21 Oct 2026 | **D9–D16 settled** (FSD-00 Rev 1.2), scoping M62–M67. **G-TLY-08 superseded** and **G-TLY-09 promoted to Must** — outbound Tally writes are in scope behind an approval gate, with no delete capability in the bridge. Three gaps added: **G-TLY-18** expense ledgers (D16), **G-ACC-10** proforma as a pre-invoice state (D15), **G-RM-09** client feedback login, deferred (D13). G-RES-02 and 04 are re-scoped for hours and tasks (D9–D11), and G-LED-01 and 05 for a lead temperature separate from stage (D12). The stale header figure of 61 Must is corrected. **57 Must and 35 Good to have remain.** |
 | 1.4 | 20 Oct 2026 | Accounts & sign-in **released** to production (M60), together with CSV export (M61). G-PLT-02, 03, 04, 11 close and G-PLT-06 closes for password links; G-PLT-01 and 07 stay part built. G-MGT-01 is partly met — the export half shipped, the fixed reports did not. **55 Must and 35 Good to have remain.** |

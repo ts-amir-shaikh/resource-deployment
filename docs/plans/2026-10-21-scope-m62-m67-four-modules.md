@@ -6,7 +6,7 @@ topic: m62-m67-four-modules
 artifact_contract: ce-unified-plan/v1
 product_contract_source: chat scoping 21 Oct 2026
 execution: scoping
-status: awaiting-decisions
+status: approved
 ---
 
 # Leadgen, Timesheets, Reviews, Accounts & Tally — Module Scoping
@@ -16,7 +16,7 @@ status: awaiting-decisions
 - **Objective:** turn the four features the Product Owner described on 21 Oct 2026 into buildable modules, and settle the decisions that change their data models before any code is written.
 - **Means:** each feature maps to FSDs already proposed in FSD-00 and to gaps already registered in FSD-00A. This document decomposes them into six modules (M62–M67), records what differs from the existing specification, and raises **D9–D16** for the Product Owner.
 - **Product authority:** the Product Owner (Techstalwarts).
-- **Why this is scoping and not an implementation plan:** three of the eight open decisions change table structure — timesheet unit (D9), timesheet version scope (D10) and whether Tally is written to (D14). Writing implementation units first would mean rewriting them. D1–D8 were settled before plans were cut; this follows that precedent.
+- **Status:** D9–D16 were approved on 21 Oct 2026 as recommended. Each module now needs its own implementation plan, approved before it is built.
 - **Stop conditions:**
   - Stop and ask before any `npm run db:*`. Those target production Turso.
   - Stop and ask before the bridge writes anything to TallyPrime. Those are the company's live books.
@@ -62,11 +62,11 @@ These are the substantive deltas between the Product Owner's 21 Oct description 
 6. **Proforma invoices do not exist in the app.** Invoice status is `Not Raised → Raised → Pending to Collect → Collected`. A proforma is a pre-invoice document with no place in that lifecycle.
 7. **Expense details are not in the inbound scope.** G-TLY-03 covers customer ledgers, sales vouchers, receipts and outstanding. Expenses are an addition.
 
-### Decisions needed (D9–D16)
+### Decisions (D9–D16) — approved 21 Oct 2026
 
-Continuing the D-series from FSD-00. A recommendation is given for each; none is settled.
+The Product Owner approved every recommendation below as written. They are recorded in FSD-00 Rev 1.2, and their consequences in FSD-00A Rev 1.5.
 
-| # | Question | Recommendation | Why it matters |
+| # | Question | Decision (approved) | Why it matters |
 |---|---|---|---|
 | **D9** | Do timesheets record **hours** or **day types**, and how do hours become invoice billed-days? | Record **both**: hours and tasks for the client-facing record, and a derived day type for billing. Define a full day in hours per deployment (8 by default), so `days = hours ÷ full-day hours`. | Without a rule, M65 cannot feed invoices, and G-RES-04 — described in FSD-00 as the largest gain in billing accuracy — does not land. |
 | **D10** | Is the timesheet version set per **user**, per **project**, or per **deployment**? | **Per deployment.** A deployment already *is* resource × project, so the conflict dissolves instead of needing a precedence rule. Admin sets it there, with a project-level default. | A per-user and per-project toggle has no defined answer when a resource sits on two projects set differently. |
@@ -128,6 +128,32 @@ Not in scope, and deliberately so:
 
 ---
 
+## Development environment
+
+Decided 21 Oct 2026: **the second developer works against a local database and mock data only.** No production or Vercel credentials are shared.
+
+This works without any of the owner's keys:
+
+```bash
+cp .env.example .env.local      # set AUTH_SECRET and APP_PASSWORD only
+npm run db:migrate && npm run db:seed
+npm run dev
+```
+
+With `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` unset the app uses
+`./data/deployment.db`. `scripts/seed.ts` creates no accounts, so the
+`APP_PASSWORD` fallback stays open and signs in as Admin, which means Google
+sign-in and SMTP are not needed. See `docs/HANDOVER.md` §1.
+
+Consequences for these modules:
+
+- **Deploys stay with the Product Owner.** The developer never pushes to production and never runs a migration against Turso.
+- **Tally needs its own fixtures.** The bridge cannot be developed against the live `DESKTOP-90812NU` machine from a local-only setup. M63 and M64 need a Tally test company or recorded XML responses. That is a prerequisite for those modules, not an afterthought.
+- **M65's invoice feed must be verified on seeded data**, which has no approved timesheets. Either extend `scripts/seed.ts` to cover the new tables, or ship each module with its own fixture.
+- **Testing the pending roles needs real accounts.** Creating one closes the `APP_PASSWORD` door, and with no SMTP configured the Send-link flow cannot deliver a password. Use `npm run db:user`, which prompts, to make one account per role.
+
+---
+
 ## Recommended build order
 
 FSD-00's order was Accounts → Tally inbound → Timesheets → Interviewer → Leads → Campaigns → Resource Mgmt. For a **handover to a developer new to this codebase**, that order is wrong at the front.
@@ -158,6 +184,6 @@ Each module's own plan carries its acceptance examples. Module-independent requi
 
 ## Definition of Done
 
-For this scoping document: **D9–D16 are answered by the Product Owner**, FSD-00 gains a revision row recording them, and FSD-00A promotes G-TLY-09 and corrects its stale summary table.
+For this scoping document: **done.** D9–D16 approved 21 Oct 2026, recorded in FSD-00 Rev 1.2. FSD-00A Rev 1.5 supersedes G-TLY-08, promotes G-TLY-09 to Must, adds G-TLY-18, G-ACC-10 and G-RM-09, and corrects the stale header figure — **57 Must and 35 Good to have**.
 
 For each module afterwards: an approved implementation plan, built and verified, with the affected `docs/fsd/` files updated — version bump, revision row, FS items moved to FR items — as required by `docs/WAYS-OF-WORKING.md`.
