@@ -29,6 +29,77 @@ describe('pending roles (R23)', () => {
   }
 });
 
+describe('M65: resource and resource manager', () => {
+  const backOffice = [
+    '/',
+    '/my',
+    '/pipeline',
+    '/candidates',
+    '/resources',
+    '/deployments',
+    '/invoices',
+    '/people',
+    '/holidays',
+    '/api/resources',
+    '/api/deployments',
+    '/api/invoices',
+    '/api/holidays',
+    '/api/users',
+    '/api/timesheets/summary',
+  ];
+
+  it('are no longer held on the welcome page', () => {
+    expect(PENDING_ROLES).not.toContain('resource');
+    expect(PENDING_ROLES).not.toContain('resource_manager');
+    expect(landingPath('resource')).toBe('/timesheet');
+    expect(landingPath('resource_manager')).toBe('/approvals');
+  });
+
+  it('a resource opens its own timesheet and nothing else', () => {
+    expect(canAccess('resource', '/timesheet')).toBe(true);
+    expect(canAccess('resource', '/api/timesheets/mine')).toBe(true);
+    expect(canAccess('resource', '/api/timesheets/mine/day')).toBe(true);
+    expect(canAccess('resource', '/approvals')).toBe(false);
+    expect(canAccess('resource', '/api/timesheets/approvals')).toBe(false);
+    for (const path of backOffice) expect(canAccess('resource', path), path).toBe(false);
+  });
+
+  it('a resource writes only its own entries', () => {
+    expect(canWrite('resource', '/api/timesheets/mine/day')).toBe(true);
+    expect(canWrite('resource', '/api/timesheets/mine/submit')).toBe(true);
+    expect(canWrite('resource', '/api/timesheets/approvals')).toBe(false);
+    expect(canWrite('resource', '/api/holidays')).toBe(false);
+    expect(canWrite('resource', '/api/invoices')).toBe(false);
+  });
+
+  it('a resource manager opens the approval queue and nothing else', () => {
+    expect(canAccess('resource_manager', '/approvals')).toBe(true);
+    expect(canAccess('resource_manager', '/api/timesheets/approvals')).toBe(true);
+    expect(canAccess('resource_manager', '/timesheet')).toBe(false);
+    expect(canAccess('resource_manager', '/api/timesheets/mine')).toBe(false);
+    for (const path of backOffice) expect(canAccess('resource_manager', path), path).toBe(false);
+  });
+
+  it('a resource manager approves but cannot enter time or change settings', () => {
+    expect(canWrite('resource_manager', '/api/timesheets/approvals')).toBe(true);
+    expect(canWrite('resource_manager', '/api/timesheets/mine/day')).toBe(false);
+    expect(canWrite('resource_manager', '/api/holidays')).toBe(false);
+    expect(canWrite('resource_manager', '/api/deployments/3')).toBe(false);
+  });
+
+  it('the invoice summary and holidays stay with the back office', () => {
+    expect(canAccess('admin', '/api/timesheets/summary')).toBe(true);
+    expect(canAccess('management', '/api/timesheets/summary')).toBe(true);
+    expect(canWrite('admin', '/api/holidays')).toBe(true);
+    expect(canWrite('management', '/api/holidays')).toBe(false);
+    for (const role of ['ta', 'leadgen', 'sales'] as const) {
+      expect(canAccess(role, '/api/timesheets/summary'), role).toBe(false);
+      expect(canAccess(role, '/timesheet'), role).toBe(false);
+      expect(canAccess(role, '/approvals'), role).toBe(false);
+    }
+  });
+});
+
 describe('existing roles are unchanged (characterisation)', () => {
   it('landing pages', () => {
     expect(landingPath('admin')).toBe('/');

@@ -135,7 +135,7 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-INT-07 | Reminders before a round and when feedback is overdue | None | `Good to have` | G-PLT-06 |
 | G-INT-08 | Interviewer load and pass-rate statistics | None | `Good to have` | This review |
 | **Resource management · Resource Manager** | | | | |
-| G-RM-01 | Timesheet approval queue, daily, weekly or monthly by setting. Approve, reject with reason, bulk approve | None | `Must` | D2 · D3 |
+| G-RM-01 | Timesheet approval queue, daily, weekly or monthly by setting. Approve, reject with reason, bulk approve | **Built** (FR-TSH-007), awaiting release | `Must` | D2 · D3 |
 | G-RM-02 | Skill matrix: proficiency per skill per resource (and candidate), shared with rating criteria | Free-text skills | `Must` | FSD-17 |
 | G-RM-03 | Utilisation desk: bench, partial, roll-offs, deployments past end date | Admin-only view, no past-date flag | `Must` | FS-DEP-01 |
 | G-RM-04 | Mark a resource as having left, removing them from pickers and headcount | Not possible | `Must` | FS-RES-01 |
@@ -145,10 +145,10 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-RM-07 | Review templates and score trends over months | None | `Good to have` | This review |
 | G-RM-08 | Certification and training tracking | None | `Good to have` | This review |
 | **Resources (deployed) · Resources** | | | | |
-| G-RES-01 | Resource self-service login: own profile, own deployments | No login | `Must` | D1 |
-| G-RES-02 | Day-wise timesheet: worked, half day, paid leave, unpaid leave, holiday, per deployment. Submit, see status, correct if rejected | None | `Must` | D3 |
-| G-RES-03 | Holiday calendar per client or location, pre-filling holidays | None | `Must` | FS-INV-07 |
-| G-RES-04 | Approved days feed invoice lines (working days, paid and unpaid leave) for the period | Typed by hand per line | `Must` | FSD-12 |
+| G-RES-01 | Resource self-service login: own profile, own deployments | **Built** (FR-TSH-001), awaiting release | `Must` | D1 |
+| G-RES-02 | Day-wise timesheet: worked, half day, paid leave, unpaid leave, holiday, per deployment. Submit, see status, correct if rejected | **Built** (FR-TSH-002 to 006) with hours and tasks per D9–D11; a half day is hours, not a type. Awaiting release | `Must` | D3 |
+| G-RES-03 | Holiday calendar per client or location, pre-filling holidays | **Built** (FR-TSH-005, 008) per client or company-wide; location deferred, as nothing records one. Awaiting release | `Must` | FS-INV-07 |
+| G-RES-04 | Approved days feed invoice lines (working days, paid and unpaid leave) for the period | **Built** (FR-TSH-010): leave fills from timesheets when the whole period is approved; working days stay as entered. Awaiting release | `Must` | FSD-12 |
 | G-RES-05 | Leave balance and submission reminders | None | `Good to have` | FS-RES-05 |
 | G-RES-06 | Mobile-friendly timesheet entry (installable web app) | Responsive pages only | `Good to have` | This review |
 | G-RES-07 | Client sign-off attachment on a timesheet | None | `Good to have` | D2 note |
@@ -212,3 +212,4 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | 1.3 | 28 Sep 2026 | Accounts & sign-in built (FSD-01 v4.0): G-PLT-02, 03, 04, 06 and 11 built; G-PLT-01 and 07 part built. Counts unchanged until release. |
 | 1.5 | 21 Oct 2026 | **D9–D16 settled** (FSD-00 Rev 1.2), scoping M62–M67. **G-TLY-08 superseded** and **G-TLY-09 promoted to Must** — outbound Tally writes are in scope behind an approval gate, with no delete capability in the bridge. Three gaps added: **G-TLY-18** expense ledgers (D16), **G-ACC-10** proforma as a pre-invoice state (D15), **G-RM-09** client feedback login, deferred (D13). G-RES-02 and 04 are re-scoped for hours and tasks (D9–D11), and G-LED-01 and 05 for a lead temperature separate from stage (D12). The stale header figure of 61 Must is corrected. **57 Must and 35 Good to have remain.** |
 | 1.4 | 20 Oct 2026 | Accounts & sign-in **released** to production (M60), together with CSV export (M61). G-PLT-02, 03, 04, 11 close and G-PLT-06 closes for password links; G-PLT-01 and 07 stay part built. G-MGT-01 is partly met — the export half shipped, the fixed reports did not. **55 Must and 35 Good to have remain.** |
+| 1.6 | 21 Oct 2026 | **M65 Timesheets built** on `feat/m65-timesheets` (FSD-18 Rev 1.0): G-RES-01 to 04 and G-RM-01 marked Built, awaiting release. Counts are unchanged until the release, as for M60 in Rev 1.4. |

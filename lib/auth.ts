@@ -46,7 +46,7 @@ export type Role = (typeof ROLES)[number];
  * defines their access. Listed once here so the access table, the landing
  * path and the tests all read the same set.
  */
-export const PENDING_ROLES: readonly Role[] = ['accounts', 'resource_manager', 'interviewer', 'resource'];
+export const PENDING_ROLES: readonly Role[] = ['accounts', 'interviewer'];
 
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Admin',

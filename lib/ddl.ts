@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS projects (
   client_id INTEGER NOT NULL REFERENCES clients(id),
   project_name TEXT NOT NULL,
   manager_name TEXT, manager_email TEXT, manager_mobile TEXT, manager_designation TEXT,
+  timesheet_version TEXT NOT NULL DEFAULT 'v1',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS proj_client_idx ON projects(client_id);
@@ -52,6 +53,9 @@ CREATE TABLE IF NOT EXISTS deployments (
   operations_overhead REAL NOT NULL DEFAULT 0,
   gst_applicable INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'active',
+  timesheet_version TEXT,
+  full_day_hours REAL NOT NULL DEFAULT 8,
+  approval_cadence TEXT NOT NULL DEFAULT 'weekly',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS depl_resource_idx ON deployments(resource_id);
@@ -122,7 +126,8 @@ CREATE TABLE IF NOT EXISTS invoice_resources (
   deployment_date TEXT,
   last_working_date TEXT,
   billed_days REAL,
-  amount REAL NOT NULL DEFAULT 0
+  amount REAL NOT NULL DEFAULT 0,
+  leave_from_timesheet INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS invres_invoice_idx ON invoice_resources(invoice_id);
 
@@ -436,4 +441,31 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 CREATE INDEX IF NOT EXISTS agentrun_agent_idx ON agent_runs(agent);
 CREATE INDEX IF NOT EXISTS agentrun_opportunity_idx ON agent_runs(opportunity_id);
 CREATE INDEX IF NOT EXISTS agentrun_created_idx ON agent_runs(created_at);
+
+CREATE TABLE IF NOT EXISTS timesheet_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deployment_id INTEGER NOT NULL REFERENCES deployments(id),
+  entry_date TEXT NOT NULL,
+  entry_type TEXT NOT NULL DEFAULT 'work',
+  hours REAL NOT NULL DEFAULT 0,
+  task TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  submitted_at TEXT,
+  reviewed_by_user_id INTEGER,
+  reviewed_at TEXT,
+  rejection_reason TEXT,
+  created_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ts_deployment_date_idx ON timesheet_entries(deployment_id, entry_date);
+CREATE INDEX IF NOT EXISTS ts_status_idx ON timesheet_entries(status);
+
+CREATE TABLE IF NOT EXISTS holidays (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER REFERENCES clients(id),
+  holiday_date TEXT NOT NULL,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS holiday_date_idx ON holidays(holiday_date);
 `;

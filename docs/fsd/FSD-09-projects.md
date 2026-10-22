@@ -7,8 +7,8 @@ An engagement for a client, run by a named project manager on the client's side.
 | Field | Value |
 |---|---|
 | Module code | PRJ |
-| Module version | v1.3 |
-| Doc revision | Rev 1.0 |
+| Module version | v1.4 (built; v1.3 live) |
+| Doc revision | Rev 1.1 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Projects |
@@ -38,6 +38,7 @@ Admin also creates projects from the pipeline with **Convert to Project**.
 | FR-PRJ-004 | A project cannot be deleted while it has an active deployment, any agreement, any invoice, or any deployment history. | v1.0 | `Live` |
 | FR-PRJ-005 | **Convert to Project** on a won requirement creates the project, and optionally its first deployments (FSD-02). | v1.0 | `Live` |
 | FR-PRJ-006 | Projects can be bulk-loaded from CSV by an operator. | v1.1 | `Live` |
+| FR-PRJ-007 | **Default timesheet version (M65, D10).** The project page shows the timesheet version its deployments use unless they set their own — v1 Daily (default) or v2 Tasks — and Admin can change it there. See FSD-18. | v1.4 | `Built` |
 
 ## 5. Data
 
@@ -79,3 +80,4 @@ Admin also creates projects from the pipeline with **Convert to Project**.
 | Rev | Date | Module ver. | Change |
 |---|---|---|---|
 | 1.0 | 27 Sep 2026 | v1.3 | First issue, written against commit `5e43f82`. |
+| 1.1 | 22 Oct 2026 | v1.4 (built) | M65: FR-PRJ-007 default timesheet version; new column `projects.timesheet_version`. |

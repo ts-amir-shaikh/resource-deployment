@@ -1,5 +1,12 @@
 import { sql, relations } from 'drizzle-orm';
 import { sqliteTable, integer, text, real, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  APPROVAL_CADENCES,
+  DEFAULT_FULL_DAY_HOURS,
+  ENTRY_STATUSES,
+  ENTRY_TYPES,
+  TIMESHEET_VERSIONS,
+} from './timesheet-rules';
 
 const timestamps = {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -66,6 +73,8 @@ export const projects = sqliteTable(
     managerEmail: text('manager_email'),
     managerMobile: text('manager_mobile'),
     managerDesignation: text('manager_designation'),
+    /** M65: the timesheet version a deployment uses when it sets none (D10). */
+    timesheetVersion: text('timesheet_version', { enum: TIMESHEET_VERSIONS }).notNull().default('v1'),
     ...timestamps,
   },
   (t) => ({
@@ -140,6 +149,17 @@ export const deployments = sqliteTable(
     status: text('status', { enum: DEPLOYMENT_STATUSES })
       .notNull()
       .default('active'),
+
+    /**
+     * M65 (D10). Set per deployment because a deployment already is
+     * resource × project: a resource on two projects set differently has no
+     * conflict to resolve. Null means "use the project's default".
+     */
+    timesheetVersion: text('timesheet_version', { enum: TIMESHEET_VERSIONS }),
+    /** D9: hours that make a full billable day here. */
+    fullDayHours: real('full_day_hours').notNull().default(DEFAULT_FULL_DAY_HOURS),
+    /** D3: how this deployment's entries are grouped for approval. */
+    approvalCadence: text('approval_cadence', { enum: APPROVAL_CADENCES }).notNull().default('weekly'),
     ...timestamps,
   },
   (t) => ({
@@ -326,6 +346,12 @@ export const invoiceResources = sqliteTable(
     billedDays: real('billed_days'),
     /** Derived: this line's share of the invoice, in the invoice's currency. */
     amount: real('amount').notNull().default(0),
+    /**
+     * M65: the leave figures came from approved timesheets, not the biller.
+     * Set by the server only, when every expected day of the line was
+     * approved; the line then shows where its numbers came from.
+     */
+    leaveFromTimesheet: integer('leave_from_timesheet', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => ({
     invoiceIdx: index('invres_invoice_idx').on(t.invoiceId),
@@ -1188,6 +1214,59 @@ export const agentRuns = sqliteTable(
   }),
 );
 
+/* ── M65: Timesheets ───────────────────────────────────────── */
+
+/**
+ * One row per day (v1) or per task (v2) — D11's single table for both.
+ *
+ * A day is approved or rejected as a whole: the approval routes act on every
+ * row of a (deployment, date), so the rows of one day never disagree on
+ * status. Billable days are never stored; they are derived from these rows by
+ * lib/timesheet-rules.ts whenever they are needed (KTD7).
+ */
+export const timesheetEntries = sqliteTable(
+  'timesheet_entries',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    deploymentId: integer('deployment_id')
+      .notNull()
+      .references(() => deployments.id),
+    entryDate: text('entry_date').notNull(),
+    entryType: text('entry_type', { enum: ENTRY_TYPES }).notNull().default('work'),
+    hours: real('hours').notNull().default(0),
+    task: text('task'),
+    status: text('status', { enum: ENTRY_STATUSES }).notNull().default('draft'),
+    submittedAt: text('submitted_at'),
+    reviewedByUserId: integer('reviewed_by_user_id'),
+    reviewedAt: text('reviewed_at'),
+    rejectionReason: text('rejection_reason'),
+    createdByUserId: integer('created_by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    deploymentDateIdx: index('ts_deployment_date_idx').on(t.deploymentId, t.entryDate),
+    statusIdx: index('ts_status_idx').on(t.status),
+  }),
+);
+
+/**
+ * G-RES-03. A null client is a company-wide holiday. There is no location
+ * column because nothing else in the app records a location yet (Q4).
+ */
+export const holidays = sqliteTable(
+  'holidays',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    clientId: integer('client_id').references(() => clients.id),
+    holidayDate: text('holiday_date').notNull(),
+    name: text('name').notNull(),
+    ...timestamps,
+  },
+  (t) => ({
+    dateIdx: index('holiday_date_idx').on(t.holidayDate),
+  }),
+);
+
 /* ── Relations ─────────────────────────────────────────────── */
 
 export const referralsRelations = relations(referrals, ({ one }) => ({
@@ -1319,6 +1398,8 @@ export type Agreement = typeof agreements.$inferSelect;
 export type NewAgreement = typeof agreements.$inferInsert;
 export type AgreementResource = typeof agreementResources.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
+export type TimesheetEntry = typeof timesheetEntries.$inferSelect;
+export type Holiday = typeof holidays.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
 
 export type DeploymentType = (typeof DEPLOYMENT_TYPES)[number];

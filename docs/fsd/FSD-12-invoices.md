@@ -7,8 +7,8 @@ What each client is billed for a period, line by line per resource. Each line ca
 | Field | Value |
 |---|---|
 | Module code | INV |
-| Module version | v2.1 |
-| Doc revision | Rev 1.0 |
+| Module version | v2.2 (built; v2.1 live) |
+| Doc revision | Rev 1.1 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Invoices |
@@ -38,6 +38,7 @@ An invoice belongs to a project and, optionally, to the agreement it bills under
 | FR-INV-004 | An invoice records project (searchable), optional agreement or PO (limited to that project), invoice number, scope (Individual or Team), currency, exchange rate to INR, period from and to, invoice and due dates, amount before GST, GST amount, and notes. | v1.4 | `Live` |
 | FR-INV-005 | Choosing an agreement sets the currency to the agreement's and offers its rate-card resources as lines, each at its rate-card amount. | v1.1 | `Live` |
 | FR-INV-006 | Each resource line records the monthly rate, the **working days** in the month, **paid leave** (billed) and **unpaid leave** (deducted), and optionally a deployment date and last working date within the period. The line shows its billed days and amount as they are typed, for example "less 1 day unpaid leave · 2 days paid leave, billed". | v2.1 | `Live` |
+| FR-INV-006a | **Leave from timesheets (M65).** Each line shows how many of the period's working days have approved timesheets. When all of them do, the line's paid and unpaid leave are filled from the timesheets and locked, the server stores those figures whatever the form sent, and the line is marked as timesheet-sourced. Otherwise the leave stays as entered. See FSD-18 BR-TSH-05. | v2.2 | `Built` |
 | FR-INV-007 | Leaving working days blank makes the line a flat month at the full monthly rate. That is how every invoice before pro-rating was priced. | v2.0 | `Live` |
 | FR-INV-008 | The amount before GST follows the sum of the lines, and stays editable. If someone overrides it, the field says it no longer follows the lines, and **Use lines** restores the sum. | v2.0 | `Live` |
 | FR-INV-009 | For INR invoices the GST field suggests 18% of the amount, with a button to apply it. For AED and USD invoices GST is hidden, and it is refused if sent. | v1.2 | `Live` |
@@ -141,3 +142,4 @@ Production at 27 Sep 2026: 112 line rows. Lines raised before pro-rating have no
 | Rev | Date | Module ver. | Change |
 |---|---|---|---|
 | 1.0 | 27 Sep 2026 | v2.1 | First issue, written against commit `5e43f82`. |
+| 1.1 | 21 Oct 2026 | v2.2 (built) | M65: FR-INV-006a — a line's paid and unpaid leave come from approved timesheets when every working day of the period is approved, and are locked on the form and enforced on save. See FSD-18 FR-TSH-010. |

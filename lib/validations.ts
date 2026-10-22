@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { CANDIDATE_SOURCE_VALUES, sourceNeedsPartnerName, sourceAllowsBenchLink } from './utils';
 import { USER_ROLES } from './schema';
+import {
+  APPROVAL_CADENCES,
+  ENTRY_TYPES,
+  MAX_DAY_HOURS,
+  TIMESHEET_VERSIONS,
+  isIsoDate,
+} from './timesheet-rules';
 
 /**
  * A link to a document that lives somewhere else.
@@ -774,4 +781,85 @@ export const accountSchema = z.object({
     .transform((v) => (v ? v : null)),
   resourceId: z.number().int().positive().nullish().transform((v) => v ?? null),
   active: z.boolean().default(true),
+});
+
+/* ── M65: Timesheets ───────────────────────────────────────── */
+
+const isoDate = z.string().refine(isIsoDate, 'Use a valid date');
+
+/**
+ * One row of a day. Hours arrive as typed; an empty box is not zero hours of
+ * work, it is a row the resource has not filled in — so '' is refused rather
+ * than coerced (the z.coerce.number() trap that once wrote silent zeros).
+ */
+const timesheetRow = z.object({
+  entryType: z.enum(ENTRY_TYPES),
+  hours: z
+    .union([z.literal(''), z.coerce.number()])
+    .refine((v) => v !== '', 'Enter the hours')
+    .transform((v) => Number(v))
+    .refine((v) => Number.isFinite(v) && v >= 0 && v <= MAX_DAY_HOURS, `Hours must be 0 to ${MAX_DAY_HOURS}`),
+  task: optionalStr,
+});
+
+/**
+ * A whole day, replaced in one go. An empty `rows` clears the day. Whether
+ * one row or several are allowed depends on the deployment's version, which
+ * only the server knows — checked in lib/timesheets.ts, not here.
+ */
+export const timesheetDaySchema = z
+  .object({
+    deploymentId: z.coerce.number().int().positive(),
+    date: isoDate,
+    rows: z.array(timesheetRow).max(24),
+  })
+  .refine((d) => d.rows.reduce((s, r) => s + r.hours, 0) <= MAX_DAY_HOURS, {
+    message: `A day cannot hold more than ${MAX_DAY_HOURS} hours`,
+    path: ['rows'],
+  });
+
+export const timesheetSubmitSchema = z
+  .object({
+    from: isoDate,
+    to: isoDate,
+    deploymentId: z.coerce.number().int().positive().optional(),
+  })
+  .refine((d) => d.to >= d.from, { message: 'The range ends before it starts', path: ['to'] });
+
+/** Approve or reject whole days. A rejection needs a reason the resource can act on. */
+export const timesheetReviewSchema = z
+  .object({
+    action: z.enum(['approve', 'reject']),
+    days: z
+      .array(z.object({ deploymentId: z.coerce.number().int().positive(), date: isoDate }))
+      .min(1, 'Select at least one day')
+      .max(500),
+    reason: optionalStr,
+  })
+  .refine((d) => d.action === 'approve' || Boolean(d.reason), {
+    message: 'Give a reason for the rejection',
+    path: ['reason'],
+  });
+
+/** Admin's per-deployment settings (D9, D10, D3). '' means "use the project default". */
+export const deploymentTimesheetSchema = z.object({
+  timesheetVersion: z
+    .union([z.literal(''), z.enum(TIMESHEET_VERSIONS), z.null()])
+    .optional()
+    .transform((v) => (v === '' || v == null ? null : v)),
+  fullDayHours: z.coerce.number().min(1, 'At least 1 hour').max(MAX_DAY_HOURS, `At most ${MAX_DAY_HOURS} hours`),
+  approvalCadence: z.enum(APPROVAL_CADENCES),
+});
+
+export const projectTimesheetSchema = z.object({
+  timesheetVersion: z.enum(TIMESHEET_VERSIONS),
+});
+
+export const holidaySchema = z.object({
+  holidayDate: isoDate,
+  name: z.string().trim().min(1, 'Name the holiday').max(120),
+  clientId: z
+    .union([z.literal(''), z.coerce.number().int().positive(), z.null()])
+    .optional()
+    .transform((v) => (v === '' || v == null ? null : Number(v))),
 });

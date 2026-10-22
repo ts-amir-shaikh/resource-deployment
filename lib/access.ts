@@ -40,6 +40,10 @@ export const NAV: NavItem[] = [
   { href: '/invoices', label: 'Invoices', roles: BACK_OFFICE },
   // Admin manages logins here; Management sees the same list read-only.
   { href: '/people', label: 'People', roles: BACK_OFFICE },
+  // M65. Admin keeps the approval queue too: it retains overrides.
+  { href: '/timesheet', label: 'My Timesheet', roles: ['resource'] },
+  { href: '/approvals', label: 'Timesheet Approvals', roles: ['admin', 'management', 'resource_manager'] },
+  { href: '/holidays', label: 'Holidays', roles: BACK_OFFICE },
 ];
 
 export function navFor(role: Role): NavItem[] {
@@ -64,6 +68,10 @@ export function landingPath(role: Role): string {
       return '/leads';
     case 'sales':
       return '/sales';
+    case 'resource':
+      return '/timesheet';
+    case 'resource_manager':
+      return '/approvals';
     default:
       return '/';
   }
@@ -131,6 +139,22 @@ const SALES_READ_PREFIXES = [
   '/api/dashboard/pipeline',
 ];
 
+/**
+ * Resource (M65, D1): their own timesheet and nothing else. "Their own" is a
+ * row-level rule — `/api/timesheets/mine` only ever reads the deployments of
+ * the resource record the account is linked to (lib/timesheets.ts) — and
+ * every response is built by allowlist, so no billing or salary figure is
+ * ever in one. The invoice summary sits under /api/timesheets/summary, a
+ * sibling deliberately outside this prefix.
+ */
+const RESOURCE_READ_PREFIXES = ['/timesheet', '/api/timesheets/mine'];
+
+/**
+ * Resource Manager (M65, D2): the approval queue. The queue carries the
+ * resource, project and client names it needs to be read, and no money.
+ */
+const RESOURCE_MANAGER_READ_PREFIXES = ['/approvals', '/api/timesheets/approvals'];
+
 /** Paths every signed-in role may reach regardless of role. */
 const COMMON_PREFIXES = ['/api/auth/'];
 
@@ -163,6 +187,8 @@ export function canAccess(role: Role, pathname: string): boolean {
   if (role === 'admin' || role === 'management') return true;
   if (role === 'leadgen') return matchesPrefix(pathname, LEADGEN_READ_PREFIXES);
   if (role === 'sales') return matchesPrefix(pathname, SALES_READ_PREFIXES);
+  if (role === 'resource') return matchesPrefix(pathname, RESOURCE_READ_PREFIXES);
+  if (role === 'resource_manager') return matchesPrefix(pathname, RESOURCE_MANAGER_READ_PREFIXES);
   return matchesPrefix(pathname, TA_READ_PREFIXES);
 }
 
@@ -239,6 +265,16 @@ const SALES_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/agents'), allow: true },
 ];
 
+/** Resource writes: entering and submitting their own days. */
+const RESOURCE_WRITE_RULES: WriteRule[] = [
+  { test: (p) => p.startsWith('/api/timesheets/mine'), allow: true },
+];
+
+/** Resource Manager writes: approving and rejecting. */
+const RESOURCE_MANAGER_WRITE_RULES: WriteRule[] = [
+  { test: (p) => p.startsWith('/api/timesheets/approvals'), allow: true },
+];
+
 /** Can this role mutate at this path? (POST / PUT / PATCH / DELETE) */
 export function canWrite(role: Role, pathname: string): boolean {
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
@@ -248,7 +284,15 @@ export function canWrite(role: Role, pathname: string): boolean {
   // Nothing to write until these roles' screens exist.
   if (PENDING_ROLES.includes(role)) return false;
   const rules =
-    role === 'leadgen' ? LEADGEN_WRITE_RULES : role === 'sales' ? SALES_WRITE_RULES : TA_WRITE_RULES;
+    role === 'leadgen'
+      ? LEADGEN_WRITE_RULES
+      : role === 'sales'
+        ? SALES_WRITE_RULES
+        : role === 'resource'
+          ? RESOURCE_WRITE_RULES
+          : role === 'resource_manager'
+            ? RESOURCE_MANAGER_WRITE_RULES
+            : TA_WRITE_RULES;
   for (const rule of rules) {
     if (rule.test(pathname)) return rule.allow;
   }

@@ -19,11 +19,13 @@ import {
   DetailEmpty,
 } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
+import { TimesheetSettings } from '@/components/timesheet-settings';
+import { TIMESHEET_VERSION_LABELS } from '@/lib/timesheet-rules';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ProjectDetailPage({ params }: { params: { id: string } }) {
-  await requireCurrentAccount();
+  const session = await requireCurrentAccount();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
@@ -38,6 +40,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
         managerMobile: projects.managerMobile,
         managerDesignation: projects.managerDesignation,
         createdAt: projects.createdAt,
+        timesheetVersion: projects.timesheetVersion,
         clientName: clients.companyName,
       })
       .from(projects)
@@ -227,6 +230,15 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
                 mobile={row.managerMobile}
                 designation={row.managerDesignation}
               />
+            </div>
+          </DetailSection>
+
+          <DetailSection title="Timesheet" hint="Default for this project's deployments (M65)">
+            <div className="flex items-center justify-between gap-3 p-4">
+              <span className="text-xs text-ink">{TIMESHEET_VERSION_LABELS[row.timesheetVersion]}</span>
+              {session.role === 'admin' && (
+                <TimesheetSettings kind="project" id={row.id} timesheetVersion={row.timesheetVersion} />
+              )}
             </div>
           </DetailSection>
 

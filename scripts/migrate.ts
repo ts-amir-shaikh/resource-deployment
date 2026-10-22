@@ -365,6 +365,34 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'last_sign_in_at',
     ddl: 'ALTER TABLE users ADD COLUMN last_sign_in_at TEXT',
   },
+  // M65 — timesheets. Every default reproduces today's behaviour: v1 for
+  // every project, an 8-hour day, weekly approval, and no invoice line marked
+  // as timesheet-sourced. Nothing existing changes until someone sets them.
+  {
+    table: 'projects',
+    column: 'timesheet_version',
+    ddl: "ALTER TABLE projects ADD COLUMN timesheet_version TEXT NOT NULL DEFAULT 'v1'",
+  },
+  {
+    table: 'deployments',
+    column: 'timesheet_version',
+    ddl: 'ALTER TABLE deployments ADD COLUMN timesheet_version TEXT',
+  },
+  {
+    table: 'deployments',
+    column: 'full_day_hours',
+    ddl: 'ALTER TABLE deployments ADD COLUMN full_day_hours REAL NOT NULL DEFAULT 8',
+  },
+  {
+    table: 'deployments',
+    column: 'approval_cadence',
+    ddl: "ALTER TABLE deployments ADD COLUMN approval_cadence TEXT NOT NULL DEFAULT 'weekly'",
+  },
+  {
+    table: 'invoice_resources',
+    column: 'leave_from_timesheet',
+    ddl: 'ALTER TABLE invoice_resources ADD COLUMN leave_from_timesheet INTEGER NOT NULL DEFAULT 0',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

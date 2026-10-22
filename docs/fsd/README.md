@@ -33,16 +33,16 @@ Documents are issued in order. FSD-00 checks the whole set against the platform 
 | FSD-06 | [AI Agents](FSD-06-ai-agents.md) | AGT | v3.1 | Rev 1.0 | `Issued` | M19 M20 M28 |
 | FSD-07 | [Resources](FSD-07-resources.md) | RES | v1.3 | Rev 1.0 | `Issued` | M1 M15 M39 |
 | FSD-08 | [Clients](FSD-08-clients.md) | CLI | v1.3 | Rev 1.0 | `Issued` | M2 M14 M15 M46 |
-| FSD-09 | [Projects](FSD-09-projects.md) | PRJ | v1.3 | Rev 1.0 | `Issued` | M3 M14 M15 M47 |
-| FSD-10 | [Deployments](FSD-10-deployments.md) | DEP | v2.2 | Rev 1.0 | `Issued` | M4 M14 M15 M40 M58 |
+| FSD-09 | [Projects](FSD-09-projects.md) | PRJ | v1.4 (built; v1.3 live) | Rev 1.1 | `Issued` | M3 M14 M15 M47 M65 |
+| FSD-10 | [Deployments](FSD-10-deployments.md) | DEP | v2.3 (built; v2.2 live) | Rev 1.1 | `Issued` | M4 M14 M15 M40 M58 M65 |
 | FSD-11 | [Agreements & POs](FSD-11-agreements-pos.md) | AGR | v1.5 | Rev 1.0 | `Issued` | M6 M11 M14 M15 |
-| FSD-12 | [Invoices](FSD-12-invoices.md) | INV | v2.1 | Rev 1.0 | `Issued` | M7 M14 M15 M57 M59 |
+| FSD-12 | [Invoices](FSD-12-invoices.md) | INV | v2.2 (built; v2.1 live) | Rev 1.1 | `Issued` | M7 M14 M15 M57 M59 M65 |
 | FSD-13 | [Dashboard & KPIs](FSD-13-dashboard-kpis.md) | DSH | v2.1 | Rev 1.0 | `Issued` | M5 M18 M30 M40 M55 |
 | FSD-14 | Campaigns & Outreach | CMP | — | — | `Proposed` | see FSD-00 |
 | FSD-15 | Prospects, Meetings & Leads | LED | — | — | `Proposed` | see FSD-00 |
 | FSD-16 | Interviewer Portal | INT | — | — | `Proposed` | M31 · see FSD-00 |
 | FSD-17 | Resource Management | RMG | — | — | `Proposed` | see FSD-00 |
-| FSD-18 | Timesheets & Self-Service | TMS | — | — | `Proposed` | see FSD-00 |
+| FSD-18 | [Timesheets & Self-Service](../m65work/FSD-18-timesheets.md) | TSH | v1.0 (built, not released) | Rev 1.0 | `Built` | M65 |
 | FSD-19 | Reports | RPT | — | — | `Proposed` | see FSD-00 |
 | FSD-20 | Accounting Sync (Tally) | TLY | — | — | `Proposed` | D6 · see FSD-00 |
 

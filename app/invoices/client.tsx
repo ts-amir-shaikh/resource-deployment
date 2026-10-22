@@ -48,6 +48,7 @@ import { ExportButton } from '@/components/export-dialog';
 import { invoicesList, type InvoiceFilters } from '@/lib/lists/invoices';
 import type { InvoiceRow } from '@/lib/lists/load/invoices';
 import { Combobox, type ComboOption } from '@/components/combobox';
+import { coverageLabel, isIsoDate, type PeriodSummary } from '@/lib/timesheet-rules';
 
 type Status = 'not_raised' | 'raised' | 'pending_collection' | 'collected';
 
@@ -320,6 +321,49 @@ export default function InvoicesClient({
   /** The amount has genuinely parted company with the lines it came from. */
   const amountDiverges =
     form.lines.length > 0 && (Number(form.amount) || 0) !== lineTotal;
+
+  // M65: approved timesheets for each line's resource over the period. Where
+  // every expected day is approved the leave comes from them and the two leave
+  // boxes lock — the server applies the same figures on save regardless, so
+  // the preview here shows what will actually be stored.
+  const [timesheets, setTimesheets] = useState<Record<number, PeriodSummary>>({});
+  const timesheetKey = `${form.projectId}|${form.periodFrom}|${form.periodTo}|${form.lines
+    .map((l) => l.resourceId)
+    .join(',')}`;
+  useEffect(() => {
+    const ids = form.lines.map((l) => l.resourceId);
+    if (!form.projectId || !isIsoDate(form.periodFrom) || !isIsoDate(form.periodTo) || !ids.length) {
+      setTimesheets({});
+      return;
+    }
+    let cancelled = false;
+    const q = (id: number) =>
+      `/api/timesheets/summary?resourceId=${id}&projectId=${form.projectId}&from=${form.periodFrom}&to=${form.periodTo}`;
+    Promise.all(ids.map((id) => api<PeriodSummary>(q(id)).then((s) => [id, s] as const)))
+      .then((pairs) => {
+        if (cancelled) return;
+        const map = Object.fromEntries(pairs) as Record<number, PeriodSummary>;
+        setTimesheets(map);
+        setForm((f) => ({
+          ...f,
+          lines: f.lines.map((l) => {
+            const t = map[l.resourceId];
+            return t?.complete
+              ? { ...l, paidLeaveDays: String(t.paidLeaveDays), unpaidLeaveDays: String(t.unpaidLeaveDays) }
+              : l;
+          }),
+        }));
+      })
+      .catch(() => {
+        // Without the summary the line simply stays manual, as before M65.
+        if (!cancelled) setTimesheets({});
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Keyed on the project, period and which resources are on the invoice —
+    // not on the lines themselves, which this effect writes to.
+  }, [timesheetKey]);
 
   /** Replace one line in place, leaving every other line's typing untouched. */
   function setLine(resourceId: number, patch: Partial<LineForm>) {
@@ -1073,6 +1117,7 @@ export default function InvoicesClient({
                             currency={form.currency}
                             currencySymbol={invoiceSymbol}
                             rateLocked={agreementResources.length > 0}
+                            timesheet={timesheets[line.resourceId] ?? null}
                             errors={errors}
                             index={idx}
                             onChange={(patch) => setLine(line.resourceId, patch)}
@@ -1310,6 +1355,7 @@ function InvoiceLineRow({
   currency,
   currencySymbol,
   rateLocked,
+  timesheet,
   errors,
   index,
   onChange,
@@ -1322,6 +1368,8 @@ function InvoiceLineRow({
   currencySymbol: string;
   /** True when the rate came off an agreement's rate card. */
   rateLocked: boolean;
+  /** Approved timesheet figures for this line's period, when loaded. */
+  timesheet: PeriodSummary | null;
   errors: Record<string, string>;
   index: number;
   onChange: (patch: Partial<LineForm>) => void;
@@ -1331,6 +1379,7 @@ function InvoiceLineRow({
   const partMonth = math.daysOnSite > 0 && math.daysOnSite < math.daysInPeriod;
   const paidLeave = Number(line.paidLeaveDays) || 0;
   const unpaidLeave = Number(line.unpaidLeaveDays) || 0;
+  const leaveLocked = Boolean(timesheet?.complete);
 
   return (
     <div className="rounded-md border border-line bg-surface px-3 py-2.5">
@@ -1379,6 +1428,7 @@ function InvoiceLineRow({
             min={0}
             step="0.5"
             value={line.paidLeaveDays}
+            disabled={leaveLocked}
             onChange={(e) => onChange({ paidLeaveDays: e.target.value })}
           />
         </Field>
@@ -1389,6 +1439,7 @@ function InvoiceLineRow({
             min={0}
             step="0.5"
             value={line.unpaidLeaveDays}
+            disabled={leaveLocked}
             onChange={(e) => onChange({ unpaidLeaveDays: e.target.value })}
           />
         </Field>
@@ -1449,6 +1500,20 @@ function InvoiceLineRow({
           </>
         )}
       </p>
+      {timesheet && timesheet.expectedDays > 0 && (
+        <p className="tnum mt-1 text-2xs">
+          {leaveLocked ? (
+            <span className="text-emerald-700 dark:text-emerald-400">
+              Leave from approved timesheets — every working day in the period is approved.
+            </span>
+          ) : (
+            <span className="text-ink3">
+              Timesheets: {coverageLabel(timesheet)}. Leave stays as entered until the whole
+              period is approved.
+            </span>
+          )}
+        </p>
+      )}
     </div>
   );
 }

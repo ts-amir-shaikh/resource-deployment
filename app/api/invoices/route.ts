@@ -9,6 +9,7 @@ import {
 } from '@/lib/schema';
 import { invoiceSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
+import { withTimesheetLeave } from '@/lib/timesheets';
 import { isInvoiceOverdue, today, invoiceLineRow } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -141,10 +142,12 @@ export async function POST(req: Request) {
         .returning()
         .get();
 
-      for (const line of data.lines) {
+      for (const typed of data.lines) {
+        // M65: approved timesheets supply the leave when they cover the period.
+        const { leaveFromTimesheet, ...line } = await withTimesheetLeave(tx, typed, data);
         await tx
           .insert(invoiceResources)
-          .values({ invoiceId: row.id, ...invoiceLineRow(line, data) })
+          .values({ invoiceId: row.id, ...invoiceLineRow(line, data), leaveFromTimesheet })
           .run();
       }
       return row;

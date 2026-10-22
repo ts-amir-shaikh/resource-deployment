@@ -15,6 +15,12 @@ import { formatMoney, formatDate, deploymentMoney, effectiveCtc, monthlyOf } fro
 import { Badge, AllocationBar } from '@/components/ui';
 import { DetailHeader, DetailSection, DetailFacts } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
+import { TimesheetSettings } from '@/components/timesheet-settings';
+import {
+  APPROVAL_CADENCE_LABELS,
+  TIMESHEET_VERSION_LABELS,
+  effectiveVersion,
+} from '@/lib/timesheet-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +29,7 @@ export default async function DeploymentDetailPage({
 }: {
   params: { id: string };
 }) {
-  await requireCurrentAccount();
+  const session = await requireCurrentAccount();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
 
@@ -52,6 +58,10 @@ export default async function DeploymentDetailPage({
       gstApplicable: deployments.gstApplicable,
       status: deployments.status,
       createdAt: deployments.createdAt,
+      timesheetVersion: deployments.timesheetVersion,
+      projectTimesheetVersion: projects.timesheetVersion,
+      fullDayHours: deployments.fullDayHours,
+      approvalCadence: deployments.approvalCadence,
       // The salary side of the margin. Revised CTC applies once its date has
       // passed — see effectiveCtc().
       currentCtc: resources.currentCtc,
@@ -252,6 +262,40 @@ export default async function DeploymentDetailPage({
                 draw a rate automatically.
               </p>
             )}
+          </DetailSection>
+
+          <DetailSection title="Timesheet" hint="How this resource records time (M65)">
+            <div className="p-4">
+              <dl className="space-y-1.5 text-xs">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-ink3">Version</dt>
+                  <dd className="text-right text-ink">
+                    {TIMESHEET_VERSION_LABELS[effectiveVersion(row.timesheetVersion, row.projectTimesheetVersion)]}
+                    {!row.timesheetVersion && <span className="text-ink3"> · project default</span>}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink3">Full day</dt>
+                  <dd className="tnum text-ink">{row.fullDayHours} h</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink3">Approval</dt>
+                  <dd className="text-ink">{APPROVAL_CADENCE_LABELS[row.approvalCadence]}</dd>
+                </div>
+              </dl>
+              {session.role === 'admin' && (
+                <div className="mt-3 flex justify-end">
+                  <TimesheetSettings
+                    kind="deployment"
+                    id={row.id}
+                    timesheetVersion={row.timesheetVersion}
+                    projectVersion={row.projectTimesheetVersion}
+                    fullDayHours={row.fullDayHours}
+                    approvalCadence={row.approvalCadence}
+                  />
+                </div>
+              )}
+            </div>
           </DetailSection>
 
           <DetailSection title="Resource Utilisation">

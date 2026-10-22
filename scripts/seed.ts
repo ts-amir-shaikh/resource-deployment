@@ -47,6 +47,9 @@ for (const t of [
   'invoices',
   'agreement_resources',
   'agreements',
+  // M65: both point at rows cleared below (deployments, clients).
+  'timesheet_entries',
+  'holidays',
   'deployments',
   'projects',
   'clients',

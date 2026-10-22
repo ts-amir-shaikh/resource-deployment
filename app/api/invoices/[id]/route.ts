@@ -10,6 +10,7 @@ import {
 } from '@/lib/schema';
 import { invoiceSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
+import { withTimesheetLeave } from '@/lib/timesheets';
 import { isInvoiceOverdue, invoiceLineRow } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -64,6 +65,7 @@ export async function GET(_req: Request, { params }: Ctx) {
         lastWorkingDate: invoiceResources.lastWorkingDate,
         billedDays: invoiceResources.billedDays,
         lineAmount: invoiceResources.amount,
+        leaveFromTimesheet: invoiceResources.leaveFromTimesheet,
       })
       .from(invoiceResources)
       .innerJoin(resources, eq(invoiceResources.resourceId, resources.id))
@@ -147,10 +149,12 @@ export async function PUT(req: Request, { params }: Ctx) {
         .get();
 
       await tx.delete(invoiceResources).where(eq(invoiceResources.invoiceId, id)).run();
-      for (const line of data.lines) {
+      for (const typed of data.lines) {
+        // M65: approved timesheets supply the leave when they cover the period.
+        const { leaveFromTimesheet, ...line } = await withTimesheetLeave(tx, typed, data);
         await tx
           .insert(invoiceResources)
-          .values({ invoiceId: id, ...invoiceLineRow(line, data) })
+          .values({ invoiceId: id, ...invoiceLineRow(line, data), leaveFromTimesheet })
           .run();
       }
       return row;

@@ -87,9 +87,10 @@ the policy. There are **nine** roles:
 `admin`, `management`, `ta`, `leadgen`, `sales`, `accounts`,
 `resource_manager`, `interviewer`, `resource`
 
-`accounts`, `resource_manager`, `interviewer` and `resource` are in
-`PENDING_ROLES`: assignable and able to sign in, but held at `/welcome` until
-their screens exist. `management` is view-only everywhere.
+`accounts` and `interviewer` are in `PENDING_ROLES`: assignable and able to
+sign in, but held at `/welcome` until their screens exist. `resource` (lands on
+`/timesheet`) and `resource_manager` (lands on `/approvals`) left it with M65.
+`management` is view-only everywhere.
 
 **Two server-side chokepoints re-check the account on every request** —
 `requireCurrentAccount()` on pages, `handle()` on API routes — because Edge
@@ -151,23 +152,26 @@ call sites to be revisited instead of leaving silent wrong-currency output.
 
 ## 5. Testing
 
-`npm test` (Vitest) — **196 tests across 10 files**, ~2s. Read that number
-carefully: **87 of the 196 are `tests/chokepoints.test.ts`**, a structural scan
-that generates one assertion per page and route. Of the rest, 96 cover accounts
-and authentication, 7 cover CSV export and 6 cover mail.
+`npm test` (Vitest) — **268 tests across 12 files**, ~3s. Read that number
+carefully: **99 of the 268 are `tests/chokepoints.test.ts`**, a structural scan
+that generates one assertion per page and route. Of the rest, 96 cover accounts,
+roles and authentication, 31 pin today's invoice and money maths
+(`lib/utils.test.ts`), 29 cover timesheet rules, 7 cover CSV export and 6 cover
+mail.
 
 Behavioural coverage of business logic outside accounts is therefore close to
 zero:
 
 | Covered | Not covered at all |
 |---|---|
-| Accounts, roles, access policy | Invoices, leave maths, pro-rating |
-| Google sign-in, password links | Currency, `opportunityValue()` |
-| CSV export, mail | Deployments, agreements, POs |
-| Chokepoint scan (structural) | Every Zod schema in `validations.ts` |
+| Accounts, roles, access policy | Invoice and timesheet API routes (hand-verified) |
+| Google sign-in, password links | Deployments, agreements, POs |
+| Invoice line maths, pro-rating, currency sums, `opportunityValue()` | Every Zod schema in `validations.ts` |
+| Timesheet hours-to-days and the invoice feed rules | |
+| CSV export, mail, chokepoint scan | |
 
-The money paths — the code that puts a wrong number on a real client invoice —
-have no tests. Treat changes there as unguarded: verify by hand, and prefer
+The pure money functions now have baseline tests (M65). The routes that call
+them do not: treat changes there as unguarded, verify by hand, and prefer
 adding a test to the change you are making.
 
 Verify a claim against the database or the served bundle, not against a label.

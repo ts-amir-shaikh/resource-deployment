@@ -128,6 +128,9 @@ docker run --rm -p 3000:3000 --env-file .env resource-deployment
 | Agreements | `/agreements` | POs with immutable renewal history |
 | Invoices | `/invoices` | Billing periods with 4-stage collection status |
 | People | `/people` | Logins, roles, password links and the account log (Admin; Management view-only) |
+| Timesheet | `/timesheet` | A resource's own days and hours per deployment; submit for approval (Resource) |
+| Approvals | `/approvals` | Submitted timesheet days to approve or reject (Resource Manager, Admin; Management view-only) |
+| Holidays | `/holidays` | Company-wide and per-client holidays that pre-fill timesheets (Admin; Management view-only) |
 | Share view | `/share/[token]` | Public, read-only requirement page for consultants |
 
 ## Business rules
@@ -215,7 +218,8 @@ line amount = monthly rate × billed days ÷ working days
 ```
 
 The partial-month share is measured in **calendar** days, not weekdays. The
-application holds no holiday calendar and does not know whether a given client
+pro-rating does not consult the holiday calendar (that only pre-fills
+timesheets) and does not know whether a given client
 works five days or six; the biller has already said how many days the month is
 worth, so scaling that by the calendar share needs no further assumption.
 Someone on the engagement for 17 of a 31-day period bills 17/31 of the month's
@@ -235,6 +239,28 @@ lines while it is untouched and stays editable; once it diverges, both figures
 are saved as they stand and every screen that shows them says which is which.
 The stored `billed_days` and per-line `amount` are always recomputed
 server-side from the four inputs, never taken from the request.
+
+**Timesheets turn hours into billable days, and feed invoice leave (M65).**
+A resource records each day per deployment as rows of Work, Paid leave,
+Unpaid leave or Holiday, with hours. Each deployment defines its full day
+(default 8 hours), and a day is worth:
+
+```
+worked      = hours worked ÷ full-day hours, capped at 1, to the nearest half day
+paid leave  = paid-leave hours ÷ full-day hours, up to what is left of the day
+unpaid      = whatever is left of an expected (Mon–Fri, non-holiday) day
+```
+
+So on an 8-hour day, 4 hours with nothing else marked is half a day worked
+and half a day unpaid. Days move `draft → submitted → approved`, or
+`rejected` with a reason and back to draft; approved days are locked. Only
+approved days count. When **every** expected day of an invoice line's period
+is approved, the server takes that line's paid and unpaid leave from the
+timesheets — whatever the request said — and marks the line as
+timesheet-sourced; otherwise the leave stays as typed. Working days stay as
+the contract states them, and the pro-rating formula above is unchanged.
+Rounding, the short-day rule, the all-days-approved condition and the holiday
+scope are defaults awaiting Product Owner confirmation (`docs/m65work/FSD-18-timesheets.md`).
 
 **Sharing is by unguessable token, with no authentication.** `/share/[token]`
 exposes the requirement and JD only — never budget, client contacts, candidate

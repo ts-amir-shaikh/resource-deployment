@@ -41,6 +41,8 @@ const TABLES_IN_DELETE_ORDER = [
   'invoices',
   'agreement_resources',
   'agreements',
+  'timesheet_entries',
+  'holidays',
   'deployments',
   'projects',
   'clients',
