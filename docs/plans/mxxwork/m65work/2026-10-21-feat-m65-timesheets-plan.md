@@ -149,7 +149,7 @@ Invoice form fetches the summary per line and pre-fills with the marker. `POST` 
 Approved, submitted and rejected entries on seeded deployments, both versions, and a holiday calendar — so AE1–AE7 can be checked by hand.
 
 ### U8. Docs
-Write FSD-18 (kept in `docs/m65work/` with this plan); update FSD-01 (two roles live), FSD-10, FSD-12, FSD-00A (G-RES-01 to 04, G-RM-01), README business rules, CLAUDE.md test count.
+Write FSD-18 (kept in `docs/plans/mxxwork/m65work/` with this plan); update FSD-01 (two roles live), FSD-10, FSD-12, FSD-00A (G-RES-01 to 04, G-RM-01), README business rules, CLAUDE.md test count.
 
 ---
 

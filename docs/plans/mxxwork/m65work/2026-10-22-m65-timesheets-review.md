@@ -24,7 +24,7 @@ Deployed consultants record their days and hours; the Resource Manager approves 
 | Admin | Holiday calendar (company-wide or per client); timesheet settings on each deployment and project; invoices that take leave from approved timesheets. | `/holidays`, deployment and project pages, `/invoices` |
 | Management | Can view all of the above, change nothing. | — |
 
-Closes gaps **G-RES-01 to 04** and **G-RM-01**. Implements decisions **D1, D2, D3, D9, D10, D11**. Full spec: [`docs/m65work/FSD-18-timesheets.md`](FSD-18-timesheets.md).
+Closes gaps **G-RES-01 to 04** and **G-RM-01**. Implements decisions **D1, D2, D3, D9, D10, D11**. Full spec: [`docs/plans/mxxwork/m65work/FSD-18-timesheets.md`](FSD-18-timesheets.md).
 
 ## 2. Decisions needed from the Product Owner
 
@@ -106,7 +106,7 @@ Run `npm run dev`, open http://localhost:3000. Password for all mock accounts: `
 | Screens | `app/timesheet/`, `app/approvals/`, `app/holidays/`, `components/timesheet-settings.tsx` |
 | API | `app/api/timesheets/` (mine, mine/day, mine/submit, approvals, summary), `app/api/holidays/`, `app/api/deployments/[id]/timesheet/`, `app/api/projects/[id]/timesheet/` |
 | Scripts | `scripts/seed-timesheets.ts` (`npm run db:seed-timesheets`) |
-| Docs | `docs/m65work/` — `FSD-18-timesheets.md`, `2026-10-21-feat-m65-timesheets-plan.md`, this file |
+| Docs | `docs/plans/mxxwork/m65work/` — `FSD-18-timesheets.md`, `2026-10-21-feat-m65-timesheets-plan.md`, this file |
 
 **Modified**
 
