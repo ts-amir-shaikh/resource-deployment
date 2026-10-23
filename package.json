@@ -15,6 +15,7 @@
     "db:seed-timesheets": "node --env-file=.env --import tsx scripts/seed-timesheets.ts",
     "db:seed-leadgen": "node --env-file=.env --import tsx scripts/seed-leadgen.ts",
     "db:seed-reviews": "node --env-file=.env --import tsx scripts/seed-reviews.ts",
+    "db:seed-leaves": "node --env-file=.env --import tsx scripts/seed-leaves.ts",
     "test": "vitest run"
   },
   "dependencies": {

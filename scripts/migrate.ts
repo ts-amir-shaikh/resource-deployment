@@ -389,6 +389,13 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'approval_cadence',
     ddl: "ALTER TABLE deployments ADD COLUMN approval_cadence TEXT NOT NULL DEFAULT 'weekly'",
   },
+  // FSD-18 v1.1 — the fixed "No client tasks assigned" task (D17). Nullable,
+  // so every existing row stays an ordinary row and nothing about billing moves.
+  {
+    table: 'timesheet_entries',
+    column: 'task_kind',
+    ddl: 'ALTER TABLE timesheet_entries ADD COLUMN task_kind TEXT',
+  },
   {
     table: 'invoice_resources',
     column: 'leave_from_timesheet',

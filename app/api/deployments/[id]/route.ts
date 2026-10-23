@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { deployments, resources, projects, clients, agreements } from '@/lib/schema';
+import { deployments, resources, projects, clients, agreements, timesheetEntries } from '@/lib/schema';
 import { deploymentSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
 import {
@@ -32,6 +32,7 @@ export async function GET(_req: Request, { params }: Ctx) {
         agreementTitle: agreements.title,
         deploymentType: deployments.deploymentType,
         allocationPercentage: deployments.allocationPercentage,
+        fullDayHours: deployments.fullDayHours,
         startDate: deployments.startDate,
         endDate: deployments.endDate,
         billingAmount: deployments.billingAmount,
@@ -108,6 +109,8 @@ export async function PUT(req: Request, { params }: Ctx) {
         currency: data.currency,
         deploymentType: data.deploymentType,
         allocationPercentage: data.allocationPercentage,
+        // Left alone when the request does not carry it (a CSV or older form).
+        ...(data.fullDayHours !== undefined ? { fullDayHours: data.fullDayHours } : {}),
         startDate: data.startDate,
         endDate: data.endDate,
         billingAmount: data.billingAmount,
@@ -119,7 +122,22 @@ export async function PUT(req: Request, { params }: Ctx) {
       .returning()
       .get();
 
-    return ok(row);
+    // D18: changing the hours a day re-values days already approved, because
+    // days are derived from hours (BR-TSH-08). That is allowed — it warns, it
+    // does not lock — so the caller is told how many approved entries it touches.
+    let warning: string | null = null;
+    if (data.fullDayHours !== undefined && data.fullDayHours !== existing.fullDayHours) {
+      const approved = await db
+        .select({ n: count() })
+        .from(timesheetEntries)
+        .where(and(eq(timesheetEntries.deploymentId, id), eq(timesheetEntries.status, 'approved')))
+        .get();
+      if (approved && approved.n > 0) {
+        warning = `Hours a day changed from ${existing.fullDayHours} to ${data.fullDayHours}. ${approved.n} approved timesheet ${approved.n === 1 ? 'entry is' : 'entries are'} on this deployment, so the days they are worth will be recalculated, including for invoices not yet raised.`;
+      }
+    }
+
+    return ok({ ...row, warning });
   });
 }
 

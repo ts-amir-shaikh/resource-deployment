@@ -49,12 +49,17 @@ export const NAV: NavItem[] = [
   { href: '/people', label: 'People', roles: BACK_OFFICE },
   // M65. Admin keeps the approval queue too: it retains overrides.
   { href: '/timesheet', label: 'My Timesheet', roles: ['resource'] },
-  { href: '/approvals', label: 'Timesheet Approvals', roles: ['admin', 'management', 'resource_manager'] },
+  { href: '/leaves', label: 'My Leaves', roles: ['resource'] },
+  // Timesheets and leave requests are approved on the same screen, in two tabs.
+  { href: '/approvals', label: 'Approvals', roles: ['admin', 'management', 'resource_manager'] },
   { href: '/holidays', label: 'Holidays', roles: BACK_OFFICE },
   { href: '/reviews', label: 'Reviews', roles: ['admin', 'management', 'resource_manager'] },
   // M67 (Q5). Sales gets the approved account reviews of its own clients only.
   { href: '/reviews/accounts', label: 'Account Reviews', roles: ['sales'] },
   { href: '/skills', label: 'Skill Matrix', roles: ['admin', 'management', 'resource_manager'] },
+  // FSD-18 v1.1, D20: Admin only — it shows invoice amounts. Management is
+  // back office but is not let in; see ADMIN_ONLY_PREFIXES.
+  { href: '/timesheets', label: 'Timesheet Dashboard', roles: ['admin'] },
 ];
 
 export function navFor(role: Role): NavItem[] {
@@ -174,7 +179,7 @@ const SALES_READ_PREFIXES = [
  * ever in one. The invoice summary sits under /api/timesheets/summary, a
  * sibling deliberately outside this prefix.
  */
-const RESOURCE_READ_PREFIXES = ['/timesheet', '/api/timesheets/mine'];
+const RESOURCE_READ_PREFIXES = ['/timesheet', '/api/timesheets/mine', '/leaves', '/api/leaves/mine'];
 
 /**
  * Resource Manager (M65, D2): the approval queue. The queue carries the
@@ -188,6 +193,8 @@ const RESOURCE_MANAGER_READ_PREFIXES = [
   '/skills',
   '/api/reviews',
   '/api/skills',
+  // FSD-21: the leave queue.
+  '/api/leaves/approvals',
 ];
 
 /** Paths every signed-in role may reach regardless of role. */
@@ -214,10 +221,23 @@ export function isExportPath(pathname: string): boolean {
   return /^\/api\/[^/]+\/export$/.test(pathname) || matchesPrefix(pathname, ['/api/exports']);
 }
 
+/**
+ * Paths only Admin may open (D20): the timesheet dashboard and the routes that
+ * feed it. Management normally passes every path Admin can (below), so this is
+ * checked above that shortcut, as the export rule is. `/timesheets` is a
+ * different prefix from `/timesheet` (a resource's own page).
+ */
+const ADMIN_ONLY_PREFIXES = ['/timesheets', '/api/timesheets/dashboard', '/api/timesheets/entries'];
+
+export function isAdminOnlyPath(pathname: string): boolean {
+  return matchesPrefix(pathname, ADMIN_ONLY_PREFIXES);
+}
+
 /** Can this role reach this path at all? Applies to pages and API alike. */
 export function canAccess(role: Role, pathname: string): boolean {
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
   if (isExportPath(pathname)) return canExport(role);
+  if (isAdminOnlyPath(pathname)) return role === 'admin';
   if (PENDING_ROLES.includes(role)) return pathname === HOLDING_PATH;
   if (role === 'admin' || role === 'management') return true;
   if (role === 'leadgen') return matchesPrefix(pathname, LEADGEN_READ_PREFIXES);
@@ -312,6 +332,8 @@ const SALES_WRITE_RULES: WriteRule[] = [
 /** Resource writes: entering and submitting their own days. */
 const RESOURCE_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/timesheets/mine'), allow: true },
+  // FSD-21: applying for and withdrawing their own leave.
+  { test: (p) => p.startsWith('/api/leaves/mine'), allow: true },
 ];
 
 /**
@@ -324,6 +346,7 @@ const RESOURCE_MANAGER_WRITE_RULES: WriteRule[] = [
   { test: (p) => /^\/api\/reviews\/(performance|accounts)\/\d+\/(approve|return)$/.test(p), allow: false },
   { test: (p) => p.startsWith('/api/reviews/'), allow: true },
   { test: (p) => p.startsWith('/api/skills'), allow: true },
+  { test: (p) => p.startsWith('/api/leaves/approvals'), allow: true },
 ];
 
 /** Can this role mutate at this path? (POST / PUT / PATCH / DELETE) */

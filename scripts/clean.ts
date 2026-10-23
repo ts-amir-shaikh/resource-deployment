@@ -52,6 +52,7 @@ const TABLES_IN_DELETE_ORDER = [
   'performance_reviews',
   'account_reviews',
   'resource_skills',
+  'leave_requests',
   'timesheet_entries',
   'holidays',
   'deployments',

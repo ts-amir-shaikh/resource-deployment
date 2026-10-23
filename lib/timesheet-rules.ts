@@ -14,8 +14,8 @@ export const TIMESHEET_VERSIONS = ['v1', 'v2'] as const;
 export type TimesheetVersion = (typeof TIMESHEET_VERSIONS)[number];
 
 export const TIMESHEET_VERSION_LABELS: Record<TimesheetVersion, string> = {
-  v1: 'Daily (one entry a day)',
-  v2: 'Tasks (hourly task entries)',
+  v1: 'Daily',
+  v2: 'Tasks',
 };
 
 /**
@@ -55,6 +55,33 @@ export const APPROVAL_CADENCE_LABELS: Record<ApprovalCadence, string> = {
 
 /** D9: a full day, unless the deployment says otherwise. */
 export const DEFAULT_FULL_DAY_HOURS = 8;
+
+/** D18: the company's standard day, which a resource's capacity is measured against. */
+export const STANDARD_DAY_HOURS = 8;
+
+/**
+ * D18: the hours a day a deployment opens with — the standard day scaled by
+ * its allocation, to the half hour. 50% gives 4. Only a starting point; the
+ * form lets Admin change it, and the deployment's own value is what counts.
+ */
+export function defaultHoursPerDay(allocationPercentage: number): number {
+  const raw = (STANDARD_DAY_HOURS * allocationPercentage) / 100;
+  if (!Number.isFinite(raw) || raw <= 0) return STANDARD_DAY_HOURS;
+  return Math.min(MAX_DAY_HOURS, Math.max(0.5, Math.round(raw * 2) / 2));
+}
+
+/**
+ * D17: a fixed task every billable project has, so time that is billed but
+ * has no client work behind it can be told apart. Stored as a kind on the row
+ * (never as free text), so renaming the label cannot orphan old rows. It is
+ * an ordinary work row for billing: BR-TSH-12.
+ */
+export const TASK_KINDS = ['no_client_tasks'] as const;
+export type TaskKind = (typeof TASK_KINDS)[number];
+
+export const TASK_KIND_LABELS: Record<TaskKind, string> = {
+  no_client_tasks: 'No client tasks assigned',
+};
 
 /** A day cannot hold more than this, whatever the rows say. */
 export const MAX_DAY_HOURS = 24;

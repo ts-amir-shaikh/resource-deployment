@@ -10,6 +10,7 @@ import type { QueueGroup } from '@/lib/timesheets';
 import {
   APPROVAL_CADENCE_LABELS,
   ENTRY_TYPE_LABELS,
+  TASK_KIND_LABELS,
   dayValue,
   weekday,
 } from '@/lib/timesheet-rules';
@@ -175,7 +176,7 @@ export default function ApprovalsClient({ initial, canReview }: { initial: Queue
                             <li key={i}>
                               <span className="text-ink">{ENTRY_TYPE_LABELS[r.entryType]}</span>
                               <span className="tnum"> · {r.hours} h</span>
-                              {r.task ? ` · ${r.task}` : ''}
+                              {r.taskKind ? ` · ${TASK_KIND_LABELS[r.taskKind]}` : r.task ? ` · ${r.task}` : ''}
                             </li>
                           ))}
                         </ul>

@@ -25,13 +25,15 @@ import {
   DetailEmpty,
 } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
+import { invoiceCoverage } from '@/lib/timesheet-dashboard';
 
 export const dynamic = 'force-dynamic';
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
-  await requireCurrentAccount();
+  const session = await requireCurrentAccount();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
+  const coverage = session.role === 'admin' ? await invoiceCoverage(id) : null;
 
   const row = await db
     .select({
@@ -291,6 +293,27 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
               </>
             )}
           </DetailSection>
+
+          {coverage && coverage.lines.length > 0 && (
+            <DetailSection title="Timesheets" hint="Approved days in this period">
+              <div className="p-4 text-xs">
+                <ul className="space-y-1.5">
+                  {coverage.lines.map((l, i) => (
+                    <li key={i} className="flex justify-between gap-3">
+                      <span className="text-ink3">{l.resourceName}</span>
+                      <span className="tnum text-ink">{l.approvedDays} of {l.expectedDays} days approved</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  className="mt-3 inline-block text-brand hover:underline"
+                  href={`/timesheets?tab=invoices&invoice=${id}&project=${coverage.projectId}&from=${coverage.period.from}&to=${coverage.period.to}`}
+                >
+                  Open in the timesheet dashboard →
+                </Link>
+              </div>
+            </DetailSection>
+          )}
 
           <DetailSection title="Billing Period & Dates">
             <DetailFacts

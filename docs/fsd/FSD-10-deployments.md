@@ -8,7 +8,7 @@ Which resource is working on which project, how much of their time it takes, wha
 |---|---|
 | Module code | DEP |
 | Module version | v2.3 (built; v2.2 live) |
-| Doc revision | Rev 1.1 |
+| Doc revision | Rev 1.2 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Deployments |
@@ -48,6 +48,7 @@ A deployment puts one resource on one project for a share of their time, from a 
 | FR-DEP-011 | Converting a won requirement can open 100% billable deployments for joined candidates (FSD-02). Deployments can also be bulk-loaded from CSV by an operator, with the same 100% cap applied. | v1.1 | `Live` |
 | **Timesheets (M65)** | | | |
 | FR-DEP-012 | The deployment page has a **Timesheet** panel: the timesheet version in force (its own, or "project default"), the hours in a full day, and the approval cadence. Admin edits them there — version v1 Daily or v2 Tasks or the project default, full day 1–24 hours (default 8), cadence daily, weekly (default) or monthly. Saved separately from the deployment form, so billing and allocation validation are untouched. See FSD-18. | v2.3 | `Built` |
+| FR-DEP-013 | **Hours a day on the deployment form (D18).** The create and edit form carries hours a day, defaulting to 8 × allocation % (50% gives 4) and editable. Changing it after approved timesheet days exist saves, then shows a warning with the number of approved entries affected; it is not a lock. The deployment page also shows this month's timesheet figures with a link to the dashboard (FSD-18). | v2.4 | `Built` |
 
 ## 4. Business rules
 
@@ -131,3 +132,4 @@ An end date in the past does not change the status. The deployment stays active,
 |---|---|---|---|
 | 1.0 | 27 Sep 2026 | v2.2 | First issue, written against commit `5e43f82`. |
 | 1.1 | 22 Oct 2026 | v2.3 (built) | M65: FR-DEP-012 timesheet settings per deployment (D9, D10, D3); new columns `timesheet_version`, `full_day_hours`, `approval_cadence`. |
+| 1.2 | 23 Oct 2026 | v2.4 (built) | M65 addendum: FR-DEP-013 hours a day on the form, defaulting from allocation (D18). |

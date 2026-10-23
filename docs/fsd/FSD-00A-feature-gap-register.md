@@ -1,6 +1,6 @@
 # Feature gap register
 
-`FSD-00A · GAP · Rev 1.3`
+`FSD-00A · GAP · Rev 1.10`
 
 What each department still needs before it can run its part of the journey on this platform. Each gap is marked `Must` (the operation cannot run on the platform without it) or `Good to have` (it works without it, but slower or with less insight). This list comes before any plan. Plans are cut from the Must items first.
 
@@ -138,6 +138,7 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-RM-01 | Timesheet approval queue, daily, weekly or monthly by setting. Approve, reject with reason, bulk approve | **Built** (FR-TSH-007), awaiting release | `Must` | D2 · D3 |
 | G-RM-02 | Skill matrix: proficiency per skill per resource (and candidate), shared with rating criteria | **Built for resources** (FR-RMG-009, 010), awaiting release. Candidates stay with G-TA-04 | `Must` | FSD-17 |
 | G-RM-03 | Utilisation desk: bench, partial, roll-offs, deployments past end date | Admin-only view, no past-date flag | `Must` | FS-DEP-01 |
+| G-RM-10 | Timesheet dashboard: utilisation, billing coverage, shadow work and billed time with no client tasks, with an activity log and links from Resource, Deployment and Invoice pages. Admin only. Closes part of G-RM-03 | **Built** (FR-TSH-011 to 016), awaiting release | `Must` | D17 to D21 |
 | G-RM-04 | Mark a resource as having left, removing them from pickers and headcount | Not possible | `Must` | FS-RES-01 |
 | G-RM-05 | Monthly reviews: account review per client and performance review per resource, with completion tracked | **Built** (FR-RMG-001 to 006), awaiting release | `Must` | FSD-17 |
 | G-RM-09 | Client login for entering resource feedback directly, invited and expiring, on the D5 pattern. Deferred: the Account Manager records it on their behalf for now | Account Manager records it (D13) | `Good to have` | D13 |
@@ -153,6 +154,8 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-RES-06 | Mobile-friendly timesheet entry (installable web app) | Responsive pages only | `Good to have` | This review |
 | G-RES-07 | Client sign-off attachment on a timesheet | None | `Good to have` | D2 note |
 | G-RES-08 | Travel and expense claims against a deployment | None | `Good to have` | This review |
+| G-RES-09 | Internal tasks (training, learning, preparation, interviews) assigned to resources, outside the timesheet, through the same approval queue. Deferred | None | `Good to have` | D19 |
+| G-RES-10 | Leave requests: a resource applies, the Resource Manager approves, approved leave feeds the timesheet and the invoice. Balances and allowances stay in G-RES-05 | **Built** (FSD-21), awaiting release | `Must` | D22 |
 | **Accounts · Accounts** | | | | |
 | G-ACC-01 | Accounts role: write Agreements and Invoices, see margin and CTC | Admin only | `Must` | D6 |
 | G-ACC-02 | Client billing details: GSTIN, billing address, payment terms, default due days | None | `Must` | FS-CLI-01 |
@@ -214,4 +217,6 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | 1.4 | 20 Oct 2026 | Accounts & sign-in **released** to production (M60), together with CSV export (M61). G-PLT-02, 03, 04, 11 close and G-PLT-06 closes for password links; G-PLT-01 and 07 stay part built. G-MGT-01 is partly met — the export half shipped, the fixed reports did not. **55 Must and 35 Good to have remain.** |
 | 1.6 | 21 Oct 2026 | **M65 Timesheets built** on `feat/m65-timesheets` (FSD-18 Rev 1.0): G-RES-01 to 04 and G-RM-01 marked Built, awaiting release. Counts are unchanged until the release, as for M60 in Rev 1.4. |
 | 1.7 | 22 Oct 2026 | **M66 Leadgen pipeline built** on `feat/m66-leadgen` (FSD-14 and FSD-15 Rev 1.0): G-LED-01 to 07 marked Built; G-SAL-02 and 03 part built (Q5). Counts are unchanged until the release. |
-| 1.8 | 23 Oct 2026 | **M67 Resource & account review built** on `feat/m67-resource-review` (FSD-17 Rev 1.0): G-RM-02 built for resources, G-RM-05 built, G-RM-07 part built (trends; editable templates not). The Health report from the 21 Oct description is deferred until it is defined. Counts are unchanged until the release. |
+| 1.8 | 23 Oct 2026 | Timesheet dashboard built (FSD-18 Rev 1.1, D17 to D21): **G-RM-10** added (Must, built, awaiting release) and **G-RES-09** added (Good to have, deferred). Counts are unchanged until it is built. |
+| 1.9 | 23 Oct 2026 | Leave built as its own module (FSD-21, D22): **G-RES-10** added (Must, built, awaiting release). G-RES-05 (balances, reminders) stays future. Counts unchanged until release. |
+| 1.10 | 23 Oct 2026 | **M67 Resource & account review built** on `feat/m67-resource-review` (FSD-17 Rev 1.0): G-RM-02 built for resources, G-RM-05 built, G-RM-07 part built (trends; editable templates not). The Health report from the 21 Oct description is deferred until it is defined. Counts are unchanged until the release. |

@@ -16,6 +16,8 @@ import { Badge, AllocationBar } from '@/components/ui';
 import { DetailHeader, DetailSection, DetailFacts } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
 import { TimesheetSettings } from '@/components/timesheet-settings';
+import { deploymentMonth } from '@/lib/timesheet-dashboard';
+import { today } from '@/lib/utils';
 import {
   APPROVAL_CADENCE_LABELS,
   TIMESHEET_VERSION_LABELS,
@@ -32,6 +34,7 @@ export default async function DeploymentDetailPage({
   const session = await requireCurrentAccount();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
+  const month = session.role === 'admin' ? await deploymentMonth(id, today()) : null;
 
   const row = await db
     .select({
@@ -283,6 +286,16 @@ export default async function DeploymentDetailPage({
                   <dd className="text-ink">{APPROVAL_CADENCE_LABELS[row.approvalCadence]}</dd>
                 </div>
               </dl>
+              {month && (
+                <div className="mt-3 space-y-1.5 border-t border-line pt-3 text-xs">
+                  <div className="flex justify-between"><span className="text-ink3">This month, approved</span><span className="tnum text-ink">{month.approvedHours} h of {month.expectedHours} h{month.utilisation === null ? '' : ` · ${month.utilisation}%`}</span></div>
+                  <div className="flex justify-between"><span className="text-ink3">No client tasks</span><span className="tnum text-ink">{month.noClientTaskHours} h</span></div>
+                  <div className="flex justify-between"><span className="text-ink3">Days approved</span><span className="tnum text-ink">{month.coverage.approvedDays} of {month.coverage.expectedDays}</span></div>
+                  <Link className="inline-block text-brand hover:underline" href={`/timesheets?tab=deployments&deployment=${id}`}>
+                    Open in the timesheet dashboard →
+                  </Link>
+                </div>
+              )}
               {session.role === 'admin' && (
                 <div className="mt-3 flex justify-end">
                   <TimesheetSettings
