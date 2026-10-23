@@ -25,7 +25,7 @@ Documents are issued in order. FSD-00 checks the whole set against the platform 
 |---|---|---|---|---|---|---|
 | FSD-00 | [Platform Vision & Coverage](FSD-00-platform-vision-coverage.md) | VIS | — | Rev 1.1 | `Issued` | — |
 | FSD-00A | [Feature Gap Register](FSD-00A-feature-gap-register.md) | GAP | — | Rev 1.3 | `Issued` | — |
-| FSD-01 | [Platform, Roles & Access](FSD-01-platform-roles-access.md) | PLT | v4.2 (built; v3.1 live) | Rev 2.2 | `Issued` | M0 · M10 · M21 · M37 · M41 · M47 · M49 · Accounts & sign-in |
+| FSD-01 | [Platform, Roles & Access](FSD-01-platform-roles-access.md) | PLT | v4.3 (built; v3.1 live) | Rev 2.3 | `Issued` | M0 · M10 · M21 · M37 · M41 · M47 · M49 · Accounts & sign-in · M67 |
 | FSD-02 | [Staffing Pipeline](FSD-02-staffing-pipeline.md) | PIP | v4.1 (built; v4.0 live) | Rev 1.1 | `Issued` | M8 M12 M13 M17 M18 M42 M46 M48 M52–M56 M66 |
 | FSD-03 | [Candidates & Interviews](FSD-03-candidates-interviews.md) | CAN | v3.1 | Rev 1.0 | `Issued` | M9 M22 M26–M29 M32–M36 |
 | FSD-04 | [Job Board & Referrals](FSD-04-job-board-referrals.md) | JOB | v3.0 | Rev 1.0 | `Issued` | M13 M16 M23 M24 |
@@ -41,7 +41,7 @@ Documents are issued in order. FSD-00 checks the whole set against the platform 
 | FSD-14 | [Campaigns & Outreach](../plans/mxxwork/m66work/FSD-14-campaigns-outreach.md) | CMP | v1.0 (built, not released) | Rev 1.0 | `Built` | M66 |
 | FSD-15 | [Prospects, Meetings & Leads](../plans/mxxwork/m66work/FSD-15-prospects-meetings-leads.md) | LED | v1.0 (built, not released) | Rev 1.0 | `Built` | M66 |
 | FSD-16 | Interviewer Portal | INT | — | — | `Proposed` | M31 · see FSD-00 |
-| FSD-17 | Resource Management | RMG | — | — | `Proposed` | see FSD-00 |
+| FSD-17 | [Resource Management](../plans/mxxwork/m67work/FSD-17-resource-management.md) | RMG | v1.0 (built, not released) | Rev 1.0 | `Built` | M67 |
 | FSD-18 | [Timesheets & Self-Service](../plans/mxxwork/m65work/FSD-18-timesheets.md) | TSH | v1.0 (built, not released) | Rev 1.0 | `Built` | M65 |
 | FSD-19 | Reports | RPT | — | — | `Proposed` | see FSD-00 |
 | FSD-20 | Accounting Sync (Tally) | TLY | — | — | `Proposed` | D6 · see FSD-00 |

@@ -12,6 +12,7 @@ npm run db:migrate           # creates the schema
 npm run db:seed              # optional — loads a realistic demo dataset
 npm run db:seed-timesheets   # optional — mock timesheets (additive)
 npm run db:seed-leadgen      # optional — mock campaigns, prospects and leads (additive)
+npm run db:seed-reviews      # optional — mock monthly reviews and skill levels (additive)
 npm run dev
 ```
 
@@ -279,6 +280,19 @@ punctuation and suffixes such as Pvt Ltd or LLP — warns first and allows
 with any activity, responded = an outcome other than no answer / not
 interested, conversion = leads ÷ reached. See
 `docs/plans/mxxwork/m66work/FSD-15-prospects-meetings-leads.md`.
+
+**Monthly reviews and the skill matrix (M67).** Each month a performance
+review is due for every deployment active on any day of it, and an account
+review for every client with such a deployment. The Resource Manager writes
+and submits them; only Admin approves, or returns one to draft with a reason.
+Only a draft can be edited. A performance review is scored 1–5 on each active
+criterion and cannot be submitted with one missing; its average is derived on
+read and is blank, never 0, when unscored. Client feedback is recorded on the
+review by us — clients have no login. Sales sees only approved account reviews
+of clients where it owns a requirement, never performance data, and resources
+never see their own reviews. Skill levels run 1–5 against a catalogue whose
+names are unique ignoring case. See
+`docs/plans/mxxwork/m67work/FSD-17-resource-management.md`.
 
 **Sharing is by unguessable token, with no authentication.** `/share/[token]`
 exposes the requirement and JD only — never budget, client contacts, candidate

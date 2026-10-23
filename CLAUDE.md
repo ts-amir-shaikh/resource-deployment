@@ -152,12 +152,13 @@ call sites to be revisited instead of leaving silent wrong-currency output.
 
 ## 5. Testing
 
-`npm test` (Vitest) — **322 tests across 13 files**, ~3s. Read that number
-carefully: **118 of the 322 are `tests/chokepoints.test.ts`**, a structural scan
-that generates one assertion per page and route. Of the rest, 102 cover accounts,
+`npm test` (Vitest) — **366 tests across 14 files**, ~3s. Read that number
+carefully: **139 of the 366 are `tests/chokepoints.test.ts`**, a structural scan
+that generates one assertion per page and route. Of the rest, 108 cover accounts,
 roles and authentication, 31 pin today's invoice and money maths
 (`lib/utils.test.ts`), 29 cover timesheet rules, 29 cover leadgen rules
-(`lib/leadgen-rules.test.ts`), 7 cover CSV export and 6 cover mail.
+(`lib/leadgen-rules.test.ts`), 17 cover review and skill rules
+(`lib/review-rules.test.ts`), 7 cover CSV export and 6 cover mail.
 
 Behavioural coverage of business logic outside accounts is therefore close to
 zero:
@@ -168,7 +169,8 @@ zero:
 | Google sign-in, password links | Deployments, agreements, POs |
 | Invoice line maths, pro-rating, currency sums, `opportunityValue()` | Every Zod schema in `validations.ts` |
 | Timesheet hours-to-days and the invoice feed rules | Leadgen API routes (hand-verified against a scratch DB) |
-| Leadgen stage, conversion, duplicate matching, campaign maths, row access | |
+| Leadgen stage, conversion, duplicate matching, campaign maths, row access | Review and skill API routes (hand-verified against a scratch DB) |
+| Review status moves, what is due, score averages, skill names | |
 | CSV export, mail, chokepoint scan | |
 
 The pure money functions now have baseline tests (M65). The routes that call

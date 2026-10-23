@@ -51,6 +51,10 @@ export const NAV: NavItem[] = [
   { href: '/timesheet', label: 'My Timesheet', roles: ['resource'] },
   { href: '/approvals', label: 'Timesheet Approvals', roles: ['admin', 'management', 'resource_manager'] },
   { href: '/holidays', label: 'Holidays', roles: BACK_OFFICE },
+  { href: '/reviews', label: 'Reviews', roles: ['admin', 'management', 'resource_manager'] },
+  // M67 (Q5). Sales gets the approved account reviews of its own clients only.
+  { href: '/reviews/accounts', label: 'Account Reviews', roles: ['sales'] },
+  { href: '/skills', label: 'Skill Matrix', roles: ['admin', 'management', 'resource_manager'] },
 ];
 
 export function navFor(role: Role): NavItem[] {
@@ -155,6 +159,11 @@ const SALES_READ_PREFIXES = [
   '/api/applications',
   '/api/users/team',
   '/api/dashboard/pipeline',
+  // M67 (Q5): approved account reviews of its own clients, read-only.
+  // Account reviews only — performance reviews, the month tracker and the
+  // skill matrix are not Sales'. Which rows is decided in lib/reviews.ts.
+  '/reviews/accounts',
+  '/api/reviews/accounts',
 ];
 
 /**
@@ -171,7 +180,15 @@ const RESOURCE_READ_PREFIXES = ['/timesheet', '/api/timesheets/mine'];
  * Resource Manager (M65, D2): the approval queue. The queue carries the
  * resource, project and client names it needs to be read, and no money.
  */
-const RESOURCE_MANAGER_READ_PREFIXES = ['/approvals', '/api/timesheets/approvals'];
+const RESOURCE_MANAGER_READ_PREFIXES = [
+  '/approvals',
+  '/api/timesheets/approvals',
+  // M67: the monthly reviews and the skill matrix (G-RM-02, G-RM-05).
+  '/reviews',
+  '/skills',
+  '/api/reviews',
+  '/api/skills',
+];
 
 /** Paths every signed-in role may reach regardless of role. */
 const COMMON_PREFIXES = ['/api/auth/'];
@@ -297,9 +314,16 @@ const RESOURCE_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/timesheets/mine'), allow: true },
 ];
 
-/** Resource Manager writes: approving and rejecting. */
+/**
+ * Resource Manager writes: approving and rejecting timesheets; writing and
+ * submitting reviews and skill levels (M67). Approving or returning a review
+ * is Admin's (Q3) — the person who wrote a review does not sign it off.
+ */
 const RESOURCE_MANAGER_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/timesheets/approvals'), allow: true },
+  { test: (p) => /^\/api\/reviews\/(performance|accounts)\/\d+\/(approve|return)$/.test(p), allow: false },
+  { test: (p) => p.startsWith('/api/reviews/'), allow: true },
+  { test: (p) => p.startsWith('/api/skills'), allow: true },
 ];
 
 /** Can this role mutate at this path? (POST / PUT / PATCH / DELETE) */

@@ -51,6 +51,12 @@ for (const t of [
   'invoices',
   'agreement_resources',
   'agreements',
+  // M67: reviews and skill levels point at deployments, clients and
+  // resources. The skill catalogue and review criteria are configuration.
+  'performance_review_scores',
+  'performance_reviews',
+  'account_reviews',
+  'resource_skills',
   // M65: both point at rows cleared below (deployments, clients).
   'timesheet_entries',
   'holidays',

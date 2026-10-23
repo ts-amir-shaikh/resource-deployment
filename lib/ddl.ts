@@ -556,4 +556,93 @@ CREATE TABLE IF NOT EXISTS holidays (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS holiday_date_idx ON holidays(holiday_date);
+
+CREATE TABLE IF NOT EXISTS skills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS skills_name_uq ON skills(lower(name));
+
+CREATE TABLE IF NOT EXISTS resource_skills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  resource_id INTEGER NOT NULL REFERENCES resources(id),
+  skill_id INTEGER NOT NULL REFERENCES skills(id),
+  level INTEGER NOT NULL,
+  note TEXT,
+  assessed_by_user_id INTEGER,
+  assessed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS resource_skill_uq ON resource_skills(resource_id, skill_id);
+CREATE INDEX IF NOT EXISTS resource_skill_skill_idx ON resource_skills(skill_id);
+
+CREATE TABLE IF NOT EXISTS review_criteria (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  description TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS performance_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deployment_id INTEGER NOT NULL REFERENCES deployments(id),
+  resource_id INTEGER NOT NULL REFERENCES resources(id),
+  client_id INTEGER NOT NULL REFERENCES clients(id),
+  period TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  summary TEXT,
+  strengths TEXT,
+  improvements TEXT,
+  client_feedback TEXT,
+  client_feedback_by TEXT,
+  client_feedback_date TEXT,
+  submitted_at TEXT,
+  submitted_by_user_id INTEGER,
+  approved_at TEXT,
+  approved_by_user_id INTEGER,
+  returned_reason TEXT,
+  created_by_user_id INTEGER,
+  updated_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS perf_review_dep_period_uq ON performance_reviews(deployment_id, period);
+CREATE INDEX IF NOT EXISTS perf_review_resource_idx ON performance_reviews(resource_id);
+CREATE INDEX IF NOT EXISTS perf_review_period_idx ON performance_reviews(period);
+
+CREATE TABLE IF NOT EXISTS performance_review_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  review_id INTEGER NOT NULL REFERENCES performance_reviews(id) ON DELETE CASCADE,
+  criterion_id INTEGER NOT NULL REFERENCES review_criteria(id),
+  score INTEGER NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS perf_score_uq ON performance_review_scores(review_id, criterion_id);
+
+CREATE TABLE IF NOT EXISTS account_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL REFERENCES clients(id),
+  period TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  rating TEXT,
+  summary TEXT,
+  risks TEXT,
+  opportunities TEXT,
+  actions TEXT,
+  submitted_at TEXT,
+  submitted_by_user_id INTEGER,
+  approved_at TEXT,
+  approved_by_user_id INTEGER,
+  returned_reason TEXT,
+  created_by_user_id INTEGER,
+  updated_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS account_review_client_period_uq ON account_reviews(client_id, period);
+CREATE INDEX IF NOT EXISTS account_review_period_idx ON account_reviews(period);
 `;

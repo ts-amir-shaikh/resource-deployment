@@ -15,6 +15,7 @@
  */
 import { createClient, type Client } from '@libsql/client';
 import { DDL } from '../lib/ddl';
+import { DEFAULT_REVIEW_CRITERIA, skillNamesFromResources } from '../lib/review-rules';
 
 // `|| ''` before `.trim()` treats an env var that's set-but-blank the same
 // as unset — `??` alone doesn't, and libSQL rejects '' with an opaque error.
@@ -604,6 +605,40 @@ async function main() {
        and not exists (select 1 from prospect_contacts c where c.prospect_id = p.id)
   `);
   if (contacts > 0) console.log(`  copied ${contacts} prospect contact(s) into prospect_contacts`);
+
+  // M67 (Q4) — the review criteria a fresh database starts with. Only when
+  // the table is empty, so a criterion someone retired is never revived.
+  const { rows: criteria } = await client.execute('select count(*) as n from review_criteria');
+  if (Number(criteria[0]?.n ?? 0) === 0) {
+    for (const [i, c] of DEFAULT_REVIEW_CRITERIA.entries()) {
+      await client.execute({
+        sql: 'insert into review_criteria (label, description, sort_order) values (?, ?, ?)',
+        args: [c.label, c.description, i],
+      });
+    }
+    console.log(`  added ${DEFAULT_REVIEW_CRITERIA.length} default review criteria`);
+  }
+
+  // M67 (G-RM-02) — seed the skill catalogue from the free-text skills
+  // resources already carry. `insert or ignore` against the lower(name)
+  // index, so a re-run adds only names that are new, and a skill someone
+  // retired stays retired. Levels are not guessed: the matrix starts empty.
+  const { rows: resourceSkillText } = await client.execute(
+    'select primary_skill, secondary_skill, other_skills from resources',
+  );
+  const names = skillNamesFromResources(
+    resourceSkillText.map((r) => ({
+      primarySkill: r.primary_skill == null ? null : String(r.primary_skill),
+      secondarySkill: r.secondary_skill == null ? null : String(r.secondary_skill),
+      otherSkills: r.other_skills == null ? null : String(r.other_skills),
+    })),
+  );
+  let skillsAdded = 0;
+  for (const name of names) {
+    const { rowsAffected } = await client.execute({ sql: 'insert or ignore into skills (name) values (?)', args: [name] });
+    skillsAdded += rowsAffected;
+  }
+  if (skillsAdded > 0) console.log(`  added ${skillsAdded} skill(s) to the catalogue from resources' skills`);
 
   // M59 lift. Leave recorded before the split reduced the invoice, so it was
   // unpaid leave under the new meaning. Idempotent: only rows that still carry

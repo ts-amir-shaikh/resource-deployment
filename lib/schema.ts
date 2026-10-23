@@ -17,6 +17,7 @@ import {
   PROSPECT_STAGES,
   TEMPERATURES,
 } from './leadgen-rules';
+import { ACCOUNT_RATINGS, REVIEW_STATUSES } from './review-rules';
 
 const timestamps = {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -1405,6 +1406,159 @@ export const holidays = sqliteTable(
   },
   (t) => ({
     dateIdx: index('holiday_date_idx').on(t.holidayDate),
+  }),
+);
+
+/* ── M67: Skill matrix and monthly reviews ─────────────────── */
+
+/**
+ * G-RM-02. The skill catalogue the matrix is scored against. A list rather
+ * than free text so "React", "react" and "ReactJS " stop being three skills;
+ * the name is unique case-insensitively (the DDL index is on lower(name)).
+ * Retired, never deleted: levels already recorded against one stay readable.
+ */
+export const skills = sqliteTable('skills', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  createdByUserId: integer('created_by_user_id'),
+  ...timestamps,
+});
+
+/** One proficiency level (1–5) per resource per skill. */
+export const resourceSkills = sqliteTable(
+  'resource_skills',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    resourceId: integer('resource_id')
+      .notNull()
+      .references(() => resources.id),
+    skillId: integer('skill_id')
+      .notNull()
+      .references(() => skills.id),
+    level: integer('level').notNull(),
+    note: text('note'),
+    assessedByUserId: integer('assessed_by_user_id'),
+    assessedAt: text('assessed_at'),
+    ...timestamps,
+  },
+  (t) => ({
+    pairUq: uniqueIndex('resource_skill_uq').on(t.resourceId, t.skillId),
+    skillIdx: index('resource_skill_skill_idx').on(t.skillId),
+  }),
+);
+
+/**
+ * Q4/Q7. What a performance review is scored on. A managed list, like
+ * rating_criteria: retiring one stops it being asked, and past scores against
+ * it stay readable.
+ */
+export const reviewCriteria = sqliteTable('review_criteria', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  label: text('label').notNull(),
+  description: text('description'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  ...timestamps,
+});
+
+/**
+ * G-RM-05. One per deployment per month. Keyed on the deployment rather than
+ * the resource: a resource on two clients is reviewed by each engagement
+ * separately, and each client's feedback is about its own one. resource_id
+ * and client_id are copied in so trends and the account view need no joins
+ * through a deployment that may later be edited.
+ *
+ * Client feedback (D13) is recorded here by the Resource Manager on the
+ * client's behalf: what was said, by whom, and when.
+ */
+export const performanceReviews = sqliteTable(
+  'performance_reviews',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    deploymentId: integer('deployment_id')
+      .notNull()
+      .references(() => deployments.id),
+    resourceId: integer('resource_id')
+      .notNull()
+      .references(() => resources.id),
+    clientId: integer('client_id')
+      .notNull()
+      .references(() => clients.id),
+    /** YYYY-MM */
+    period: text('period').notNull(),
+    status: text('status', { enum: REVIEW_STATUSES }).notNull().default('draft'),
+    summary: text('summary'),
+    strengths: text('strengths'),
+    improvements: text('improvements'),
+    clientFeedback: text('client_feedback'),
+    clientFeedbackBy: text('client_feedback_by'),
+    clientFeedbackDate: text('client_feedback_date'),
+    submittedAt: text('submitted_at'),
+    submittedByUserId: integer('submitted_by_user_id'),
+    approvedAt: text('approved_at'),
+    approvedByUserId: integer('approved_by_user_id'),
+    /** Why Admin sent it back. Cleared when it is submitted again. */
+    returnedReason: text('returned_reason'),
+    createdByUserId: integer('created_by_user_id'),
+    updatedAt: text('updated_at'),
+    ...timestamps,
+  },
+  (t) => ({
+    deploymentPeriodUq: uniqueIndex('perf_review_dep_period_uq').on(t.deploymentId, t.period),
+    resourceIdx: index('perf_review_resource_idx').on(t.resourceId),
+    periodIdx: index('perf_review_period_idx').on(t.period),
+  }),
+);
+
+/** One score per criterion per review. The average is derived, never stored. */
+export const performanceReviewScores = sqliteTable(
+  'performance_review_scores',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    reviewId: integer('review_id')
+      .notNull()
+      .references(() => performanceReviews.id, { onDelete: 'cascade' }),
+    criterionId: integer('criterion_id')
+      .notNull()
+      .references(() => reviewCriteria.id),
+    score: integer('score').notNull(),
+    note: text('note'),
+    ...timestamps,
+  },
+  (t) => ({
+    reviewCriterionUq: uniqueIndex('perf_score_uq').on(t.reviewId, t.criterionId),
+  }),
+);
+
+/** G-RM-05. One per client per month. */
+export const accountReviews = sqliteTable(
+  'account_reviews',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    clientId: integer('client_id')
+      .notNull()
+      .references(() => clients.id),
+    /** YYYY-MM */
+    period: text('period').notNull(),
+    status: text('status', { enum: REVIEW_STATUSES }).notNull().default('draft'),
+    rating: text('rating', { enum: ACCOUNT_RATINGS }),
+    summary: text('summary'),
+    risks: text('risks'),
+    opportunities: text('opportunities'),
+    actions: text('actions'),
+    submittedAt: text('submitted_at'),
+    submittedByUserId: integer('submitted_by_user_id'),
+    approvedAt: text('approved_at'),
+    approvedByUserId: integer('approved_by_user_id'),
+    returnedReason: text('returned_reason'),
+    createdByUserId: integer('created_by_user_id'),
+    updatedAt: text('updated_at'),
+    ...timestamps,
+  },
+  (t) => ({
+    clientPeriodUq: uniqueIndex('account_review_client_period_uq').on(t.clientId, t.period),
+    periodIdx: index('account_review_period_idx').on(t.period),
   }),
 );
 

@@ -194,6 +194,82 @@ describe('existing roles are unchanged (characterisation)', () => {
   });
 });
 
+describe('M67: reviews and the skill matrix', () => {
+  const reviewPages = ['/reviews', '/reviews/performance/4', '/reviews/accounts/2', '/skills'];
+  const reviewApis = ['/api/reviews', '/api/reviews/performance/4', '/api/reviews/accounts/2', '/api/reviews/criteria', '/api/skills'];
+
+  it('a resource manager opens reviews and skills, and still nothing back-office', () => {
+    for (const path of [...reviewPages, ...reviewApis]) expect(canAccess('resource_manager', path), path).toBe(true);
+    for (const path of ['/resources', '/clients', '/deployments', '/invoices', '/api/resources', '/api/clients']) {
+      expect(canAccess('resource_manager', path), path).toBe(false);
+    }
+    expect(navFor('resource_manager').map((n) => n.href)).toEqual(['/approvals', '/reviews', '/skills']);
+  });
+
+  it('a resource manager writes and submits reviews and skill levels', () => {
+    for (const path of [
+      '/api/reviews/performance',
+      '/api/reviews/performance/4',
+      '/api/reviews/performance/4/submit',
+      '/api/reviews/accounts',
+      '/api/reviews/accounts/2',
+      '/api/reviews/accounts/2/submit',
+      '/api/reviews/criteria',
+      '/api/reviews/criteria/3',
+      '/api/skills',
+      '/api/skills/7',
+      '/api/skills/resources/5',
+    ]) {
+      expect(canWrite('resource_manager', path), path).toBe(true);
+    }
+  });
+
+  it('only Admin approves or returns a review (Q3)', () => {
+    for (const path of [
+      '/api/reviews/performance/4/approve',
+      '/api/reviews/performance/4/return',
+      '/api/reviews/accounts/2/approve',
+      '/api/reviews/accounts/2/return',
+    ]) {
+      expect(canWrite('resource_manager', path), path).toBe(false);
+      expect(canWrite('management', path), path).toBe(false);
+      expect(canWrite('sales', path), path).toBe(false);
+      expect(canWrite('admin', path), path).toBe(true);
+    }
+  });
+
+  it('Management reads everything and writes nothing', () => {
+    for (const path of [...reviewPages, ...reviewApis]) {
+      expect(canAccess('management', path), path).toBe(true);
+      expect(canWrite('management', path), path).toBe(false);
+    }
+  });
+
+  it('Sales reads account reviews only, and writes none (Q5)', () => {
+    expect(canAccess('sales', '/reviews/accounts')).toBe(true);
+    expect(canAccess('sales', '/reviews/accounts/2')).toBe(true);
+    expect(canAccess('sales', '/api/reviews/accounts')).toBe(true);
+    expect(canAccess('sales', '/api/reviews/accounts/2')).toBe(true);
+    for (const path of ['/reviews', '/reviews/performance/4', '/skills', '/api/reviews', '/api/reviews/performance/4', '/api/reviews/criteria', '/api/skills']) {
+      expect(canAccess('sales', path), path).toBe(false);
+    }
+    for (const path of ['/api/reviews/accounts', '/api/reviews/accounts/2', '/api/reviews/accounts/2/submit']) {
+      expect(canWrite('sales', path), path).toBe(false);
+    }
+    expect(navFor('sales').map((n) => n.href)).toContain('/reviews/accounts');
+    expect(navFor('sales').map((n) => n.href)).not.toContain('/reviews');
+  });
+
+  it('resources never see their reviews; TA and Leadgen see none', () => {
+    for (const role of ['resource', 'ta', 'leadgen'] as const) {
+      for (const path of [...reviewPages, ...reviewApis, '/reviews/accounts', '/api/reviews/accounts']) {
+        expect(canAccess(role, path), `${role} ${path}`).toBe(false);
+        expect(canWrite(role, path), `${role} ${path}`).toBe(false);
+      }
+    }
+  });
+});
+
 describe('CSV export is back office only', () => {
   const exportPaths = [
     '/api/candidates/export',

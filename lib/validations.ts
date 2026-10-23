@@ -17,6 +17,7 @@ import {
   SETTABLE_PROSPECT_STAGES,
   TEMPERATURES,
 } from './leadgen-rules';
+import { ACCOUNT_RATINGS, MAX_SCORE, MIN_SCORE, isPeriod } from './review-rules';
 
 /**
  * A link to a document that lives somewhere else.
@@ -1018,4 +1019,107 @@ export const leadHandoffSchema = z.object({
 
 export const leadAssignSchema = z.object({
   salesOwnerUserId: optionalId,
+});
+
+/* ── M67: Skill matrix and monthly reviews ─────────────────── */
+
+const period = z.string().trim().refine(isPeriod, { message: 'Pick a month' });
+
+/** Free text on a review. Blank clears it; capped so a paste cannot bloat a row. */
+const reviewText = z
+  .string()
+  .trim()
+  .max(4000, 'Keep this under 4,000 characters')
+  .optional()
+  .transform((v) => (v === '' || v === undefined ? null : v));
+
+/** A 1–5 score, or none. Literal first: z.coerce.number() reads '' as 0. */
+const optionalScore = z
+  .union([z.literal(''), z.null(), z.coerce.number().int().min(MIN_SCORE).max(MAX_SCORE)])
+  .optional()
+  .transform((v) => (v === '' || v == null ? null : Number(v)));
+
+export const performanceReviewStartSchema = z.object({
+  deploymentId: z.coerce.number().int().positive('Pick the deployment'),
+  period,
+});
+
+export const accountReviewStartSchema = z.object({
+  clientId: z.coerce.number().int().positive('Pick the client'),
+  period,
+});
+
+/** A draft is saved whole: every field the form shows, and every score. */
+export const performanceReviewSchema = z.object({
+  summary: reviewText,
+  strengths: reviewText,
+  improvements: reviewText,
+  clientFeedback: reviewText,
+  clientFeedbackBy: z
+    .string()
+    .trim()
+    .max(120)
+    .optional()
+    .transform((v) => (v === '' || v === undefined ? null : v)),
+  clientFeedbackDate: optionalDate.transform((v) => v ?? null),
+  scores: z
+    .array(
+      z.object({
+        criterionId: z.coerce.number().int().positive(),
+        score: optionalScore,
+        note: reviewText,
+      }),
+    )
+    .max(50)
+    .default([]),
+});
+
+export const accountReviewSchema = z.object({
+  rating: optionalEnum(ACCOUNT_RATINGS),
+  summary: reviewText,
+  risks: reviewText,
+  opportunities: reviewText,
+  actions: reviewText,
+});
+
+/** Q3: Admin sends a submitted review back, and says why. */
+export const reviewReturnSchema = z.object({
+  reason: z.string().trim().min(1, 'Say what needs to change').max(1000),
+});
+
+export const reviewCriterionSchema = z.object({
+  label: z.string().trim().min(1, 'Name the criterion').max(120),
+  description: reviewText,
+});
+
+export const reviewCriterionUpdateSchema = z.object({
+  label: z.string().trim().min(1, 'Name the criterion').max(120).optional(),
+  /** Absent leaves it as it is — retiring a criterion must not clear it; '' or null clears. */
+  description: z
+    .union([z.literal(''), z.null(), z.string().trim().max(4000)])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === '' || v === null ? null : v)),
+  active: z.boolean().optional(),
+  sortOrder: z.coerce.number().int().min(0).max(999).optional(),
+});
+
+export const skillSchema = z.object({
+  name: z.string().trim().min(1, 'Name the skill').max(80),
+});
+
+export const skillUpdateSchema = z.object({
+  name: z.string().trim().min(1, 'Name the skill').max(80).optional(),
+  active: z.boolean().optional(),
+});
+
+/** G-RM-02: a resource's levels, saved together. A null level removes the skill. */
+export const resourceSkillsSchema = z.object({
+  levels: z
+    .array(
+      z.object({
+        skillId: z.coerce.number().int().positive(),
+        level: optionalScore,
+      }),
+    )
+    .max(300),
 });

@@ -46,6 +46,12 @@ const TABLES_IN_DELETE_ORDER = [
   'invoices',
   'agreement_resources',
   'agreements',
+  // M67. The skill catalogue and review criteria are configuration, like
+  // rating_criteria, and stay; what was recorded against resources goes.
+  'performance_review_scores',
+  'performance_reviews',
+  'account_reviews',
+  'resource_skills',
   'timesheet_entries',
   'holidays',
   'deployments',
