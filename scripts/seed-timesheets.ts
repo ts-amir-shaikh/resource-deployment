@@ -6,7 +6,13 @@
  * - inserts holidays and entries against deployments that already exist;
  * - the one update it makes is giving a single deployment the task version
  *   (v2) when that deployment has no version set, so both entry screens can
- *   be seen.
+ *   be seen;
+ * - dashboard cases (FSD-18 v1.1): when no row carries a task kind yet, marks
+ *   a few existing approved work rows as "No client tasks assigned" — whole
+ *   days on the first billable deployment, and one half-day on the task
+ *   version deployment — so the dashboard has billed-but-idle time to show.
+ *   This runs even when the entries above already exist, and only on rows
+ *   that are mock data.
  *
  *   npm run db:migrate          # first — the tables must exist
  *   npm run db:seed-timesheets
@@ -65,6 +71,35 @@ async function insertEntry(
   });
 }
 
+/** Marks a few existing approved work rows as the fixed task (D17). Idempotent. */
+async function seedNoClientTasks() {
+  const tagged = Number((await client.execute('select count(*) c from timesheet_entries where task_kind is not null')).rows[0].c);
+  if (tagged > 0) {
+    console.log('Some entries already carry a task kind — no dashboard cases added.');
+    return;
+  }
+  // Whole days: the first billable deployment's last three approved work days.
+  const whole = await client.execute(`
+    select e.id from timesheet_entries e join deployments d on d.id = e.deployment_id
+     where d.deployment_type = 'billable' and e.entry_type = 'work' and e.status = 'approved'
+       and e.hours >= 8 and e.task_kind is null
+     order by d.id, e.entry_date desc limit 3`);
+  // A split day: a 3-hour approved row on a task-version (v2) deployment.
+  const split = await client.execute(`
+    select e.id from timesheet_entries e join deployments d on d.id = e.deployment_id
+     where d.deployment_type = 'billable' and d.timesheet_version = 'v2' and e.entry_type = 'work'
+       and e.status = 'approved' and e.hours = 3 and e.task_kind is null
+     order by e.entry_date desc limit 1`);
+  const ids = [...whole.rows, ...split.rows].map((r) => Number(r.id));
+  for (const id of ids) {
+    await client.execute({
+      sql: "update timesheet_entries set task_kind = 'no_client_tasks', task = null where id = ?",
+      args: [id],
+    });
+  }
+  console.log(ids.length ? `Marked ${ids.length} approved row(s) as "No client tasks assigned".` : 'No suitable approved rows to mark.');
+}
+
 async function main() {
   const { rows: tables } = await client.execute(
     "select name from sqlite_master where type='table' and name in ('timesheet_entries', 'holidays')",
@@ -75,7 +110,8 @@ async function main() {
   }
   const existing = Number((await client.execute('select count(*) c from timesheet_entries')).rows[0].c);
   if (existing > 0) {
-    console.log(`timesheet_entries already has ${existing} rows — nothing added.`);
+    console.log(`timesheet_entries already has ${existing} rows — no timesheet rows added.`);
+    await seedNoClientTasks();
     return;
   }
 
@@ -180,6 +216,7 @@ async function main() {
     select u.email, r.name from users u join resources r on r.id = u.resource_id
      where u.role = 'resource' and u.active = 1`);
   const withTime = new Set(deps.map((d) => d.resourceId));
+  await seedNoClientTasks();
   console.log(`Added ${count} timesheet rows across ${deps.length} deployment(s), and 2 holidays.`);
   if (v2) console.log(`Deployment ${v2} now uses the task version (v2).`);
   console.log(`Resources with time: ${[...withTime].join(', ')}`);

@@ -1,6 +1,6 @@
 # Platform vision and coverage
 
-`FSD-00 · VIS · Rev 1.1`
+`FSD-00 · VIS · Rev 1.5`
 
 The platform's aim, the departments it serves and the journey it runs, checked against the thirteen module FSDs as they stand at `5e43f82`. This page is the yardstick. Every later plan and FSD revision is checked against it.
 
@@ -113,6 +113,12 @@ All eight were answered by the Product Owner on 27 Sep 2026. Where an answer dif
 | D14 | Are outbound Tally writes in scope now, reversing G-TLY-08? | Yes, with an explicit approval gate: Accounts reviews a queued posting and releases it. Nothing posts automatically | Reverses "read-only in phase 1". G-TLY-08 is superseded and G-TLY-09 is promoted to Must. The Product Owner's instruction that delete and deactivate are never allowed becomes an allowlist of permitted actions in the bridge, so no delete path exists to disable. |
 | D15 | Is a proforma a document the app owns, or only a Tally artefact? | App-owned, as a pre-invoice state ahead of Raised | Keeps the invoice lifecycle forward-only, which is enforced server-side and returns 409 on backward moves. New gap G-ACC-10. |
 | D16 | Which Tally expense groups are pulled, and what for? | Direct and Indirect Expenses, for reporting first | Feeding margin means reconciling against CTC estimates, which is G-TLY-11 and stays separate. New gap G-TLY-18. |
+| D17 | Are training, learning, preparation and interviews logged in the timesheet? What of a deployed resource with no client tasks? | No. Such a resource is **still billed**; only leave reduces the bill. Each billable project has a fixed task, "No client tasks assigned", so the time can be identified | Timesheets stay client-work only. One additive column `timesheet_entries.task_kind`; invoice rules unchanged (FSD-18). |
+| D18 | How many hours is a day? | 8 as standard, configurable per deployment when it is marked (a 50% allocation defaults to 4) | Hours a day moves onto the deployment form (FSD-10). Capacity is measured at two levels (FSD-18 BR-TSH-09). |
+| D19 | Where do internal tasks (training, learning, preparation, interviews) live? | A future module, outside the timesheet, in its own table, through the same approval queue | Not built now. New gap G-RES-09. |
+| D20 | Who sees the timesheet dashboard? | Admin only, including invoice amounts | Explicit Admin-only rule (FSD-01). |
+| D21 | Is billing hourly? | No. A fixed monthly amount, pro-rated by days (FSD-12) | Utilisation measures time, not money; the dashboard reads stored invoice amounts and recomputes none. |
+| D22 | Is leave entered in the timesheet? | No. Leave is its own module: a request, approved by the Resource Manager, paid or unpaid (the approver may change it). Holidays stay on the timesheet | Timesheets record work only; approved leave feeds the timesheet and the invoice (FSD-21). New gap G-RES-10. |
 
 ## 7. Principle: sensitive by default, access on request
 
@@ -134,3 +140,5 @@ This turns the role table from fixed walls into a default with an audited way th
 | 1.1 | 27 Sep 2026 | D1–D8 settled. Added the principle of sensitive by default, with access on request. Added FSD-20 Tally sync. Module outlines and build order updated to match. |
 | 1.2 | 21 Oct 2026 | **D9–D16 settled**, scoping the Product Owner's four features of 21 Oct into modules M62–M67. Timesheets extend D3 with hours and tasks and gain a per-deployment version setting (D9–D11). Lead temperature joins the funnel stage as a second field (D12). Client feedback is recorded by the Account Manager, not the client (D13). **Outbound Tally writes are in scope, reversing G-TLY-08** (D14). Proforma becomes an app-owned pre-invoice state (D15), and Direct and Indirect Expenses join the inbound sync (D16). See `docs/plans/2026-10-21-scope-m62-m67-four-modules.md`. |
 | 1.3 | 22 Oct 2026 | FSD-18 built as M65 (awaiting release): the Timesheets → invoice journey row moves from Missing to Built. Leave balances and the leave register (G-RES-05) remain future scope. |
+| 1.4 | 23 Oct 2026 | **D17–D21 settled** for the timesheet dashboard (FSD-18 v1.1): no logging of training, a fixed "No client tasks assigned" task that is billed, 8 hours a day configurable per deployment, internal tasks deferred, Admin-only dashboard, no hourly billing. |
+| 1.5 | 23 Oct 2026 | **D22 settled**: leave moves out of the timesheet into its own module (FSD-21). |

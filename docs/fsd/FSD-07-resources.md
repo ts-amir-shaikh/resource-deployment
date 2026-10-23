@@ -8,7 +8,7 @@ The people Techstalwarts deploys to clients: their profile, skills, salary, and 
 |---|---|
 | Module code | RES |
 | Module version | v1.3 |
-| Doc revision | Rev 1.0 |
+| Doc revision | Rev 1.1 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Resources |
@@ -42,6 +42,7 @@ TA can read a narrow list of resources through the bench-link picker on a candid
 | FR-RES-006 | A resource cannot be deleted if it has an active deployment, any deployment history, or a linked candidate profile. The message says which. | v1.0 | `Live` |
 | FR-RES-007 | Resources can be bulk-loaded from CSV by an operator. The import checks every row first and writes only when told to. | v1.1 | `Live` |
 | FR-RES-008 | Converting a won requirement can create a resource for an external hire (FSD-02, BR-PIP-07). | v1.0 | `Live` |
+| FR-RES-009 | **Timesheet section.** For Admin, the resource page shows this month's utilisation and hours from approved timesheets, with a link to the dashboard filtered to the person (FSD-18). | v1.4 | `Built` |
 
 ## 4. Business rules
 
@@ -101,3 +102,4 @@ Utilisation is the sum of allocation percentages across the resource's active de
 | Rev | Date | Module ver. | Change |
 |---|---|---|---|
 | 1.0 | 27 Sep 2026 | v1.3 | First issue, written against commit `5e43f82`. |
+| 1.1 | 23 Oct 2026 | v1.4 (built) | M65 addendum: FR-RES-009 timesheet section and link. |

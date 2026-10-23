@@ -1,19 +1,26 @@
 import { requireCurrentAccount } from '@/lib/session';
 import { canWrite } from '@/lib/access';
 import { approvalQueue } from '@/lib/timesheets';
-import ApprovalsClient from './client';
+import { leaveQueue } from '@/lib/leaves';
+import ApprovalsTabs from './tabs';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata = { title: 'Timesheet Approvals · Resource Deployment' };
+export const metadata = { title: 'Approvals · Resource Deployment' };
 
-/** The Resource Manager's queue (M65, G-RM-01). Admin sees it too; Management reads it. */
-export default async function ApprovalsPage() {
+/**
+ * The Resource Manager's queues (M65, G-RM-01; leave FSD-21). Admin sees them
+ * too; Management reads. Opens on the leave tab when `?tab=leaves`.
+ */
+export default async function ApprovalsPage({ searchParams }: { searchParams: { tab?: string } }) {
   const session = await requireCurrentAccount();
+  const [timesheets, leaves] = await Promise.all([approvalQueue(), leaveQueue()]);
   return (
-    <ApprovalsClient
-      initial={await approvalQueue()}
+    <ApprovalsTabs
+      timesheets={timesheets}
+      leaves={leaves}
       canReview={canWrite(session.role, '/api/timesheets/approvals')}
+      initialTab={searchParams.tab === 'leaves' ? 'leaves' : 'timesheets'}
     />
   );
 }

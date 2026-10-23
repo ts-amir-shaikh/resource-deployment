@@ -8,7 +8,7 @@ Sign-in (email and password, or Google), accounts and the People screen, the nin
 |---|---|
 | Module code | PLT |
 | Module version | v4.0 (v3.1 is live until v4.0 is released) |
-| Doc revision | Rev 2.1 |
+| Doc revision | Rev 2.3 |
 | Status | `Built` — v4.0 is merged and verified, awaiting the production migration and deploy |
 | Baseline | 5e43f82 · 27 Sep 2026; v4.0 on `feat/accounts-sign-in` |
 | Appears as | Sign-in page, Set password page, People, sidebar |
@@ -90,6 +90,8 @@ The four roles added in v4.0 (Accounts, Resource Manager, Interviewer and Resour
 | FR-PLT-009 | Every account has one of five roles: Admin, Management, TA Team, Lead Generation or Sales. | v3.0 | `Retired` in v4.0, replaced by FR-PLT-036 |
 | FR-PLT-036 | Every account has one of nine roles: the five above, plus Accounts, Resource Manager, Interviewer and Resource. The four new roles land on a holding page and are refused everything else until their access is defined. R23, G-PLT-01 (part). | v4.0 | `Built` |
 | FR-PLT-036a | **Resource and Resource Manager leave the holding page (M65).** A Resource lands on `/timesheet` and may reach only its own timesheet routes; a Resource Manager lands on `/approvals` and may reach only the approval queue. Accounts and Interviewer still land on the holding page. Access is in `lib/access.ts`; see FSD-18 §2. | v4.1 | `Built` |
+| FR-PLT-036b | **Timesheet dashboard is Admin only (D20).** `/timesheets`, `/api/timesheets/dashboard` and `/api/timesheets/entries` are refused to Management, the Resource Manager and everyone else, by an explicit rule above the shortcut that lets Management reach every Admin path. | v4.2 | `Built` |
+| FR-PLT-036c | **Leave (FSD-21).** A Resource reaches `/leaves` and `/api/leaves/mine` (its own requests); the Resource Manager and Admin decide requests through `/api/leaves/approvals`; Management reads. Rules are in `lib/access.ts`. | v4.2 | `Built` |
 | FR-PLT-010 | A TA, Lead Generation or Sales account can carry the head flag. A head sees their whole team's work and can pick any team member's board to view. | v3.0 | `Live` |
 | FR-PLT-011 | Every page and every API request is checked against the access policy before the module's own code runs. — A page the role may not open redirects to the user's own home page. A refused API call returns a plain message, for example "Management access is view-only." | v2.0 | `Live` |
 | FR-PLT-012 | Management can open everything Admin can, and every change they attempt is refused. | v2.0 | `Live` |
@@ -252,3 +254,5 @@ The rules in FR-PLT-030 and FR-PLT-031 live in one module that the People form a
 | 1.0 | 27 Sep 2026 | v3.1 | First issue, written against commit `5e43f82`. |
 | 2.0 | 28 Sep 2026 | v4.0 | Accounts & sign-in: FR-PLT-025 to 037 and BR-PLT-08 to 13 added; FR-PLT-001 and 009 retired; FS-PLT-04, 05, 06 and 09 built; FS-PLT-13 and 14 added; limitations updated. Records two decisions made during the build: the link's code travels after `#` (Product Owner, 28 Sep 2026), and password changes sign other devices out by a revocation stamp rather than a session-version bump, so a refresh cannot quietly re-admit another device. |
 | 2.1 | 21 Oct 2026 | v4.1 (built) | M65: FR-PLT-036a — Resource and Resource Manager given their screens (FSD-18). Accounts and Interviewer remain pending. |
+| 2.2 | 23 Oct 2026 | v4.2 (built) | M65 addendum: FR-PLT-036b, the Admin-only timesheet dashboard. |
+| 2.3 | 23 Oct 2026 | v4.2 (built) | FR-PLT-036c: leave access. |

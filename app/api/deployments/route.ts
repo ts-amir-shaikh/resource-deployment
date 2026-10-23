@@ -4,6 +4,7 @@ import { deployments, resources, projects, clients, agreements } from '@/lib/sch
 import { deploymentSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
 import { assertAllocationHeadroom, deploymentBilling } from '@/lib/queries';
+import { defaultHoursPerDay } from '@/lib/timesheet-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,7 @@ export async function GET(req: Request) {
         agreementTitle: agreements.title,
         deploymentType: deployments.deploymentType,
         allocationPercentage: deployments.allocationPercentage,
+        fullDayHours: deployments.fullDayHours,
         startDate: deployments.startDate,
         endDate: deployments.endDate,
         billingAmount: deployments.billingAmount,
@@ -118,6 +120,8 @@ export async function POST(req: Request) {
         currency: data.currency,
         deploymentType: data.deploymentType,
         allocationPercentage: data.allocationPercentage,
+        // D18: 8 hours × allocation unless the form said otherwise.
+        fullDayHours: data.fullDayHours ?? defaultHoursPerDay(data.allocationPercentage),
         startDate: data.startDate,
         endDate: data.endDate,
         billingAmount: data.billingAmount,

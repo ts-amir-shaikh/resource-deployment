@@ -100,6 +100,70 @@ describe('M65: resource and resource manager', () => {
   });
 });
 
+describe('FSD-18 v1.1: the timesheet dashboard is Admin only (D20)', () => {
+  const paths = ['/timesheets', '/api/timesheets/dashboard', '/api/timesheets/entries'];
+
+  it('Admin reaches it, and every other role is refused — Management included', () => {
+    for (const path of paths) {
+      expect(canAccess('admin', path), path).toBe(true);
+      for (const role of ROLES.filter((r) => r !== 'admin')) {
+        expect(canAccess(role, path), `${role} ${path}`).toBe(false);
+      }
+    }
+  });
+
+  it('is a different prefix from a resource\'s own timesheet', () => {
+    expect(canAccess('resource', '/timesheet')).toBe(true);
+    expect(canAccess('resource', '/timesheets')).toBe(false);
+    expect(canAccess('management', '/timesheet')).toBe(true);
+  });
+
+  it('leaves the other timesheet routes as they were', () => {
+    expect(canAccess('management', '/api/timesheets/summary')).toBe(true);
+    expect(canAccess('resource_manager', '/api/timesheets/approvals')).toBe(true);
+    expect(canAccess('resource', '/api/timesheets/mine')).toBe(true);
+  });
+
+  it('is a read surface: nobody but Admin writes under it', () => {
+    expect(canWrite('management', '/api/timesheets/dashboard')).toBe(false);
+    expect(canWrite('resource_manager', '/api/timesheets/dashboard')).toBe(false);
+  });
+});
+
+describe('FSD-21: leave requests', () => {
+  it('a resource reaches its own leave and nothing of the approvals', () => {
+    expect(canAccess('resource', '/leaves')).toBe(true);
+    expect(canAccess('resource', '/api/leaves/mine')).toBe(true);
+    expect(canAccess('resource', '/api/leaves/mine/4')).toBe(true);
+    expect(canWrite('resource', '/api/leaves/mine')).toBe(true);
+    expect(canWrite('resource', '/api/leaves/mine/4')).toBe(true);
+    expect(canAccess('resource', '/api/leaves/approvals')).toBe(false);
+    expect(canAccess('resource', '/approvals')).toBe(false);
+  });
+
+  it('the Resource Manager reads and decides the queue, but has no leave of its own', () => {
+    expect(canAccess('resource_manager', '/api/leaves/approvals')).toBe(true);
+    expect(canWrite('resource_manager', '/api/leaves/approvals')).toBe(true);
+    expect(canAccess('resource_manager', '/api/leaves/mine')).toBe(false);
+    expect(canAccess('resource_manager', '/leaves')).toBe(false);
+  });
+
+  it('Management can read everything and write nothing', () => {
+    expect(canAccess('management', '/api/leaves/approvals')).toBe(true);
+    expect(canWrite('management', '/api/leaves/approvals')).toBe(false);
+    expect(canWrite('management', '/api/leaves/mine')).toBe(false);
+  });
+
+  it('TA, Leadgen and Sales are refused', () => {
+    for (const role of ['ta', 'leadgen', 'sales'] as const) {
+      for (const path of ['/leaves', '/api/leaves/mine', '/api/leaves/approvals']) {
+        expect(canAccess(role, path), `${role} ${path}`).toBe(false);
+      }
+      expect(canWrite(role, '/api/leaves/approvals'), role).toBe(false);
+    }
+  });
+});
+
 describe('existing roles are unchanged (characterisation)', () => {
   it('landing pages', () => {
     expect(landingPath('admin')).toBe('/');

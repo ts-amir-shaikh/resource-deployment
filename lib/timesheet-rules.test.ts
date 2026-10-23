@@ -221,3 +221,33 @@ describe('periodSummary: the invoice feed (G-RES-04)', () => {
     expect(s.complete).toBe(false);
   });
 });
+
+describe('leave from requests priced by the invoice feed (FSD-21)', () => {
+  const leave = (entryDate: string, entryType: 'paid_leave' | 'unpaid_leave', hours: number): SummaryEntry => ({
+    entryDate, entryType, hours, status: 'approved',
+  });
+
+  it('a whole approved leave day is approved on its own and prices as leave', () => {
+    const s = periodSummary([{ from: '2026-10-22', to: '2026-10-22', fullDayHours: 8, entries: [leave('2026-10-22', 'unpaid_leave', 8)] }], NONE);
+    expect(s.approvedDays).toBe(1);
+    expect(s.unpaidLeaveDays).toBe(1);
+    expect(s.workedDays).toBe(0);
+  });
+
+  it('a half day of paid leave beside half a day of work is a full, billed day', () => {
+    const rows: SummaryEntry[] = [
+      leave('2026-10-22', 'paid_leave', 4),
+      { entryDate: '2026-10-22', entryType: 'work', hours: 4, status: 'approved' },
+    ];
+    const s = periodSummary([{ from: '2026-10-22', to: '2026-10-22', fullDayHours: 8, entries: rows }], NONE);
+    expect(s.workedDays).toBe(0.5);
+    expect(s.paidLeaveDays).toBe(0.5);
+    expect(s.unpaidLeaveDays).toBe(0);
+  });
+
+  it('half a day of leave with no work leaves the other half unpaid, as a short day always does', () => {
+    const s = periodSummary([{ from: '2026-10-22', to: '2026-10-22', fullDayHours: 8, entries: [leave('2026-10-22', 'paid_leave', 4)] }], NONE);
+    expect(s.paidLeaveDays).toBe(0.5);
+    expect(s.unpaidLeaveDays).toBe(0.5);
+  });
+});
