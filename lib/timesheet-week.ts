@@ -161,6 +161,22 @@ export function dayTone(o: { worked: number; expected: number; holiday: boolean;
   return o.worked > o.expected ? 'over' : 'short';
 }
 
+/**
+ * The words under a day's total, so a colour is never a puzzle: "4.75 h short",
+ * "1 h over", "Full day". When half-day leave moved what was expected, it says
+ * so ("5 h over · 4 h expected (half-day leave)"). Empty for a day that is not
+ * measured (holiday, weekend, waiting, whole-day leave).
+ */
+export function dayReason(o: { tone: DayTone; worked: number; expected: number; fullDayHours: number }): string {
+  const num = (n: number) => String(Math.round(n * 100) / 100);
+  const onLeave = o.expected < o.fullDayHours && o.expected > 0;
+  const why = onLeave ? ` · ${num(o.expected)} h expected (half-day leave)` : '';
+  if (o.tone === 'short') return `${num(o.expected - o.worked)} h short${why}`;
+  if (o.tone === 'over') return `${num(o.worked - o.expected)} h over${why}`;
+  if (o.tone === 'ok') return onLeave ? 'Full day (half-day leave)' : 'Full day';
+  return '';
+}
+
 /** When a day holds several rows, the status that needs attention first. */
 export function dayStatus(statuses: readonly EntryStatus[]): EntryStatus | null {
   for (const s of ['rejected', 'submitted', 'draft', 'approved'] as const) if (statuses.includes(s)) return s;

@@ -25,8 +25,10 @@ import {
   type HourBuckets,
   type ResourceStats,
 } from './timesheet-dashboard-rules';
+import { dayReason, dayStatus, dayTone, expectedHours, type DayTone } from './timesheet-week';
 import {
   STANDARD_DAY_HOURS,
+  TASK_KIND_LABELS,
   datesBetween,
   isIsoDate,
   type EntryStatus,
@@ -481,54 +483,81 @@ async function loadInvoices(
   };
 }
 
-/* ── Activity log ──────────────────────────────────────────── */
+/* ── Activity log: one row per resource per day ───────────── */
 
-export type ActivityRow = {
+export type ActivityEntry = {
   id: number;
-  entryDate: string;
-  resourceName: string;
-  clientName: string;
-  projectName: string;
   entryType: EntryType;
   hours: number;
   task: string | null;
   taskKind: TaskKind | null;
-  billable: boolean;
   status: EntryStatus;
+};
+
+export type ActivityDay = {
+  key: string;
+  date: string;
+  resourceId: number;
+  resourceName: string;
+  clientName: string;
+  projectName: string;
+  billable: boolean;
+  /** Work hours that day. */
+  total: number;
+  /** What a full day was worth that day, less any leave. */
+  expected: number;
+  tone: DayTone;
+  /** "4.75 h short", "Full day" — why the day is coloured. */
+  reason: string;
+  holidayName: string | null;
+  /** The work rows, as "Project work 7", for the one-line summary. */
+  tasks: { label: string; hours: number; fixed: boolean }[];
+  /** Leave entered before leave had its own screen, or approved as a leave request. */
+  leave: { hours: number; fromRequest: boolean } | null;
+  status: EntryStatus | null;
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
+  entries: ActivityEntry[];
 };
 
-export const ACTIVITY_PAGE = 50;
+export const ACTIVITY_PAGE = 60;
 
-export async function loadActivity(
+/**
+ * Every entry in the period, folded into one row per resource per project per
+ * day, so a day reads as a whole: what was worked on, whether it was a full
+ * day, and whether it is approved. The entries stay on the row for anyone who
+ * wants the detail. Sorted by resource, then newest day first.
+ */
+export async function loadActivityDays(
   f: DashFilters & { status?: EntryStatus; page: number },
-): Promise<{ rows: ActivityRow[]; total: number; page: number; pageSize: number }> {
+): Promise<{ days: ActivityDay[]; total: number; page: number; pageSize: number }> {
   const conds = [gte(timesheetEntries.entryDate, f.from), lte(timesheetEntries.entryDate, f.to)];
-  if (f.status) conds.push(eq(timesheetEntries.status, f.status));
   if (f.resourceId) conds.push(eq(deployments.resourceId, f.resourceId));
   if (f.clientId) conds.push(eq(projects.clientId, f.clientId));
   if (f.projectId) conds.push(eq(deployments.projectId, f.projectId));
   if (f.deploymentId) conds.push(eq(deployments.id, f.deploymentId));
-  const where = and(...conds);
 
-  const base = db
+  const rows = await db
     .select({
       id: timesheetEntries.id,
+      deploymentId: timesheetEntries.deploymentId,
       entryDate: timesheetEntries.entryDate,
-      resourceName: resources.name,
-      clientName: clients.companyName,
-      projectName: projects.projectName,
       entryType: timesheetEntries.entryType,
       hours: timesheetEntries.hours,
       task: timesheetEntries.task,
       taskKind: timesheetEntries.taskKind,
-      deploymentType: deployments.deploymentType,
       status: timesheetEntries.status,
       reviewedBy: users.name,
       reviewedAt: timesheetEntries.reviewedAt,
       rejectionReason: timesheetEntries.rejectionReason,
+      resourceId: resources.id,
+      resourceName: resources.name,
+      clientId: clients.id,
+      clientName: clients.companyName,
+      projectName: projects.projectName,
+      deploymentType: deployments.deploymentType,
+      fullDayHours: deployments.fullDayHours,
     })
     .from(timesheetEntries)
     .innerJoin(deployments, eq(timesheetEntries.deploymentId, deployments.id))
@@ -536,29 +565,81 @@ export async function loadActivity(
     .innerJoin(projects, eq(deployments.projectId, projects.id))
     .innerJoin(clients, eq(projects.clientId, clients.id))
     .leftJoin(users, eq(timesheetEntries.reviewedByUserId, users.id))
-    .where(where);
-
-  const page = Math.max(1, f.page);
-  const rows = await base
-    .orderBy(desc(timesheetEntries.entryDate), asc(resources.name), asc(timesheetEntries.id))
-    .limit(ACTIVITY_PAGE)
-    .offset((page - 1) * ACTIVITY_PAGE)
+    .where(and(...conds))
     .all();
 
-  const total = await db
-    .select({ n: count() })
-    .from(timesheetEntries)
-    .innerJoin(deployments, eq(timesheetEntries.deploymentId, deployments.id))
-    .innerJoin(projects, eq(deployments.projectId, projects.id))
-    .where(where)
-    .get();
+  // What makes a day a holiday, and what leave was approved, to judge each day fairly.
+  const cal = await db
+    .select({ date: holidays.holidayDate, name: holidays.name, clientId: holidays.clientId })
+    .from(holidays)
+    .where(and(gte(holidays.holidayDate, f.from), lte(holidays.holidayDate, f.to)))
+    .all();
+  const leaveByResource = new Map<number, Map<string, number>>();
+  for (const resourceId of new Set(rows.map((r) => r.resourceId))) {
+    const hol = new Set(cal.map((h) => h.date));
+    const m = new Map<string, number>();
+    for (const l of await leaveDaysInRange(db, resourceId, f.from, f.to, hol, ['approved'])) m.set(l.date, (m.get(l.date) ?? 0) + l.fraction);
+    leaveByResource.set(resourceId, m);
+  }
 
-  return {
-    rows: rows.map(({ deploymentType, ...r }) => ({ ...r, billable: deploymentType === 'billable' })),
-    total: Number(total?.n ?? 0),
-    page,
-    pageSize: ACTIVITY_PAGE,
-  };
+  const today = new Date().toISOString().slice(0, 10);
+  const groups = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const key = `${r.deploymentId}:${r.entryDate}`;
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+
+  let days: ActivityDay[] = [...groups.entries()].map(([key, list]) => {
+    const first = list[0];
+    const work = list.filter((r) => r.entryType === 'work');
+    const total = work.reduce((s, r) => s + r.hours, 0);
+    const legacyLeave = list.filter((r) => r.entryType === 'paid_leave' || r.entryType === 'unpaid_leave').reduce((s, r) => s + r.hours, 0);
+    const fraction = Math.min(1, leaveByResource.get(first.resourceId)?.get(first.entryDate) ?? 0);
+    const calendar = cal.find((h) => h.date === first.entryDate && (h.clientId === null || h.clientId === first.clientId));
+    const marked = list.find((r) => r.entryType === 'holiday');
+    const holidayName = calendar?.name ?? (marked ? (marked.task ?? 'Holiday') : null);
+    const expected = expectedHours(first.fullDayHours, legacyLeave + fraction * first.fullDayHours);
+    const wd = new Date(`${first.entryDate}T00:00:00Z`).getUTCDay();
+    const tone = dayTone({ worked: total, expected, holiday: holidayName !== null, weekend: wd === 0 || wd === 6, date: first.entryDate, today });
+
+    // The same task name on one day is one entry in the summary.
+    const tasks = new Map<string, { label: string; hours: number; fixed: boolean }>();
+    for (const r of work) {
+      const fixed = r.taskKind === 'no_client_tasks';
+      const label = fixed ? TASK_KIND_LABELS.no_client_tasks : (r.task?.trim() || 'General work');
+      const t = tasks.get(label) ?? { label, hours: 0, fixed };
+      t.hours += r.hours;
+      tasks.set(label, t);
+    }
+    const decided = list.find((r) => r.reviewedBy || r.reviewedAt);
+    return {
+      key,
+      date: first.entryDate,
+      resourceId: first.resourceId,
+      resourceName: first.resourceName,
+      clientName: first.clientName,
+      projectName: first.projectName,
+      billable: first.deploymentType === 'billable',
+      total: Math.round(total * 100) / 100,
+      expected,
+      tone,
+      reason: dayReason({ tone, worked: total, expected, fullDayHours: first.fullDayHours }),
+      holidayName,
+      tasks: [...tasks.values()],
+      leave: legacyLeave > 0 || fraction > 0 ? { hours: legacyLeave + fraction * first.fullDayHours, fromRequest: fraction > 0 } : null,
+      status: dayStatus(list.map((r) => r.status)),
+      reviewedBy: decided?.reviewedBy ?? null,
+      reviewedAt: decided?.reviewedAt ?? null,
+      rejectionReason: list.find((r) => r.rejectionReason)?.rejectionReason ?? null,
+      entries: list.map((r) => ({ id: r.id, entryType: r.entryType, hours: r.hours, task: r.task, taskKind: r.taskKind, status: r.status })),
+    };
+  });
+
+  if (f.status) days = days.filter((d) => d.status === f.status);
+  days.sort((a, b) => a.resourceName.localeCompare(b.resourceName) || b.date.localeCompare(a.date));
+
+  const page = Math.max(1, f.page);
+  return { days: days.slice((page - 1) * ACTIVITY_PAGE, page * ACTIVITY_PAGE), total: days.length, page, pageSize: ACTIVITY_PAGE };
 }
 
 /* ── Figures for the links on other screens (FR-TSH-014) ───── */

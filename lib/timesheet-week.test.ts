@@ -3,6 +3,7 @@ import {
   buildGrid,
   dayRowsFromGrid,
   daySignature,
+  dayReason,
   dayStatus,
   dayTone,
   expectedHours,
@@ -129,5 +130,20 @@ describe('weeks and months', () => {
     expect(monthsIn(['2026-09-30', '2026-10-01'])).toEqual(['2026-09', '2026-10']);
     expect(monthChoices('2026-08-10', null, '2026-10-23')).toEqual(['2026-11', '2026-10', '2026-09', '2026-08']);
     expect(monthChoices('2026-08-10', '2026-09-15', '2026-10-23')).toEqual(['2026-09', '2026-08']);
+  });
+});
+
+describe('dayReason', () => {
+  it('says why a day is coloured', () => {
+    expect(dayReason({ tone: 'short', worked: 3.25, expected: 8, fullDayHours: 8 })).toBe('4.75 h short');
+    expect(dayReason({ tone: 'over', worked: 9, expected: 8, fullDayHours: 8 })).toBe('1 h over');
+    expect(dayReason({ tone: 'ok', worked: 8, expected: 8, fullDayHours: 8 })).toBe('Full day');
+  });
+  it('mentions half-day leave when it moved what was expected', () => {
+    expect(dayReason({ tone: 'over', worked: 9, expected: 4, fullDayHours: 8 })).toBe('5 h over · 4 h expected (half-day leave)');
+    expect(dayReason({ tone: 'ok', worked: 4, expected: 4, fullDayHours: 8 })).toBe('Full day (half-day leave)');
+  });
+  it('is silent for days that are not measured', () => {
+    for (const tone of ['holiday', 'rest', 'wait', 'leave'] as const) expect(dayReason({ tone, worked: 0, expected: 0, fullDayHours: 8 })).toBe('');
   });
 });

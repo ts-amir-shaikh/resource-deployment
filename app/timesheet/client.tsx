@@ -21,6 +21,7 @@ import {
   buildGrid,
   dayRowsFromGrid,
   daySignature,
+  dayReason,
   dayStatus,
   dayTone,
   expectedHours,
@@ -502,19 +503,7 @@ export default function TimesheetClient({ initial, initialWeek }: { initial: MyT
                     const legacyLeave = (savedByDate.get(date) ?? []).filter((r) => r.entryType === 'paid_leave' || r.entryType === 'unpaid_leave').reduce((s, r) => s + r.hours, 0);
                     const expected = expectedHours(full, legacyLeave + lv.approved * full);
                     const tone = dayTone({ worked: total, expected, holiday: hol !== null, weekend: weekday(date) === 0 || weekday(date) === 6, date, today });
-                    // Say why a day is coloured, so red is never a puzzle.
-                    const onLeave = expected < full && lv.approved > 0;
-                    const why = onLeave ? ` · ${num(expected)} h expected (half-day leave)` : '';
-                    const reason =
-                      tone === 'short'
-                        ? `${num(expected - total)} h short${why}`
-                        : tone === 'over'
-                          ? `${num(total - expected)} h over${why}`
-                          : tone === 'ok'
-                            ? onLeave
-                              ? `Full day (half-day leave)`
-                              : 'Full day'
-                            : '';
+                    const reason = dayReason({ tone, worked: total, expected, fullDayHours: full });
                     return (
                       <td key={date} title={reason || undefined} className={`border-t-2 border-line px-1.5 py-2 text-center ${TOTAL_CLASS[tone]} ${monthKey(date) !== month ? 'opacity-60' : ''}`}>
                         {hol && total === 0 ? 'Holiday' : tone === 'leave' && total === 0 ? 'Leave' : total ? num(total) : '–'}

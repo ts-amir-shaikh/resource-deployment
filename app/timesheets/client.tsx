@@ -7,7 +7,7 @@ import { AlertTriangle } from 'lucide-react';
 import { api, errorMessage } from '@/lib/client';
 import { formatDate, formatMoney } from '@/lib/utils';
 import { Badge, EmptyState, PageHeader, Pagination, Stat, TableShell, type Tone } from '@/components/ui';
-import type { ActivityRow, DashboardData, DashFilters, InvoicesTabData } from '@/lib/timesheet-dashboard';
+import type { ActivityDay, DashboardData, DashFilters, InvoicesTabData } from '@/lib/timesheet-dashboard';
 import {
   ENTRY_STATUS_LABELS,
   ENTRY_STATUSES,
@@ -16,6 +16,7 @@ import {
   coverageLabel,
   type EntryStatus,
 } from '@/lib/timesheet-rules';
+import type { DayTone } from '@/lib/timesheet-week';
 
 type Option = { id: number; name: string };
 type TabId = 'overview' | 'resources' | 'deployments' | 'invoices' | 'activities';
@@ -405,10 +406,28 @@ function InvoicesTab({ data, filters, invoiceId }: { data: DashboardData; filter
   );
 }
 
+const DAY_TONE_CLASS: Record<DayTone, string> = {
+  ok: 'text-emerald-700 dark:text-emerald-300',
+  short: 'text-rose-700 dark:text-rose-300',
+  over: 'text-rose-700 dark:text-rose-300',
+  holiday: 'text-rose-700 dark:text-rose-300',
+  leave: 'text-violet-700 dark:text-violet-300',
+  rest: 'text-ink3',
+  wait: 'text-ink3',
+};
+
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const hrs = (n: number) => `${Math.round(n * 100) / 100} h`;
+
+/**
+ * The activity log, one row per resource per day: what was worked on, whether
+ * it was a full day, and where it stands. Click a day for the entries behind it.
+ */
 function ActivitiesTab({ data, filters }: { data: DashboardData; filters: DashFilters }) {
   const [status, setStatus] = useState<EntryStatus | ''>('');
   const [page, setPage] = useState(1);
-  const [log, setLog] = useState<{ rows: ActivityRow[]; total: number; pageSize: number } | null>(null);
+  const [log, setLog] = useState<{ days: ActivityDay[]; total: number; pageSize: number } | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -432,13 +451,22 @@ function ActivitiesTab({ data, filters }: { data: DashboardData; filters: DashFi
 
   const o = data.overview;
   const kinds: [string, number][] = [
-    ['Client tasks', o.taskedWorkHours],
+    ['Client work', o.taskedWorkHours],
     ['No client tasks', o.noClientTaskHours],
     ['Shadow work', o.shadowHours],
     ['Leave', o.paidLeaveHours + o.unpaidLeaveHours],
     ['Holiday', o.holidayHours],
     ['Remaining', o.remainingHours],
   ];
+
+  // Group the page's days under each resource (they arrive sorted by resource).
+  const groups: { key: string; resourceName: string; clientName: string; projectName: string; days: ActivityDay[] }[] = [];
+  for (const d of log?.days ?? []) {
+    const key = `${d.resourceId}:${d.projectName}`;
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.days.push(d);
+    else groups.push({ key, resourceName: d.resourceName, clientName: d.clientName, projectName: d.projectName, days: [d] });
+  }
 
   return (
     <div className="space-y-4">
@@ -459,39 +487,101 @@ function ActivitiesTab({ data, filters }: { data: DashboardData; filters: DashFi
       {error && <p className="text-sm text-rose-600">{error}</p>}
       {!log ? (
         <p className="text-sm text-ink3">Loading…</p>
-      ) : log.rows.length === 0 ? (
+      ) : log.days.length === 0 ? (
         <EmptyState title="No entries" description="Nothing was recorded in this period with these filters." />
       ) : (
         <>
-          <TableShell>
-            <thead className="border-b border-line bg-surface2">
-              <tr>
-                <th className="th">Date</th>
-                <th className="th">Resource</th>
-                <th className="th">Type</th>
-                <th className="th text-right">Hours</th>
-                <th className="th">Task</th>
-                <th className="th">Status</th>
-                <th className="th">Reviewed by</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {log.rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="td tnum">{formatDate(r.entryDate)}</td>
-                  <td className="td">{r.resourceName}<div className="text-2xs text-ink3">{r.projectName} · {r.clientName}</div></td>
-                  <td className="td">{ENTRY_TYPE_LABELS[r.entryType]}{!r.billable && <span className="text-2xs text-ink3"> · shadow</span>}</td>
-                  <td className="td tnum text-right">{r.hours}</td>
-                  <td className="td text-xs">{r.taskKind ? <Badge tone="amber">{TASK_KIND_LABELS[r.taskKind]}</Badge> : r.task ?? '—'}</td>
-                  <td className="td">
-                    <Badge tone={STATUS_TONE[r.status]}>{ENTRY_STATUS_LABELS[r.status]}</Badge>
-                    {r.rejectionReason && <div className="mt-0.5 text-2xs text-rose-600">{r.rejectionReason}</div>}
-                  </td>
-                  <td className="td text-xs text-ink2">{r.reviewedBy ? `${r.reviewedBy}${r.reviewedAt ? ` · ${formatDate(r.reviewedAt.slice(0, 10))}` : ''}` : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </TableShell>
+          <div className="space-y-4">
+            {groups.map((g) => {
+              const sum = g.days.reduce((s, d) => s + d.total, 0);
+              const waiting = g.days.filter((d) => d.status === 'submitted').length;
+              const approved = g.days.filter((d) => d.status === 'approved').length;
+              return (
+                <div key={g.key} className="card overflow-hidden">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line bg-surface2 px-4 py-2.5">
+                    <div>
+                      <span className="font-semibold text-ink">{g.resourceName}</span>
+                      <span className="ml-2 text-xs text-ink3">{g.projectName} · {g.clientName}</span>
+                    </div>
+                    <span className="tnum text-xs text-ink2">
+                      {h(sum)} · {approved} approved{waiting ? ` · ${waiting} waiting` : ''}
+                    </span>
+                  </div>
+                  <TableShell>
+                    <thead>
+                      <tr className="border-b border-line text-2xs uppercase tracking-wider text-ink3">
+                        <th className="th w-32">Day</th>
+                        <th className="th w-44">Total</th>
+                        <th className="th">What was worked on</th>
+                        <th className="th w-56">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {g.days.map((d) => {
+                        const wd = WEEKDAY[new Date(`${d.date}T00:00:00Z`).getUTCDay()];
+                        const isOpen = open === d.key;
+                        return (
+                          <>
+                            <tr key={d.key} className="cursor-pointer hover:bg-surface2" onClick={() => setOpen(isOpen ? null : d.key)}>
+                              <td className="td whitespace-nowrap">
+                                <span className="font-medium text-ink">{wd}</span> <span className="text-ink2">{formatDate(d.date)}</span>
+                              </td>
+                              <td className="td">
+                                {d.holidayName && d.total === 0 ? (
+                                  <span className="font-medium text-rose-700 dark:text-rose-300">Holiday</span>
+                                ) : (
+                                  <>
+                                    <span className={`tnum font-semibold ${DAY_TONE_CLASS[d.tone]}`}>{d.total ? hrs(d.total) : '–'}</span>
+                                    {d.reason && <span className={`ml-2 text-xs ${DAY_TONE_CLASS[d.tone]}`}>{d.reason}</span>}
+                                  </>
+                                )}
+                              </td>
+                              <td className="td text-sm text-ink2">
+                                {d.holidayName && d.total === 0
+                                  ? d.holidayName
+                                  : [
+                                      ...d.tasks.map((t) => `${t.label} ${Math.round(t.hours * 100) / 100}`),
+                                      ...(d.leave ? [`${d.leave.fromRequest ? 'Leave' : 'Leave (entered earlier)'} ${Math.round(d.leave.hours * 100) / 100}`] : []),
+                                    ].join(' · ') || '—'}
+                              </td>
+                              <td className="td">
+                                {d.status && <Badge tone={STATUS_TONE[d.status]}>{ENTRY_STATUS_LABELS[d.status]}</Badge>}
+                                {d.status === 'rejected' && d.rejectionReason ? (
+                                  <div className="mt-0.5 text-2xs text-rose-600">{d.rejectionReason}</div>
+                                ) : d.reviewedBy ? (
+                                  <div className="mt-0.5 text-2xs text-ink3">
+                                    {d.reviewedBy}{d.reviewedAt ? `, ${formatDate(d.reviewedAt.slice(0, 10))}` : ''}
+                                  </div>
+                                ) : null}
+                              </td>
+                            </tr>
+                            {isOpen && (
+                              <tr key={`${d.key}-detail`} className="bg-surface2">
+                                <td className="td" />
+                                <td className="td text-xs text-ink3" colSpan={3}>
+                                  <ul className="space-y-0.5">
+                                    {d.entries.map((e) => (
+                                      <li key={e.id} className="flex gap-3">
+                                        <span className="w-24 text-ink2">{ENTRY_TYPE_LABELS[e.entryType]}</span>
+                                        <span className="tnum w-14 text-right text-ink">{e.hours} h</span>
+                                        <span className="text-ink2">{e.taskKind ? TASK_KIND_LABELS[e.taskKind] : (e.task ?? '')}</span>
+                                        <span className="ml-auto">{ENTRY_STATUS_LABELS[e.status]}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  {!d.billable && <p className="mt-1">Shadow deployment: not billed.</p>}
+                                </td>
+                              </tr>
+                            )}
+                          </>
+                        );
+                      })}
+                    </tbody>
+                  </TableShell>
+                </div>
+              );
+            })}
+          </div>
           <Pagination page={page} pageSize={log.pageSize} total={log.total} onPageChange={setPage} />
         </>
       )}

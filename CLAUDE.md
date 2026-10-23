@@ -152,12 +152,12 @@ call sites to be revisited instead of leaving silent wrong-currency output.
 
 ## 5. Testing
 
-`npm test` (Vitest) — **333 tests across 15 files**, ~3s. Read that number
-carefully: **106 of the 333 are `tests/chokepoints.test.ts`**, a structural scan
+`npm test` (Vitest) — **336 tests across 15 files**, ~3s. Read that number
+carefully: **106 of the 336 are `tests/chokepoints.test.ts`**, a structural scan
 that generates one assertion per page and route. Of the rest, 104 cover accounts,
 roles and authentication, 31 pin today's invoice and money maths
 (`lib/utils.test.ts`), 32 cover timesheet rules, 23 cover the timesheet dashboard
-rules, 17 cover the weekly screen's logic, 7 cover leave rules, 7 cover CSV export and 6 cover mail.
+rules, 20 cover the weekly screen's logic, 7 cover leave rules, 7 cover CSV export and 6 cover mail.
 
 Behavioural coverage of business logic outside accounts is therefore close to
 zero:
