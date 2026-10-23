@@ -31,6 +31,7 @@ import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/ex
 import { deploymentsList, type DeploymentFilters } from '@/lib/lists/deployments';
 import type { DeploymentRow } from '@/lib/lists/load/deployments';
 import { Combobox, type ComboOption } from '@/components/combobox';
+import { defaultHoursPerDay } from '@/lib/timesheet-rules';
 
 type Row = DeploymentRow;
 
@@ -66,6 +67,7 @@ const BLANK = {
   agreementId: '',
   deploymentType: 'billable' as 'billable' | 'shadow',
   allocationPercentage: '100',
+  fullDayHours: '8',
   startDate: today(),
   endDate: '',
   currency: 'INR',
@@ -100,6 +102,10 @@ export default function DeploymentsClient({
   const [form, setForm] = useState(BLANK);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
+  // D18: once Admin types the hours a day, changing allocation stops rewriting it.
+  const [hoursTouched, setHoursTouched] = useState(false);
+  // A warning from a save that went through (the hours a day changed under approved days).
+  const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [endingRow, setEndingRow] = useState<Row | null>(null);
@@ -262,6 +268,16 @@ export default function DeploymentsClient({
   const requested = Number(form.allocationPercentage) || 0;
   const overAllocated = Boolean(selectedResource) && requested > headroom;
 
+  // D18: until Admin sets the hours a day themselves, they follow the
+  // allocation — 50% opens at 4 hours.
+  function setAllocation(value: string) {
+    setForm((f) => ({
+      ...f,
+      allocationPercentage: value,
+      fullDayHours: hoursTouched || !Number(value) ? f.fullDayHours : String(defaultHoursPerDay(Number(value))),
+    }));
+  }
+
   const isShadow = form.deploymentType === 'shadow';
   // The same function the detail page and the dashboard use, so the preview
   // can never promise a margin the saved record then disagrees with.
@@ -303,6 +319,7 @@ export default function DeploymentsClient({
 
   function openCreate() {
     setEditing(null);
+    setHoursTouched(false);
     setForm(BLANK);
     setErrors({});
     setBanner(null);
@@ -311,12 +328,14 @@ export default function DeploymentsClient({
 
   function openEdit(d: Row) {
     setEditing(d);
+    setHoursTouched(true);
     setForm({
       resourceId: String(d.resourceId),
       projectId: String(d.projectId),
       agreementId: d.agreementId ? String(d.agreementId) : '',
       deploymentType: d.deploymentType,
       allocationPercentage: String(d.allocationPercentage),
+      fullDayHours: String(d.fullDayHours),
       startDate: d.startDate,
       endDate: d.endDate ?? '',
       currency: d.currency ?? 'INR',
@@ -344,8 +363,10 @@ export default function DeploymentsClient({
           form.operationsOverhead === '' ? 0 : Number(form.operationsOverhead),
       };
       if (editing) {
-        await api(`/api/deployments/${editing.id}`, { method: 'PUT', json: payload });
+        const saved = await api<{ warning?: string | null }>(`/api/deployments/${editing.id}`, { method: 'PUT', json: payload });
+        setNotice(saved.warning ?? null);
       } else {
+        setNotice(null);
         await api('/api/deployments', { method: 'POST', json: payload });
       }
       setOpen(false);
@@ -399,6 +420,16 @@ export default function DeploymentsClient({
           </div>
         }
       />
+
+      {notice && (
+        <div className="mx-6 mt-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="flex-1">{notice}</span>
+          <button className="text-xs underline" onClick={() => setNotice(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 px-6 py-4">
         <div className="relative min-w-56 flex-1 max-w-xs">
@@ -709,18 +740,14 @@ export default function DeploymentsClient({
                     step={1}
                     inputMode="numeric"
                     value={form.allocationPercentage}
-                    onChange={(e) =>
-                      setForm({ ...form, allocationPercentage: e.target.value })
-                    }
+                    onChange={(e) => setAllocation(e.target.value)}
                   />
                   <div className="flex flex-1 gap-1">
                     {[25, 50, 75, 100].map((p) => (
                       <button
                         key={p}
                         type="button"
-                        onClick={() =>
-                          setForm({ ...form, allocationPercentage: String(p) })
-                        }
+                        onClick={() => setAllocation(String(p))}
                         className={`flex-1 rounded border px-1.5 py-1.5 text-xs font-medium transition-colors ${
                           Number(form.allocationPercentage) === p
                             ? 'border-brand bg-brandbg text-brand'
@@ -733,6 +760,32 @@ export default function DeploymentsClient({
                   </div>
                 </div>
               </Field>
+            </div>
+
+            <div className="mt-3">
+              <Field
+                label="Hours a day"
+                error={errors.fullDayHours}
+                hint="A full working day on this deployment, for timesheets and utilisation. 8 hours at 100% allocation."
+              >
+                <input
+                  className="input tnum w-24"
+                  type="number"
+                  min={1}
+                  max={24}
+                  step="0.5"
+                  value={form.fullDayHours}
+                  onChange={(e) => {
+                    setHoursTouched(true);
+                    setForm({ ...form, fullDayHours: e.target.value });
+                  }}
+                />
+              </Field>
+              {editing && Number(form.fullDayHours) !== editing.fullDayHours && (
+                <p className="mt-1 text-2xs text-amber-700 dark:text-amber-300">
+                  Changing this re-values timesheet days already approved on this deployment.
+                </p>
+              )}
             </div>
 
             {overAllocated && (

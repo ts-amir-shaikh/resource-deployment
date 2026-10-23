@@ -1,6 +1,9 @@
 import 'server-only';
-import { and, asc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import { db, type Executor } from './db';
+import { holidaysBetween, type MyHoliday } from './holidays';
+export { holidaysBetween, type MyHoliday };
+import { leaveDaysInRange, type LeaveDayRow } from './leaves';
 import {
   clients,
   deployments,
@@ -19,6 +22,7 @@ import {
   type EntryStatus,
   type EntryType,
   type PeriodSummary,
+  type TaskKind,
   type TimesheetVersion,
 } from './timesheet-rules';
 
@@ -68,6 +72,8 @@ export type MyDeployment = {
   status: string;
   version: TimesheetVersion;
   fullDayHours: number;
+  /** D17: the fixed task is offered on billable deployments only. */
+  billable: boolean;
 };
 
 export type MyEntry = {
@@ -77,17 +83,20 @@ export type MyEntry = {
   entryType: EntryType;
   hours: number;
   task: string | null;
+  taskKind: TaskKind | null;
   status: EntryStatus;
   rejectionReason: string | null;
 };
-
-export type MyHoliday = { date: string; name: string; clientName: string | null };
 
 export type MyTimesheet = {
   profile: { name: string; email: string; designation: string | null };
   deployments: MyDeployment[];
   entries: MyEntry[];
   holidays: MyHoliday[];
+  /** Leave days in the range, approved or still pending (FSD-21). Leave is not entered here. */
+  leaves: LeaveDayRow[];
+  /** Task names this resource has used before, for the task drop-down. */
+  taskNames: string[];
 };
 
 async function myDeployments(resourceId: number): Promise<(MyDeployment & { clientId: number })[]> {
@@ -103,6 +112,7 @@ async function myDeployments(resourceId: number): Promise<(MyDeployment & { clie
       deploymentVersion: deployments.timesheetVersion,
       projectVersion: projects.timesheetVersion,
       fullDayHours: deployments.fullDayHours,
+      deploymentType: deployments.deploymentType,
     })
     .from(deployments)
     .innerJoin(projects, eq(deployments.projectId, projects.id))
@@ -110,30 +120,11 @@ async function myDeployments(resourceId: number): Promise<(MyDeployment & { clie
     .where(eq(deployments.resourceId, resourceId))
     .orderBy(asc(deployments.startDate))
     .all();
-  return rows.map(({ deploymentVersion, projectVersion, ...r }) => ({
+  return rows.map(({ deploymentVersion, projectVersion, deploymentType, ...r }) => ({
     ...r,
     version: effectiveVersion(deploymentVersion, projectVersion),
+    billable: deploymentType === 'billable',
   }));
-}
-
-/** Company-wide holidays plus those of the given clients, inside a range. */
-export async function holidaysBetween(
-  tx: Executor,
-  from: string,
-  to: string,
-  clientIds: number[],
-): Promise<MyHoliday[]> {
-  const scope = clientIds.length
-    ? or(isNull(holidays.clientId), inArray(holidays.clientId, clientIds))
-    : isNull(holidays.clientId);
-  const rows = await tx
-    .select({ date: holidays.holidayDate, name: holidays.name, clientName: clients.companyName })
-    .from(holidays)
-    .leftJoin(clients, eq(holidays.clientId, clients.id))
-    .where(and(gte(holidays.holidayDate, from), lte(holidays.holidayDate, to), scope))
-    .orderBy(asc(holidays.holidayDate))
-    .all();
-  return rows;
 }
 
 /** Everything the /timesheet screen needs for one date range. */
@@ -156,6 +147,7 @@ export async function loadMyTimesheet(resourceId: number, from: string, to: stri
           entryType: timesheetEntries.entryType,
           hours: timesheetEntries.hours,
           task: timesheetEntries.task,
+          taskKind: timesheetEntries.taskKind,
           status: timesheetEntries.status,
           rejectionReason: timesheetEntries.rejectionReason,
         })
@@ -171,12 +163,34 @@ export async function loadMyTimesheet(resourceId: number, from: string, to: stri
         .all()
     : [];
 
+  // Tasks used before on their own deployments, so the entry screen can offer
+  // them in a drop-down instead of asking for the same words again.
+  const taskRows = ids.length
+    ? await db
+        .selectDistinct({ task: timesheetEntries.task })
+        .from(timesheetEntries)
+        .where(
+          and(
+            inArray(timesheetEntries.deploymentId, ids),
+            eq(timesheetEntries.entryType, 'work'),
+            isNotNull(timesheetEntries.task),
+            isNull(timesheetEntries.taskKind),
+          ),
+        )
+        .limit(200)
+        .all()
+    : [];
+  const taskNames = [...new Set(taskRows.map((r) => (r.task ?? '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
   const clientIds = [...new Set(deps.map((d) => d.clientId))];
+  const holidayRows = await holidaysBetween(db, from, to, clientIds);
   return {
     profile,
     deployments: deps.map(({ clientId: _clientId, ...d }) => d),
     entries,
-    holidays: await holidaysBetween(db, from, to, clientIds),
+    holidays: holidayRows,
+    leaves: await leaveDaysInRange(db, resourceId, from, to, new Set(holidayRows.map((h) => h.date)), ['approved', 'pending']),
+    taskNames,
   };
 }
 
@@ -190,6 +204,7 @@ async function ownDeployment(tx: Executor, resourceId: number, deploymentId: num
       endDate: deployments.endDate,
       deploymentVersion: deployments.timesheetVersion,
       projectVersion: projects.timesheetVersion,
+      deploymentType: deployments.deploymentType,
     })
     .from(deployments)
     .innerJoin(projects, eq(deployments.projectId, projects.id))
@@ -209,16 +224,20 @@ async function ownDeployment(tx: Executor, resourceId: number, deploymentId: num
 export async function saveDay(
   resourceId: number,
   uid: number,
-  input: { deploymentId: number; date: string; rows: { entryType: EntryType; hours: number; task?: string }[] },
+  input: { deploymentId: number; date: string; rows: { entryType: EntryType; hours: number; task?: string; taskKind?: TaskKind | null }[] },
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const dep = await ownDeployment(tx, resourceId, input.deploymentId);
     if (input.date < dep.startDate || (dep.endDate && input.date > dep.endDate)) {
       throw new TimesheetError('That date is outside this deployment.');
     }
-    const version = effectiveVersion(dep.deploymentVersion, dep.projectVersion);
-    if (version === 'v1' && input.rows.length > 1) {
-      throw new TimesheetError('This deployment takes one entry a day.');
+    // A day may hold several rows (tasks) on any deployment. The version
+    // setting (D10) used to cap v1 at one row a day; the entry screen is now
+    // one grid for both, so nothing here limits it.
+    // D17: a shadow deployment is not billed, so "no client tasks" has no
+    // meaning there. Refused here, not only hidden on the form.
+    if (dep.deploymentType !== 'billable' && input.rows.some((r) => r.taskKind)) {
+      throw new TimesheetError('"No client tasks assigned" applies to billable deployments only.');
     }
 
     const existing = await tx
@@ -242,6 +261,7 @@ export async function saveDay(
           entryType: r.entryType,
           hours: r.hours,
           task: r.task ?? null,
+          taskKind: r.taskKind ?? null,
           status: 'draft',
           createdByUserId: uid || null,
         })
@@ -285,7 +305,7 @@ export type QueueDay = {
   deploymentId: number;
   date: string;
   hours: number;
-  rows: { entryType: EntryType; hours: number; task: string | null }[];
+  rows: { entryType: EntryType; hours: number; task: string | null; taskKind: TaskKind | null }[];
   submittedAt: string | null;
 };
 
@@ -315,6 +335,7 @@ export async function approvalQueue(): Promise<QueueGroup[]> {
       entryType: timesheetEntries.entryType,
       hours: timesheetEntries.hours,
       task: timesheetEntries.task,
+      taskKind: timesheetEntries.taskKind,
       submittedAt: timesheetEntries.submittedAt,
       resourceName: resources.name,
       projectName: projects.projectName,
@@ -355,7 +376,7 @@ export async function approvalQueue(): Promise<QueueGroup[]> {
       day = { deploymentId: r.deploymentId, date: r.entryDate, hours: 0, rows: [], submittedAt: r.submittedAt };
       g.days.push(day);
     }
-    day.rows.push({ entryType: r.entryType, hours: r.hours, task: r.task });
+    day.rows.push({ entryType: r.entryType, hours: r.hours, task: r.task, taskKind: r.taskKind });
     day.hours += r.hours;
   }
   return [...groups.values()];
@@ -454,13 +475,32 @@ export async function lineSummary(
   const clientIds = [...new Set(deps.map((d) => d.clientId))];
   const hol = new Set((await holidaysBetween(tx, q.from, q.to, clientIds)).map((h) => h.date));
 
+  // FSD-21: approved leave is the record of leave now. Each leave day enters
+  // the deployment's window as an approved row of leave hours, so the same
+  // arithmetic (and the same "every day approved" rule) prices it.
+  const leave = await leaveDaysInRange(tx, q.resourceId, q.from, q.to, hol, ['approved']);
+
   return periodSummary(
-    deps.map((d) => ({
-      from: d.startDate > q.from ? d.startDate : q.from,
-      to: d.endDate && d.endDate < q.to ? d.endDate : q.to,
-      fullDayHours: d.fullDayHours,
-      entries: entries.filter((e) => e.deploymentId === d.id),
-    })),
+    deps.map((d) => {
+      const from = d.startDate > q.from ? d.startDate : q.from;
+      const to = d.endDate && d.endDate < q.to ? d.endDate : q.to;
+      return {
+        from,
+        to,
+        fullDayHours: d.fullDayHours,
+        entries: [
+          ...entries.filter((e) => e.deploymentId === d.id),
+          ...leave
+            .filter((l) => l.date >= from && l.date <= to)
+            .map((l) => ({
+              entryDate: l.date,
+              entryType: (l.type === 'paid' ? 'paid_leave' : 'unpaid_leave') as EntryType,
+              hours: l.fraction * d.fullDayHours,
+              status: 'approved' as const,
+            })),
+        ],
+      };
+    }),
     hol,
   );
 }

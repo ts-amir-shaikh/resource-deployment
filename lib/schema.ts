@@ -5,6 +5,7 @@ import {
   DEFAULT_FULL_DAY_HOURS,
   ENTRY_STATUSES,
   ENTRY_TYPES,
+  TASK_KINDS,
   TIMESHEET_VERSIONS,
 } from './timesheet-rules';
 import {
@@ -17,6 +18,7 @@ import {
   PROSPECT_STAGES,
   TEMPERATURES,
 } from './leadgen-rules';
+import { LEAVE_STATUSES, LEAVE_TYPES } from './leave-rules';
 
 const timestamps = {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -1376,6 +1378,8 @@ export const timesheetEntries = sqliteTable(
     entryType: text('entry_type', { enum: ENTRY_TYPES }).notNull().default('work'),
     hours: real('hours').notNull().default(0),
     task: text('task'),
+    /** FSD-18 v1.1, D17: null for a normal row; the fixed task otherwise. */
+    taskKind: text('task_kind', { enum: TASK_KINDS }),
     status: text('status', { enum: ENTRY_STATUSES }).notNull().default('draft'),
     submittedAt: text('submitted_at'),
     reviewedByUserId: integer('reviewed_by_user_id'),
@@ -1405,6 +1409,37 @@ export const holidays = sqliteTable(
   },
   (t) => ({
     dateIdx: index('holiday_date_idx').on(t.holidayDate),
+  }),
+);
+
+/**
+ * FSD-21. A request for leave, by the resource, for the Resource Manager to
+ * approve. Per resource, not per deployment: leave is a person's absence.
+ * Days are never stored — they are counted from these dates and the holiday
+ * calendar (lib/leave-rules.ts). Only an approved request reaches an invoice.
+ */
+export const leaveRequests = sqliteTable(
+  'leave_requests',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    resourceId: integer('resource_id')
+      .notNull()
+      .references(() => resources.id),
+    startDate: text('start_date').notNull(),
+    endDate: text('end_date').notNull(),
+    halfDay: integer('half_day', { mode: 'boolean' }).notNull().default(false),
+    leaveType: text('leave_type', { enum: LEAVE_TYPES }).notNull().default('paid'),
+    reason: text('reason'),
+    status: text('status', { enum: LEAVE_STATUSES }).notNull().default('pending'),
+    reviewedByUserId: integer('reviewed_by_user_id'),
+    reviewedAt: text('reviewed_at'),
+    rejectionReason: text('rejection_reason'),
+    createdByUserId: integer('created_by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    resourceIdx: index('leave_resource_idx').on(t.resourceId, t.startDate),
+    statusIdx: index('leave_status_idx').on(t.status),
   }),
 );
 
@@ -1546,6 +1581,7 @@ export type ProspectContact = typeof prospectContacts.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Lead = typeof leads.$inferSelect;
 export type Activity = typeof activities.$inferSelect;
+export type LeaveRequest = typeof leaveRequests.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
 
 export type DeploymentType = (typeof DEPLOYMENT_TYPES)[number];

@@ -14,13 +14,16 @@ import {
   AnnualWithMonthly,
 } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
+import { resourceMonth } from '@/lib/timesheet-dashboard';
+import { today } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ResourceDetailPage({ params }: { params: { id: string } }) {
-  await requireCurrentAccount();
+  const session = await requireCurrentAccount();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
+  const month = session.role === 'admin' ? await resourceMonth(id, today()) : null;
 
   const [row, engagements, allocation] = await Promise.all([
     db.select().from(resources).where(eq(resources.id, id)).get(),
@@ -167,6 +170,28 @@ export default async function ResourceDetailPage({ params }: { params: { id: str
               </p>
             </div>
           </DetailSection>
+
+          {/* FR-TSH-014. The dashboard is Admin only (D20), so only Admin is shown a link to it. */}
+          {session.role === 'admin' && (
+            <DetailSection title="Timesheet" hint="This month, approved time only">
+              <div className="p-4 text-xs">
+                {month ? (
+                  <dl className="space-y-1.5">
+                    <div className="flex justify-between"><dt className="text-ink3">Billable utilisation</dt><dd className="tnum text-ink">{month.billableUtilisation === null ? '—' : `${month.billableUtilisation}%`}</dd></div>
+                    <div className="flex justify-between"><dt className="text-ink3">Client work</dt><dd className="tnum text-ink">{month.clientWorkHours} h of {month.capacityHours} h</dd></div>
+                    <div className="flex justify-between"><dt className="text-ink3">No client tasks</dt><dd className="tnum text-ink">{month.noClientTaskHours} h</dd></div>
+                    <div className="flex justify-between"><dt className="text-ink3">Shadow work</dt><dd className="tnum text-ink">{month.shadowHours} h</dd></div>
+                    <div className="flex justify-between"><dt className="text-ink3">Remaining</dt><dd className="tnum text-ink">{month.remainingHours} h</dd></div>
+                  </dl>
+                ) : (
+                  <p className="text-ink3">Not deployed this month.</p>
+                )}
+                <Link className="mt-3 inline-block text-brand hover:underline" href={`/timesheets?tab=resources&resource=${id}`}>
+                  Open in the timesheet dashboard →
+                </Link>
+              </div>
+            </DetailSection>
+          )}
 
           <DetailSection title="Compensation" hint="Payroll — always in rupees">
             <DetailFacts

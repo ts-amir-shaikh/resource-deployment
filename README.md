@@ -130,8 +130,10 @@ docker run --rm -p 3000:3000 --env-file .env resource-deployment
 | Agreements | `/agreements` | POs with immutable renewal history |
 | Invoices | `/invoices` | Billing periods with 4-stage collection status |
 | People | `/people` | Logins, roles, password links and the account log (Admin; Management view-only) |
-| Timesheet | `/timesheet` | A resource's own days and hours per deployment; submit for approval (Resource) |
-| Approvals | `/approvals` | Submitted timesheet days to approve or reject (Resource Manager, Admin; Management view-only) |
+| Timesheet | `/timesheet` | A resource's week as a tasks-by-days grid with a red/green Total row; month and week drop-downs; submit for approval (Resource) |
+| Approvals | `/approvals` | Two tabs: submitted timesheet days, and leave requests, to approve or reject (Resource Manager, Admin; Management view-only) |
+| My Leaves | `/leaves` | A resource applies for leave and follows its approval (Resource) |
+| Timesheet Dashboard | `/timesheets` | Utilisation, billing coverage, shadow work and billed time with no client tasks, with an activity log; linked from Resource, Deployment and Invoice pages (**Admin only**, including Management being refused) |
 | Holidays | `/holidays` | Company-wide and per-client holidays that pre-fill timesheets (Admin; Management view-only) |
 | Prospects | `/prospects` | Companies Leadgen is working: stage board, temperature, contacts, activity and meetings; convert to a lead (Leadgen; Sales and Management view-only) |
 | Campaigns | `/campaigns` | Outreach campaigns and their results — reached, responded, meetings, leads, conversion |

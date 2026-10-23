@@ -537,6 +537,7 @@ CREATE TABLE IF NOT EXISTS timesheet_entries (
   entry_type TEXT NOT NULL DEFAULT 'work',
   hours REAL NOT NULL DEFAULT 0,
   task TEXT,
+  task_kind TEXT,
   status TEXT NOT NULL DEFAULT 'draft',
   submitted_at TEXT,
   reviewed_by_user_id INTEGER,
@@ -556,4 +557,22 @@ CREATE TABLE IF NOT EXISTS holidays (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS holiday_date_idx ON holidays(holiday_date);
+
+CREATE TABLE IF NOT EXISTS leave_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  resource_id INTEGER NOT NULL REFERENCES resources(id),
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  half_day INTEGER NOT NULL DEFAULT 0,
+  leave_type TEXT NOT NULL DEFAULT 'paid',
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  reviewed_by_user_id INTEGER,
+  reviewed_at TEXT,
+  rejection_reason TEXT,
+  created_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS leave_resource_idx ON leave_requests(resource_id, start_date);
+CREATE INDEX IF NOT EXISTS leave_status_idx ON leave_requests(status);
 `;

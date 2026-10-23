@@ -42,9 +42,10 @@ Documents are issued in order. FSD-00 checks the whole set against the platform 
 | FSD-15 | [Prospects, Meetings & Leads](../plans/mxxwork/m66work/FSD-15-prospects-meetings-leads.md) | LED | v1.0 (built, not released) | Rev 1.0 | `Built` | M66 |
 | FSD-16 | Interviewer Portal | INT | — | — | `Proposed` | M31 · see FSD-00 |
 | FSD-17 | Resource Management | RMG | — | — | `Proposed` | see FSD-00 |
-| FSD-18 | [Timesheets & Self-Service](../plans/mxxwork/m65work/FSD-18-timesheets.md) | TSH | v1.0 (built, not released) | Rev 1.0 | `Built` | M65 |
+| FSD-18 | [Timesheets & Self-Service](../plans/mxxwork/m65work/FSD-18-timesheets.md) | TSH | v1.2 (built, not released) | Rev 1.2 | `Built` | M65 |
 | FSD-19 | Reports | RPT | — | — | `Proposed` | see FSD-00 |
 | FSD-20 | Accounting Sync (Tally) | TLY | — | — | `Proposed` | D6 · see FSD-00 |
+| FSD-21 | [Leave](../plans/mxxwork/m65work/FSD-21-leaves.md) | LVE | v1.0 (built, not released) | Rev 1.0 | `Built` | M65 |
 
 ## 2. Versioning
 

@@ -5,6 +5,7 @@ import {
   APPROVAL_CADENCES,
   ENTRY_TYPES,
   MAX_DAY_HOURS,
+  TASK_KINDS,
   TIMESHEET_VERSIONS,
   isIsoDate,
 } from './timesheet-rules';
@@ -17,6 +18,7 @@ import {
   SETTABLE_PROSPECT_STAGES,
   TEMPERATURES,
 } from './leadgen-rules';
+import { LEAVE_TYPES } from './leave-rules';
 
 /**
  * A link to a document that lives somewhere else.
@@ -151,6 +153,18 @@ export const deploymentSchema = z
       .int()
       .min(1, 'Allocation must be at least 1%')
       .max(100, 'Allocation cannot exceed 100%'),
+    /**
+     * D18: hours in a full working day on this deployment. Blank means "work
+     * it out from the allocation" on create and "leave as it is" on edit.
+     * '' comes first so z.coerce.number() cannot turn it into 0.
+     */
+    fullDayHours: z
+      .union([
+        z.literal(''),
+        z.coerce.number().min(1, 'At least 1 hour').max(MAX_DAY_HOURS, `At most ${MAX_DAY_HOURS} hours`),
+      ])
+      .optional()
+      .transform((v) => (v === '' || v === undefined ? undefined : Number(v))),
     startDate: dateStr,
     endDate: optionalDate,
     billingAmount: money.default(0),
@@ -817,6 +831,14 @@ const timesheetRow = z.object({
     .transform((v) => Number(v))
     .refine((v) => Number.isFinite(v) && v >= 0 && v <= MAX_DAY_HOURS, `Hours must be 0 to ${MAX_DAY_HOURS}`),
   task: optionalStr,
+  /** D17: the fixed "No client tasks assigned" task. Only on a work row; billable deployments only (checked on the server). */
+  taskKind: z
+    .union([z.literal(''), z.enum(TASK_KINDS), z.null()])
+    .optional()
+    .transform((v) => (v === '' || v == null ? null : v)),
+}).refine((r) => r.taskKind == null || r.entryType === 'work', {
+  message: 'Only a work entry can be "No client tasks assigned"',
+  path: ['taskKind'],
 });
 
 /**
@@ -1019,3 +1041,37 @@ export const leadHandoffSchema = z.object({
 export const leadAssignSchema = z.object({
   salesOwnerUserId: optionalId,
 });
+
+/* ── FSD-21: Leave ─────────────────────────────────────────── */
+
+/**
+ * A request for leave. A half day is one day, so `halfDay` with a range is
+ * refused rather than guessed at. The days it takes are counted on the server
+ * from the dates and the holiday calendar; the request never carries them.
+ */
+export const leaveApplySchema = z
+  .object({
+    startDate: isoDate,
+    endDate: isoDate,
+    halfDay: z.boolean().default(false),
+    leaveType: z.enum(LEAVE_TYPES),
+    reason: optionalStr,
+  })
+  .refine((d) => d.endDate >= d.startDate, { message: 'The leave ends before it starts', path: ['endDate'] })
+  .refine((d) => !d.halfDay || d.startDate === d.endDate, {
+    message: 'A half day is a single day',
+    path: ['halfDay'],
+  });
+
+/** Approve or reject one request. A rejection needs a reason the resource can act on. */
+export const leaveReviewSchema = z
+  .object({
+    id: z.coerce.number().int().positive(),
+    action: z.enum(['approve', 'reject']),
+    leaveType: z.enum(LEAVE_TYPES).optional(),
+    reason: optionalStr,
+  })
+  .refine((d) => d.action === 'approve' || Boolean(d.reason), {
+    message: 'Give a reason for the rejection',
+    path: ['reason'],
+  });

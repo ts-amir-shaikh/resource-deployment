@@ -19,6 +19,7 @@ export async function loadDeployments() {
       agreementTitle: agreements.title,
       deploymentType: deployments.deploymentType,
       allocationPercentage: deployments.allocationPercentage,
+      fullDayHours: deployments.fullDayHours,
       startDate: deployments.startDate,
       endDate: deployments.endDate,
       currency: deployments.currency,

@@ -152,12 +152,13 @@ call sites to be revisited instead of leaving silent wrong-currency output.
 
 ## 5. Testing
 
-`npm test` (Vitest) — **322 tests across 13 files**, ~3s. Read that number
-carefully: **118 of the 322 are `tests/chokepoints.test.ts`**, a structural scan
-that generates one assertion per page and route. Of the rest, 102 cover accounts,
+`npm test` (Vitest) — **390 tests across 16 files**, ~3s. Read that number
+carefully: **125 of the 390 are `tests/chokepoints.test.ts`**, a structural scan
+that generates one assertion per page and route. Of the rest, 110 cover accounts,
 roles and authentication, 31 pin today's invoice and money maths
-(`lib/utils.test.ts`), 29 cover timesheet rules, 29 cover leadgen rules
-(`lib/leadgen-rules.test.ts`), 7 cover CSV export and 6 cover mail.
+(`lib/utils.test.ts`), 32 cover timesheet rules, 23 cover the timesheet dashboard
+rules, 20 cover the weekly screen's logic, 7 cover leave rules, 29 cover leadgen
+rules (`lib/leadgen-rules.test.ts`), 7 cover CSV export and 6 cover mail.
 
 Behavioural coverage of business logic outside accounts is therefore close to
 zero:
@@ -167,8 +168,8 @@ zero:
 | Accounts, roles, access policy | Invoice and timesheet API routes (hand-verified) |
 | Google sign-in, password links | Deployments, agreements, POs |
 | Invoice line maths, pro-rating, currency sums, `opportunityValue()` | Every Zod schema in `validations.ts` |
-| Timesheet hours-to-days and the invoice feed rules | Leadgen API routes (hand-verified against a scratch DB) |
-| Leadgen stage, conversion, duplicate matching, campaign maths, row access | |
+| Timesheet hours-to-days, the invoice feed and dashboard utilisation rules | Dashboard and leave server queries and routes (hand-verified) |
+| Leadgen stage, conversion, duplicate matching, campaign maths, row access | Leadgen API routes (hand-verified against a scratch DB) |
 | CSV export, mail, chokepoint scan | |
 
 The pure money functions now have baseline tests (M65). The routes that call
