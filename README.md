@@ -10,6 +10,8 @@ npm install
 cp .env.example .env.local   # set AUTH_SECRET (and APP_PASSWORD for first sign-in)
 npm run db:migrate           # creates the schema
 npm run db:seed              # optional — loads a realistic demo dataset
+npm run db:seed-timesheets   # optional — mock timesheets (additive)
+npm run db:seed-leadgen      # optional — mock campaigns, prospects and leads (additive)
 npm run dev
 ```
 
@@ -131,6 +133,9 @@ docker run --rm -p 3000:3000 --env-file .env resource-deployment
 | Timesheet | `/timesheet` | A resource's own days and hours per deployment; submit for approval (Resource) |
 | Approvals | `/approvals` | Submitted timesheet days to approve or reject (Resource Manager, Admin; Management view-only) |
 | Holidays | `/holidays` | Company-wide and per-client holidays that pre-fill timesheets (Admin; Management view-only) |
+| Prospects | `/prospects` | Companies Leadgen is working: stage board, temperature, contacts, activity and meetings; convert to a lead (Leadgen; Sales and Management view-only) |
+| Campaigns | `/campaigns` | Outreach campaigns and their results — reached, responded, meetings, leads, conversion |
+| Leads | `/lead-records` | Leads from converted prospects or existing clients; handoff to the Sales queue and requirements raised from them. `/leads` is still My Leads, the requirement board |
 | Share view | `/share/[token]` | Public, read-only requirement page for consultants |
 
 ## Business rules
@@ -261,6 +266,19 @@ timesheet-sourced; otherwise the leave stays as typed. Working days stay as
 the contract states them, and the pro-rating formula above is unchanged.
 Rounding, the short-day rule, the all-days-approved condition and the holiday
 scope are defaults awaiting Product Owner confirmation (`docs/plans/mxxwork/m65work/FSD-18-timesheets.md`).
+
+**Prospect → lead → requirements (M66).** A prospect's stage (`new →
+contacted → meeting set → qualified → converted | dead`) and its temperature
+(cold, warm, hot) are separate fields; neither moves the other. Only a
+qualified prospect converts, once, into a lead; Leadgen hands the lead to the
+Sales queue, a Sales head assigns it, and its holder raises requirements from
+it, which take the lead's company and owners whatever the form sends. Adding
+a prospect or client whose name matches an existing one — ignoring case,
+punctuation and suffixes such as Pvt Ltd or LLP — warns first and allows
+"create anyway". Campaign results are computed on read: reached = prospects
+with any activity, responded = an outcome other than no answer / not
+interested, conversion = leads ÷ reached. See
+`docs/plans/mxxwork/m66work/FSD-15-prospects-meetings-leads.md`.
 
 **Sharing is by unguessable token, with no authentication.** `/share/[token]`
 exposes the requirement and JD only — never budget, client contacts, candidate

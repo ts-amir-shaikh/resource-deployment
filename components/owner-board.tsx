@@ -22,6 +22,7 @@ export default function OwnerBoard({
   viewerName,
   members,
   isHead,
+  panel,
 }: {
   kind: OwnerKind;
   board: Board;
@@ -30,6 +31,8 @@ export default function OwnerBoard({
   viewerName: string;
   members: { id: number; name: string; isTeamLead: boolean }[];
   isHead: boolean;
+  /** M66: the follow-ups (Leadgen) or handed-over leads (Sales) shown under the header. */
+  panel?: React.ReactNode;
 }) {
   // The two kinds carry different KPI sets; read through an index so one
   // component renders both without a discriminated dance.
@@ -96,6 +99,8 @@ export default function OwnerBoard({
         }
         action={isHead ? <MemberSelect members={members} selected={viewing?.id ?? null} base={base} /> : undefined}
       />
+
+      {panel && <div className="px-6 pt-4">{panel}</div>}
 
       <div className={`grid grid-cols-2 gap-3 px-6 pt-4 ${isLead ? 'lg:grid-cols-6' : 'lg:grid-cols-6'}`}>
         {isLead ? (

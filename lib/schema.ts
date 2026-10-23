@@ -7,6 +7,16 @@ import {
   ENTRY_TYPES,
   TIMESHEET_VERSIONS,
 } from './timesheet-rules';
+import {
+  ACTIVITY_OUTCOMES,
+  ACTIVITY_TYPES,
+  CAMPAIGN_CHANNELS,
+  CAMPAIGN_STATUSES,
+  LEAD_STATUSES,
+  PROSPECT_SOURCES,
+  PROSPECT_STAGES,
+  TEMPERATURES,
+} from './leadgen-rules';
 
 const timestamps = {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -457,6 +467,11 @@ export const opportunities = sqliteTable(
     salesOwnerUserId: integer('sales_owner_user_id'),
     /** M46: the prospect this was raised against, until it becomes a client. */
     prospectId: integer('prospect_id').references(() => prospects.id),
+    /**
+     * M66: the lead this was raised from (D4). Null for requirements created
+     * directly, which stays allowed (Q7).
+     */
+    leadId: integer('lead_id').references(() => leads.id),
 
     nextStep: text('next_step'),
     nextStepDate: text('next_step_date'),
@@ -887,10 +902,136 @@ export const prospects = sqliteTable(
     createdByUserId: integer('created_by_user_id'),
     /** Set on conversion; the prospect stays so history still resolves. */
     convertedClientId: integer('converted_client_id').references(() => clients.id),
+    /*
+     * M66. The single contact above stays readable but is no longer written:
+     * contacts live in prospect_contacts, where the migration copied it.
+     * `stage` reaching `converted` means "became a lead", not "became a
+     * client" — that is still convertedClientId.
+     */
+    stage: text('stage', { enum: PROSPECT_STAGES }).notNull().default('new'),
+    temperature: text('temperature', { enum: TEMPERATURES }).notNull().default('cold'),
+    ownerUserId: integer('owner_user_id'),
+    source: text('source', { enum: PROSPECT_SOURCES }),
+    campaignId: integer('campaign_id').references(() => campaigns.id),
+    website: text('website'),
+    industry: text('industry'),
+    location: text('location'),
+    deadReason: text('dead_reason'),
+    updatedAt: text('updated_at'),
     ...timestamps,
   },
   (t) => ({
     nameIdx: index('prospect_name_idx').on(t.companyName),
+    ownerIdx: index('prospect_owner_idx').on(t.ownerUserId),
+    campaignIdx: index('prospect_campaign_idx').on(t.campaignId),
+  }),
+);
+
+/* ── M66: Leadgen pipeline ─────────────────────────────────── */
+
+export const campaigns = sqliteTable('campaigns', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  /** Free text: "BFSI, Mumbai, 200+ staff". */
+  segment: text('segment'),
+  channel: text('channel', { enum: CAMPAIGN_CHANNELS }).notNull().default('mixed'),
+  startDate: text('start_date'),
+  endDate: text('end_date'),
+  status: text('status', { enum: CAMPAIGN_STATUSES }).notNull().default('planned'),
+  ownerUserId: integer('owner_user_id'),
+  notes: text('notes'),
+  createdByUserId: integer('created_by_user_id'),
+  ...timestamps,
+});
+
+export const prospectContacts = sqliteTable(
+  'prospect_contacts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    prospectId: integer('prospect_id')
+      .notNull()
+      .references(() => prospects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    designation: text('designation'),
+    email: text('email'),
+    mobile: text('mobile'),
+    linkedin: text('linkedin'),
+    isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+    ...timestamps,
+  },
+  (t) => ({
+    prospectIdx: index('pcontact_prospect_idx').on(t.prospectId),
+  }),
+);
+
+/**
+ * D4: what a qualified prospect becomes, and what Sales raises requirements
+ * from. A lead on an existing client (Q5, account growth) has a client and no
+ * prospect. `companyName` is a label copied from whichever it is, like the
+ * one on opportunities.
+ */
+export const leads = sqliteTable(
+  'leads',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    prospectId: integer('prospect_id').references(() => prospects.id),
+    clientId: integer('client_id').references(() => clients.id),
+    companyName: text('company_name').notNull(),
+    title: text('title').notNull(),
+    summary: text('summary'),
+    temperature: text('temperature', { enum: TEMPERATURES }).notNull().default('warm'),
+    bantBudget: integer('bant_budget', { mode: 'boolean' }).notNull().default(false),
+    bantAuthority: integer('bant_authority', { mode: 'boolean' }).notNull().default(false),
+    bantNeed: integer('bant_need', { mode: 'boolean' }).notNull().default(false),
+    bantTimeline: integer('bant_timeline', { mode: 'boolean' }).notNull().default(false),
+    status: text('status', { enum: LEAD_STATUSES }).notNull().default('open'),
+    leadOwnerUserId: integer('lead_owner_user_id'),
+    salesOwnerUserId: integer('sales_owner_user_id'),
+    /** Q2: Leadgen may suggest a salesperson; a Sales head decides. */
+    suggestedSalesUserId: integer('suggested_sales_user_id'),
+    handedOffAt: text('handed_off_at'),
+    closedReason: text('closed_reason'),
+    createdByUserId: integer('created_by_user_id'),
+    updatedAt: text('updated_at'),
+    ...timestamps,
+  },
+  (t) => ({
+    prospectIdx: index('lead_prospect_idx').on(t.prospectId),
+    statusIdx: index('lead_status_idx').on(t.status),
+    leadOwnerIdx: index('lead_lead_owner_idx').on(t.leadOwnerUserId),
+    salesOwnerIdx: index('lead_sales_owner_idx').on(t.salesOwnerUserId),
+  }),
+);
+
+/**
+ * KTD2: calls, emails, LinkedIn touches, events, notes and meetings in one
+ * table. Belongs to a prospect, a lead, or both (a lead's activity keeps its
+ * prospect so the prospect's timeline stays whole).
+ */
+export const activities = sqliteTable(
+  'activities',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    prospectId: integer('prospect_id').references(() => prospects.id),
+    leadId: integer('lead_id').references(() => leads.id),
+    campaignId: integer('campaign_id').references(() => campaigns.id),
+    contactId: integer('contact_id').references(() => prospectContacts.id, { onDelete: 'set null' }),
+    type: text('type', { enum: ACTIVITY_TYPES }).notNull(),
+    activityDate: text('activity_date').notNull(),
+    outcome: text('outcome', { enum: ACTIVITY_OUTCOMES }),
+    notes: text('notes'),
+    nextFollowUp: text('next_follow_up'),
+    /** Meetings only. */
+    attendees: text('attendees'),
+    nextStep: text('next_step'),
+    byUserId: integer('by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    prospectIdx: index('activity_prospect_idx').on(t.prospectId),
+    leadIdx: index('activity_lead_idx').on(t.leadId),
+    campaignIdx: index('activity_campaign_idx').on(t.campaignId),
+    followUpIdx: index('activity_follow_up_idx').on(t.nextFollowUp),
   }),
 );
 
@@ -1400,6 +1541,11 @@ export type AgreementResource = typeof agreementResources.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
 export type TimesheetEntry = typeof timesheetEntries.$inferSelect;
 export type Holiday = typeof holidays.$inferSelect;
+export type Prospect = typeof prospects.$inferSelect;
+export type ProspectContact = typeof prospectContacts.$inferSelect;
+export type Campaign = typeof campaigns.$inferSelect;
+export type Lead = typeof leads.$inferSelect;
+export type Activity = typeof activities.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
 
 export type DeploymentType = (typeof DEPLOYMENT_TYPES)[number];

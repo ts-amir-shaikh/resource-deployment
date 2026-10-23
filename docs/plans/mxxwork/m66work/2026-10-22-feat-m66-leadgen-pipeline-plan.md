@@ -6,7 +6,7 @@ topic: m66-leadgen-pipeline
 artifact_contract: ce-unified-plan/v1
 product_contract_source: docs/plans/2026-10-21-scope-m62-m67-four-modules.md
 execution: code
-status: draft — awaiting approval
+status: built — approved 22 Oct 2026 with Q1–Q7 as proposed; awaiting browser verification and review
 ---
 
 # M66 Leadgen Pipeline — Plan

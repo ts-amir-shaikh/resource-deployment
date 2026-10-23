@@ -7,8 +7,8 @@ The personal boards each front-line role starts the day on: My Work for recruite
 | Field | Value |
 |---|---|
 | Module code | WRK |
-| Module version | v2.1 |
-| Doc revision | Rev 1.0 |
+| Module version | v2.2 (v2.1 is live until M66 is released) |
+| Doc revision | Rev 1.1 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | My Work · My Leads · My Deals |
@@ -65,6 +65,8 @@ My Work shows no money of any kind, and neither does the TA lead's view: a lead 
 | FR-WRK-015 | KPIs: **Mapping**, **Interview**, **Agreement**, **Won · 90d**, **Lost · 90d**, **In flight** (value). | v2.0 | `Live` |
 | FR-WRK-016 | Pending actions: Follow-ups due, No next step recorded, Stalled, and Won, awaiting project conversion. | v2.0 | `Live` |
 | FR-WRK-017 | **My deals** lists every requirement the person is sales owner of. The head's view lists live requirements with **No sales owner**. | v2.0 | `Live` |
+| FR-WRK-018 | **My leads: follow-ups due (M66).** Under the header, the follow-ups due today or earlier on the prospects and leads the person can see (FSD-14 FR-CMP-005). | v2.2 | `Built` |
+| FR-WRK-019 | **My deals: leads (M66).** Under the header, the Sales queue of handed-off leads and the leads the person holds — for a head, the team's — with temperature and BANT (FSD-15 FR-LED-011). | v2.2 | `Built` |
 
 ## 4. Business rules
 
@@ -137,3 +139,4 @@ None of its own. The boards read requirements, owners and assignees, stage histo
 | Rev | Date | Module ver. | Change |
 |---|---|---|---|
 | 1.0 | 27 Sep 2026 | v2.1 | First issue, written against commit `5e43f82`. |
+| 1.1 | 22 Oct 2026 | v2.2 (built) | M66: FR-WRK-018 follow-ups on My Leads, FR-WRK-019 lead panel on My Deals. |

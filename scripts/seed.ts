@@ -42,6 +42,10 @@ for (const t of [
   'opportunity_comments',
   'opportunity_candidates',
   'opportunities',
+  // M66: leads point at clients, cleared below. Prospects are not cleared
+  // here (they never were), so their contacts and campaigns stay with them.
+  'activities',
+  'leads',
   'candidates',
   'invoice_resources',
   'invoices',

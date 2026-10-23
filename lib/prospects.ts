@@ -2,6 +2,7 @@ import 'server-only';
 import { eq } from 'drizzle-orm';
 import { prospects, clients } from './schema';
 import type { Executor } from './db';
+import type { Role } from './auth';
 
 /**
  * Resolves what the requirement form sent — a client, an existing prospect,
@@ -11,11 +12,14 @@ import type { Executor } from './db';
  * than minting a duplicate; a name nobody has seen becomes a new prospect
  * row, credited to whoever typed it. Either way `companyName` is set from the
  * record, so the label on the row cannot drift from the thing it points at.
+ *
+ * M66: a Leadgen member who types a new company also owns the prospect it
+ * creates, or it would be missing from their own Prospects list (Q4).
  */
 export async function resolveCompany(
   tx: Executor,
   input: { clientId?: number; prospectId?: number; companyName: string },
-  createdByUserId: number | null,
+  creator: { uid: number | null; role: Role },
 ): Promise<{ clientId: number | null; prospectId: number | null; companyName: string }> {
   if (input.clientId) {
     const c = await tx.select({ name: clients.companyName }).from(clients).where(eq(clients.id, input.clientId)).get();
@@ -45,7 +49,11 @@ export async function resolveCompany(
   }
   const created = await tx
     .insert(prospects)
-    .values({ companyName: name, createdByUserId })
+    .values({
+      companyName: name,
+      createdByUserId: creator.uid,
+      ownerUserId: creator.role === 'leadgen' ? creator.uid : null,
+    })
     .returning({ id: prospects.id })
     .get();
   return { clientId: null, prospectId: created.id, companyName: name };

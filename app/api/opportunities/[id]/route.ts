@@ -153,7 +153,7 @@ export async function PUT(req: Request, { params }: Ctx) {
     const { data, error } = await parseBody(req, opportunitySchema);
     if (error) return error;
 
-    const company = await resolveCompany(db, data, viewer.uid || null);
+    const company = await resolveCompany(db, data, { uid: viewer.uid || null, role: viewer.role });
 
     // Stage is not editable here — it moves through /stage so history is kept.
     // Owners are not editable here either — they go through /owners, which

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canAccess, canExport, canWrite, isExportPath, landingPath, HOLDING_PATH } from '@/lib/access';
+import { canAccess, canExport, canWrite, isExportPath, landingPath, navFor, HOLDING_PATH } from '@/lib/access';
 import { PENDING_ROLES, ROLES } from '@/lib/auth';
 import { USER_ROLES } from '@/lib/schema';
 
@@ -97,6 +97,67 @@ describe('M65: resource and resource manager', () => {
       expect(canAccess(role, '/timesheet'), role).toBe(false);
       expect(canAccess(role, '/approvals'), role).toBe(false);
     }
+  });
+});
+
+describe('M66: leadgen pipeline', () => {
+  const pages = ['/prospects', '/prospects/4', '/campaigns', '/campaigns/2', '/lead-records', '/lead-records/9'];
+  const reads = ['/api/leadgen/prospects', '/api/leadgen/prospects/4', '/api/leadgen/leads', '/api/leadgen/duplicates'];
+
+  it('Leadgen, Sales, Admin and Management reach the new screens and routes', () => {
+    for (const role of ['leadgen', 'sales', 'admin', 'management'] as const) {
+      for (const path of [...pages, ...reads]) expect(canAccess(role, path), `${role} ${path}`).toBe(true);
+    }
+  });
+
+  it('every other role is refused (AE6)', () => {
+    for (const role of ROLES.filter((r) => !['leadgen', 'sales', 'admin', 'management'].includes(r))) {
+      for (const path of [...pages, ...reads]) expect(canAccess(role, path), `${role} ${path}`).toBe(false);
+      expect(canWrite(role, '/api/leadgen/prospects'), role).toBe(false);
+    }
+  });
+
+  it('Leadgen writes everything on its side but never assigns a salesperson (Q2)', () => {
+    for (const path of [
+      '/api/leadgen/prospects',
+      '/api/leadgen/prospects/4',
+      '/api/leadgen/prospects/4/contacts',
+      '/api/leadgen/prospects/4/convert',
+      '/api/leadgen/campaigns',
+      '/api/leadgen/activities',
+      '/api/leadgen/leads',
+      '/api/leadgen/leads/9',
+      '/api/leadgen/leads/9/handoff',
+    ]) {
+      expect(canWrite('leadgen', path), path).toBe(true);
+    }
+    expect(canWrite('leadgen', '/api/leadgen/leads/9/assign')).toBe(false);
+  });
+
+  it('Sales works handed-off leads only: no prospects, campaigns, conversion or handoff', () => {
+    expect(canWrite('sales', '/api/leadgen/leads/9')).toBe(true);
+    expect(canWrite('sales', '/api/leadgen/leads/9/assign')).toBe(true);
+    expect(canWrite('sales', '/api/leadgen/activities')).toBe(true);
+    for (const path of [
+      '/api/leadgen/prospects',
+      '/api/leadgen/prospects/4',
+      '/api/leadgen/prospects/4/convert',
+      '/api/leadgen/campaigns',
+      '/api/leadgen/leads',
+      '/api/leadgen/leads/9/handoff',
+    ]) {
+      expect(canWrite('sales', path), path).toBe(false);
+    }
+  });
+
+  it('Management reads and writes nothing; Admin writes all', () => {
+    expect(canWrite('management', '/api/leadgen/prospects')).toBe(false);
+    expect(canWrite('admin', '/api/leadgen/leads/9/assign')).toBe(true);
+  });
+
+  it('the Leadgen sidebar keeps My Leads beside the three new screens (Q1)', () => {
+    expect(navFor('leadgen').map((n) => n.href)).toEqual(['/leads', '/prospects', '/campaigns', '/lead-records', '/pipeline']);
+    expect(navFor('ta').map((n) => n.href)).not.toContain('/prospects');
   });
 });
 

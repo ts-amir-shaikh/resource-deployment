@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS opportunities (
   lead_owner_user_id INTEGER,
   sales_owner_user_id INTEGER,
   prospect_id INTEGER REFERENCES prospects(id),
+  lead_id INTEGER REFERENCES leads(id),
   next_step TEXT,
   next_step_date TEXT,
   closed_reason TEXT,
@@ -261,6 +262,20 @@ CREATE INDEX IF NOT EXISTS assignee_opp_idx ON opportunity_assignees(opportunity
 CREATE INDEX IF NOT EXISTS assignee_user_idx ON opportunity_assignees(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS assignee_uniq ON opportunity_assignees(opportunity_id, user_id);
 
+CREATE TABLE IF NOT EXISTS campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  segment TEXT,
+  channel TEXT NOT NULL DEFAULT 'mixed',
+  start_date TEXT,
+  end_date TEXT,
+  status TEXT NOT NULL DEFAULT 'planned',
+  owner_user_id INTEGER,
+  notes TEXT,
+  created_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS prospects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   company_name TEXT NOT NULL,
@@ -270,9 +285,82 @@ CREATE TABLE IF NOT EXISTS prospects (
   notes TEXT,
   created_by_user_id INTEGER,
   converted_client_id INTEGER REFERENCES clients(id),
+  stage TEXT NOT NULL DEFAULT 'new',
+  temperature TEXT NOT NULL DEFAULT 'cold',
+  owner_user_id INTEGER,
+  source TEXT,
+  campaign_id INTEGER REFERENCES campaigns(id),
+  website TEXT,
+  industry TEXT,
+  location TEXT,
+  dead_reason TEXT,
+  updated_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS prospect_name_idx ON prospects(company_name);
+CREATE INDEX IF NOT EXISTS prospect_owner_idx ON prospects(owner_user_id);
+CREATE INDEX IF NOT EXISTS prospect_campaign_idx ON prospects(campaign_id);
+
+CREATE TABLE IF NOT EXISTS prospect_contacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  prospect_id INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  designation TEXT,
+  email TEXT,
+  mobile TEXT,
+  linkedin TEXT,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS pcontact_prospect_idx ON prospect_contacts(prospect_id);
+
+CREATE TABLE IF NOT EXISTS leads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  prospect_id INTEGER REFERENCES prospects(id),
+  client_id INTEGER REFERENCES clients(id),
+  company_name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT,
+  temperature TEXT NOT NULL DEFAULT 'warm',
+  bant_budget INTEGER NOT NULL DEFAULT 0,
+  bant_authority INTEGER NOT NULL DEFAULT 0,
+  bant_need INTEGER NOT NULL DEFAULT 0,
+  bant_timeline INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'open',
+  lead_owner_user_id INTEGER,
+  sales_owner_user_id INTEGER,
+  suggested_sales_user_id INTEGER,
+  handed_off_at TEXT,
+  closed_reason TEXT,
+  created_by_user_id INTEGER,
+  updated_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS lead_prospect_idx ON leads(prospect_id);
+CREATE INDEX IF NOT EXISTS lead_status_idx ON leads(status);
+CREATE INDEX IF NOT EXISTS lead_lead_owner_idx ON leads(lead_owner_user_id);
+CREATE INDEX IF NOT EXISTS lead_sales_owner_idx ON leads(sales_owner_user_id);
+
+CREATE TABLE IF NOT EXISTS activities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  prospect_id INTEGER REFERENCES prospects(id),
+  lead_id INTEGER REFERENCES leads(id),
+  campaign_id INTEGER REFERENCES campaigns(id),
+  contact_id INTEGER REFERENCES prospect_contacts(id) ON DELETE SET NULL,
+  type TEXT NOT NULL,
+  activity_date TEXT NOT NULL,
+  outcome TEXT,
+  notes TEXT,
+  next_follow_up TEXT,
+  attendees TEXT,
+  next_step TEXT,
+  by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS activity_prospect_idx ON activities(prospect_id);
+CREATE INDEX IF NOT EXISTS activity_lead_idx ON activities(lead_id);
+CREATE INDEX IF NOT EXISTS activity_campaign_idx ON activities(campaign_id);
+CREATE INDEX IF NOT EXISTS activity_follow_up_idx ON activities(next_follow_up);
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

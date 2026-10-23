@@ -7,8 +7,8 @@ The companies Techstalwarts bills: their contacts, and a single view of everythi
 | Field | Value |
 |---|---|
 | Module code | CLI |
-| Module version | v1.3 |
-| Doc revision | Rev 1.0 |
+| Module version | v1.4 (v1.3 is live until M66 is released) |
+| Doc revision | Rev 1.1 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Clients |
@@ -38,6 +38,7 @@ Admin and Sales can also create a client from the pipeline by onboarding a prosp
 | FR-CLI-004 | A client cannot be deleted while it has projects, or requirements in the pipeline. | v1.0 | `Live` |
 | FR-CLI-005 | Clients are also created from the pipeline, by **Onboard as client** or **Convert to Project** on a prospect's requirement. Onboarding reuses an existing client of the same name. | v1.3 | `Live` |
 | FR-CLI-006 | Clients can be bulk-loaded from CSV by an operator. | v1.1 | `Live` |
+| FR-CLI-007 | **Duplicate warning (M66, G-LED-06).** Adding a client whose name matches an existing client or prospect, ignoring case, punctuation and legal suffixes, shows the matches with links; Admin may add it anyway. The CSV importer is not affected. | v1.4 | `Built` |
 
 ## 5. Data
 
@@ -68,14 +69,14 @@ Admin and Sales can also create a client from the pipeline by onboarding a prosp
 | ID | Item | Source | Priority | Status |
 |---|---|---|---|---|
 | FS-CLI-01 | Billing details — GSTIN, billing address, payment terms and a default due period. These are needed before invoices can be produced as documents from the system. | This review | High | `Proposed` |
-| FS-CLI-02 | Warn about duplicate names — Adding a client does not check for an existing one with the same name. | This review | Medium | `Proposed` |
+| FS-CLI-02 | Warn about duplicate names — Adding a client does not check for an existing one with the same name. | This review | Medium | `Built` as FR-CLI-007 (M66) |
 | FS-CLI-03 | Show pipeline requirements on the client page — The page shows delivery and billing, but not the open requirements for the same client. | This review | Medium | `Proposed` |
 | FS-CLI-04 | Default contract terms per client — Working days per month and leave policy from the SOW, used to pre-fill invoice lines (FSD-12). | This review | Later | `Proposed` |
-| FS-CLI-05 | A prospects list — Prospects are only visible through the pipeline's company picker. A list would let Lead Generation and Admin review them and tidy them up. | This review | Low | `Proposed` |
+| FS-CLI-05 | A prospects list — Prospects are only visible through the pipeline's company picker. A list would let Lead Generation and Admin review them and tidy them up. | This review | Low | `Built` in FSD-15 (M66) |
 
 ## 9. Known limitations
 
-- **Duplicate names are possible** when a client is added by hand (FS-CLI-02).
+- **Duplicate names are possible** when a client is added by hand, but warned about first (FR-CLI-007).
 - **Outstanding covers raised and pending invoices**, per currency, with no conversion between currencies.
 
 ## Revision history
@@ -83,3 +84,4 @@ Admin and Sales can also create a client from the pipeline by onboarding a prosp
 | Rev | Date | Module ver. | Change |
 |---|---|---|---|
 | 1.0 | 27 Sep 2026 | v1.3 | First issue, written against commit `5e43f82`. |
+| 1.1 | 22 Oct 2026 | v1.4 (built) | M66: FR-CLI-007 duplicate warning (FS-CLI-02 built); FS-CLI-05 built in FSD-15. |

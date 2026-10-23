@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { prospects } from '@/lib/schema';
 import { handle, ok, parseBody } from '@/lib/api';
 import { getViewer } from '@/lib/session';
+import { guardCompanyDuplicates } from '@/lib/leadgen';
+import { leadgen } from '@/lib/leadgen-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +17,7 @@ const prospectSchema = z.object({
   contactEmail: optionalStr,
   contactMobile: optionalStr,
   notes: optionalStr,
+  confirmDuplicate: z.coerce.boolean().default(false),
 });
 
 /** Unconverted prospects, newest first — what the company picker offers. */
@@ -38,11 +41,22 @@ export async function POST(req: Request) {
     const viewer = await getViewer();
     const { data, error } = await parseBody(req, prospectSchema);
     if (error) return error;
-    const row = await db
-      .insert(prospects)
-      .values({ ...data, createdByUserId: viewer.uid || null })
-      .returning()
-      .get();
-    return ok(row, 201);
+    const { confirmDuplicate, ...fields } = data;
+    return leadgen(async () => {
+      // M66: the same duplicate warning and owner rule as /api/leadgen/prospects.
+      // The single contact still lands in the old columns here; the M66
+      // screens use prospect_contacts.
+      await guardCompanyDuplicates(fields.companyName, confirmDuplicate);
+      const row = await db
+        .insert(prospects)
+        .values({
+          ...fields,
+          createdByUserId: viewer.uid || null,
+          ownerUserId: viewer.role === 'leadgen' ? viewer.uid || null : null,
+        })
+        .returning()
+        .get();
+      return ok(row, 201);
+    });
   });
 }

@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { clients, projects, deployments } from '@/lib/schema';
 import { clientSchema } from '@/lib/validations';
 import { handle, ok, parseBody } from '@/lib/api';
+import { guardCompanyDuplicates } from '@/lib/leadgen';
+import { leadgen } from '@/lib/leadgen-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +63,14 @@ export async function POST(req: Request) {
   return handle(async () => {
     const { data, error } = await parseBody(req, clientSchema);
     if (error) return error;
-    const row = await db.insert(clients).values(data).returning().get();
-    return ok(row, 201);
+    // M66 (G-LED-06, Q6): warn when the name matches a client or prospect.
+    // The go-ahead travels in the query string, not the body, because
+    // clientSchema is shared with the CSV importer.
+    const confirmed = new URL(req.url).searchParams.get('confirmDuplicate') === '1';
+    return leadgen(async () => {
+      await guardCompanyDuplicates(data.companyName, confirmed);
+      const row = await db.insert(clients).values(data).returning().get();
+      return ok(row, 201);
+    });
   });
 }

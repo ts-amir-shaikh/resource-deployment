@@ -23,12 +23,19 @@ const TA_ONLY: readonly Role[] = ['ta'];
 const BACK_OFFICE: readonly Role[] = ['admin', 'management'];
 /** The fulfilment side — everyone except the two front-of-funnel roles. */
 const FULFILMENT: readonly Role[] = ['admin', 'management', 'ta', 'sales'];
+/** M66: the front of the funnel — prospects, campaigns and leads. */
+const FUNNEL: readonly Role[] = ['admin', 'management', 'leadgen', 'sales'];
 
 export const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', roles: BACK_OFFICE },
   { href: '/my', label: 'My Work', roles: TA_ONLY },
   { href: '/leads', label: 'My Leads', roles: ['leadgen'] },
   { href: '/sales', label: 'My Deals', roles: ['sales'] },
+  // M66 (Q1). /leads stays "My Leads", the requirement board; the lead
+  // records themselves live at /lead-records so the two never collide.
+  { href: '/prospects', label: 'Prospects', roles: FUNNEL },
+  { href: '/campaigns', label: 'Campaigns', roles: FUNNEL },
+  { href: '/lead-records', label: 'Leads', roles: FUNNEL },
   { href: '/pipeline', label: 'Staffing Pipeline', roles: ALL },
   { href: '/candidates', label: 'Candidates', roles: FULFILMENT },
   { href: '/agents', label: 'Agents', roles: FULFILMENT },
@@ -109,6 +116,12 @@ const TA_READ_PREFIXES = [
 const LEADGEN_READ_PREFIXES = [
   '/leads',
   '/pipeline',
+  // M66. Which prospects and leads within these is per row, in
+  // lib/leadgen-ownership.ts.
+  '/prospects',
+  '/campaigns',
+  '/lead-records',
+  '/api/leadgen',
   '/api/opportunities',
   '/api/prospects',
   '/api/clients',
@@ -123,6 +136,11 @@ const LEADGEN_READ_PREFIXES = [
 const SALES_READ_PREFIXES = [
   '/sales',
   '/pipeline',
+  // M66: every prospect and campaign read-only; leads once handed off.
+  '/prospects',
+  '/campaigns',
+  '/lead-records',
+  '/api/leadgen',
   '/candidates',
   '/agents',
   '/api/agents',
@@ -246,6 +264,10 @@ const LEADGEN_WRITE_RULES: WriteRule[] = [
   { test: (p) => /^\/api\/opportunities\/\d+$/.test(p), allow: true },
   { test: (p) => /^\/api\/opportunities\/\d+\/(stage|comments|owners)$/.test(p), allow: true },
   { test: (p) => p.startsWith('/api/prospects'), allow: true },
+  // M66. Assigning a lead's salesperson is a Sales head's call (Q2), never
+  // Leadgen's — they may only suggest one at handoff.
+  { test: (p) => /^\/api\/leadgen\/leads\/\d+\/assign$/.test(p), allow: false },
+  { test: (p) => p.startsWith('/api/leadgen/'), allow: true },
 ];
 
 /**
@@ -263,6 +285,11 @@ const SALES_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/interviews'), allow: true },
   { test: (p) => p.startsWith('/api/applications'), allow: true },
   { test: (p) => p.startsWith('/api/agents'), allow: true },
+  // M66: working a handed-off lead — editing it, assigning it (a head; the
+  // row check decides) and logging activity on it. Not prospects, campaigns,
+  // conversion or handoff: those are Leadgen's side of the line.
+  { test: (p) => /^\/api\/leadgen\/leads\/\d+(\/assign)?$/.test(p), allow: true },
+  { test: (p) => p === '/api/leadgen/activities', allow: true },
 ];
 
 /** Resource writes: entering and submitting their own days. */

@@ -7,8 +7,8 @@ Every client requirement, from the first brief to won or lost. It covers the req
 | Field | Value |
 |---|---|
 | Module code | PIP |
-| Module version | v4.0 |
-| Doc revision | Rev 1.0 |
+| Module version | v4.1 (v4.0 is live until M66 is released) |
+| Doc revision | Rev 1.1 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Staffing Pipeline |
@@ -99,6 +99,8 @@ TA sees the **hiring budget** (what can be offered to a candidate) in place of t
 | FR-PIP-030 | **Onboard as client** turns a prospect into a client. It reuses a client with the same name if one exists, marks the prospect converted, and moves every requirement for that prospect onto the client. | v3.0 | `Live` |
 | FR-PIP-031 | **Convert to Project** on a Won requirement creates the project with its manager's details, creating the client first if the company is still a prospect. It can also open deployments for candidates marked Joined. BR-PIP-07 has the rules. | v1.0 | `Live` |
 | FR-PIP-032 | Once converted, the requirement links to its project, cannot change stage, and cannot be converted again. | v1.0 | `Live` |
+| FR-PIP-033 | **Raised from a lead (M66, D4).** A requirement may be raised from a lead held by Sales (FSD-15 FR-LED-010). It takes the lead's company and its lead and sales owners whatever the form sends, records the lead, and its first stage-history note says which lead it came from. Requirements created directly carry no lead, as before. | v4.1 | `Built` |
+| FR-PIP-034 | A new company typed on the requirement form by a Lead Generation member becomes a prospect they own, so it appears in their Prospects list. | v4.1 | `Built` |
 
 ## 4. Business rules
 
@@ -221,3 +223,4 @@ Editing a requirement records when the JD text last changed, and only when the t
 | Rev | Date | Module ver. | Change |
 |---|---|---|---|
 | 1.0 | 27 Sep 2026 | v4.0 | First issue, written against commit `5e43f82`. |
+| 1.1 | 22 Oct 2026 | v4.1 (built) | M66: FR-PIP-033 lead link and FR-PIP-034 prospect owner. |

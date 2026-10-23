@@ -8,6 +8,8 @@ export type ApiError = {
   /** Set by the agreement-correction route when invoices already exist. */
   requiresAcknowledgement?: boolean;
   invoiceCount?: number;
+  /** M66: a 409 from a company create — near-identical names already on file. */
+  duplicates?: unknown[];
 };
 
 /** Throws ApiError on non-2xx so callers can render field-level messages. */
@@ -44,6 +46,7 @@ export async function api<T = unknown>(
       headroom: payload?.headroom,
       requiresAcknowledgement: payload?.requiresAcknowledgement,
       invoiceCount: payload?.invoiceCount,
+      duplicates: payload?.duplicates,
       status: res.status,
     };
     throw err;

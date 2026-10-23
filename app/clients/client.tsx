@@ -17,6 +17,7 @@ import {
   Pagination,
 } from '@/components/ui';
 import { ExportButton, TickAllHeader, TickCell, useTicks } from '@/components/export-dialog';
+import { DuplicateWarning, duplicatesOf, type DuplicateHit } from '@/components/leadgen-ui';
 import { clientsList, type ClientFilters } from '@/lib/lists/clients';
 import type { ClientRow } from '@/lib/lists/load/clients';
 
@@ -56,6 +57,7 @@ export default function ClientsClient({
   const [tab, setTab] = useState<Tab>('spoc');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
+  const [duplicates, setDuplicates] = useState<DuplicateHit[]>([]);
   const [saving, setSaving] = useState(false);
 
   const filters: ClientFilters = useMemo(
@@ -78,6 +80,7 @@ export default function ClientsClient({
     setTab('spoc');
     setErrors({});
     setBanner(null);
+    setDuplicates([]);
     setOpen(true);
   }
 
@@ -100,18 +103,20 @@ export default function ClientsClient({
     setTab('spoc');
     setErrors({});
     setBanner(null);
+    setDuplicates([]);
     setOpen(true);
   }
 
-  async function save() {
+  async function save(confirmDuplicate = false) {
     setSaving(true);
     setErrors({});
     setBanner(null);
+    setDuplicates([]);
     try {
       if (editing) {
         await api(`/api/clients/${editing.id}`, { method: 'PUT', json: form });
       } else {
-        await api('/api/clients', { method: 'POST', json: form });
+        await api(`/api/clients${confirmDuplicate ? '?confirmDuplicate=1' : ''}`, { method: 'POST', json: form });
       }
       setOpen(false);
       router.refresh();
@@ -124,7 +129,10 @@ export default function ClientsClient({
         else if (k.startsWith('altSpoc')) setTab('alt');
         else setTab('spoc');
       }
-      setBanner(errorMessage(e));
+      // M66 (Q6): a near-identical name is a warning the user can override.
+      const hits = duplicatesOf(e);
+      if (hits.length) setDuplicates(hits);
+      else setBanner(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -335,6 +343,11 @@ export default function ClientsClient({
             {banner}
           </div>
         )}
+        {duplicates.length > 0 && (
+          <div className="mb-4">
+            <DuplicateWarning hits={duplicates} onConfirm={() => save(true)} confirmLabel="Add client anyway" />
+          </div>
+        )}
 
         <Field label="Company Name" required error={errors.companyName}>
           <input
@@ -472,7 +485,7 @@ export default function ClientsClient({
           <button className="btn-ghost" onClick={() => setOpen(false)}>
             Cancel
           </button>
-          <button className="btn-primary" onClick={save} disabled={saving}>
+          <button className="btn-primary" onClick={() => save()} disabled={saving}>
             {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Client'}
           </button>
         </div>

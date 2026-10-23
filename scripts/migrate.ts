@@ -393,6 +393,65 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'leave_from_timesheet',
     ddl: 'ALTER TABLE invoice_resources ADD COLUMN leave_from_timesheet INTEGER NOT NULL DEFAULT 0',
   },
+  // M66 — the leadgen pipeline extends the existing prospects table (R6)
+  // rather than starting a second one. Every existing prospect starts at
+  // stage 'new', cold. No REFERENCES on campaign_id / lead_id for the same
+  // reason as prospect_id above: the target table may not exist yet here.
+  {
+    table: 'prospects',
+    column: 'stage',
+    ddl: "ALTER TABLE prospects ADD COLUMN stage TEXT NOT NULL DEFAULT 'new'",
+  },
+  {
+    table: 'prospects',
+    column: 'temperature',
+    ddl: "ALTER TABLE prospects ADD COLUMN temperature TEXT NOT NULL DEFAULT 'cold'",
+  },
+  {
+    table: 'prospects',
+    column: 'owner_user_id',
+    ddl: 'ALTER TABLE prospects ADD COLUMN owner_user_id INTEGER',
+  },
+  {
+    table: 'prospects',
+    column: 'source',
+    ddl: 'ALTER TABLE prospects ADD COLUMN source TEXT',
+  },
+  {
+    table: 'prospects',
+    column: 'campaign_id',
+    ddl: 'ALTER TABLE prospects ADD COLUMN campaign_id INTEGER',
+  },
+  {
+    table: 'prospects',
+    column: 'website',
+    ddl: 'ALTER TABLE prospects ADD COLUMN website TEXT',
+  },
+  {
+    table: 'prospects',
+    column: 'industry',
+    ddl: 'ALTER TABLE prospects ADD COLUMN industry TEXT',
+  },
+  {
+    table: 'prospects',
+    column: 'location',
+    ddl: 'ALTER TABLE prospects ADD COLUMN location TEXT',
+  },
+  {
+    table: 'prospects',
+    column: 'dead_reason',
+    ddl: 'ALTER TABLE prospects ADD COLUMN dead_reason TEXT',
+  },
+  {
+    table: 'prospects',
+    column: 'updated_at',
+    ddl: 'ALTER TABLE prospects ADD COLUMN updated_at TEXT',
+  },
+  {
+    table: 'opportunities',
+    column: 'lead_id',
+    ddl: 'ALTER TABLE opportunities ADD COLUMN lead_id INTEGER',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {
@@ -520,6 +579,31 @@ async function main() {
     });
   }
   if (orphanNames.length > 0) console.log(`  linked ${orphanNames.length} prospect(s) from typed company names`);
+
+  // M66 (KTD1) — a prospect's owner is the Leadgen member who added it, and
+  // its single contact becomes the first row in prospect_contacts. Both are
+  // guarded on updated_at being null: every M66 edit stamps it, so a re-run
+  // never overrides an owner someone cleared or revives a contact someone
+  // deleted. The old contact columns stay and are no longer written.
+  const { rowsAffected: owned } = await client.execute(`
+    update prospects set owner_user_id = created_by_user_id
+     where owner_user_id is null and updated_at is null
+       and created_by_user_id in (select id from users where role = 'leadgen')
+  `);
+  if (owned > 0) console.log(`  set the owner on ${owned} prospect(s) from who added them`);
+  const { rowsAffected: contacts } = await client.execute(`
+    insert into prospect_contacts (prospect_id, name, email, mobile, is_primary)
+    select p.id,
+           coalesce(nullif(trim(p.contact_name), ''), nullif(trim(p.contact_email), ''), trim(p.contact_mobile)),
+           nullif(trim(p.contact_email), ''),
+           nullif(trim(p.contact_mobile), ''),
+           1
+      from prospects p
+     where p.updated_at is null
+       and coalesce(nullif(trim(p.contact_name), ''), nullif(trim(p.contact_email), ''), nullif(trim(p.contact_mobile), '')) is not null
+       and not exists (select 1 from prospect_contacts c where c.prospect_id = p.id)
+  `);
+  if (contacts > 0) console.log(`  copied ${contacts} prospect contact(s) into prospect_contacts`);
 
   // M59 lift. Leave recorded before the split reduced the invoice, so it was
   // unpaid leave under the new meaning. Idempotent: only rows that still carry

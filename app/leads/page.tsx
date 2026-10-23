@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { getViewer } from '@/lib/session';
 import { getOwnerBoard, getOwnerTeamBoard, getTeamOptions } from '@/lib/queries';
 import OwnerBoard from '@/components/owner-board';
+import { FollowUpsPanel } from '@/components/leadgen-ui';
+import { followUpsDue } from '@/lib/leadgen';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +29,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: { memb
   // A member's own board; a head's whole-team view when nobody is selected.
   const board = await getOwnerBoard('lead', viewing ? viewing.id : isHead ? null : viewer.uid || -1);
   const team = isHead && !viewing ? await getOwnerTeamBoard('lead') : null;
+  // M66 (R2): follow-ups across the prospects and leads this viewer can see.
+  const followUps = await followUpsDue(viewer);
 
   return (
     <OwnerBoard
@@ -37,6 +41,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: { memb
       viewerName={viewer.name}
       members={team ? team.team : members}
       isHead={isHead}
+      panel={<FollowUpsPanel items={followUps} />}
     />
   );
 }

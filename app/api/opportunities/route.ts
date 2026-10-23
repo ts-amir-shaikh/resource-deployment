@@ -8,9 +8,11 @@ import {
 } from '@/lib/schema';
 import { opportunitySchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
-import { requireSession, getViewer } from '@/lib/session';
+import { getViewer } from '@/lib/session';
 import { visibleOpportunityIds } from '@/lib/ownership';
 import { resolveCompany } from '@/lib/prospects';
+import { leadForRequirement, markRequirementRaised } from '@/lib/leadgen';
+import { leadgen } from '@/lib/leadgen-api';
 import { stripClientBudgetAll } from '@/lib/access';
 import { getOpportunityCandidateCounts, newShareToken } from '@/lib/queries';
 import { isFollowUpDue } from '@/lib/utils';
@@ -112,66 +114,81 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   return handle(async () => {
-    const session = await requireSession();
+    const viewer = await getViewer();
     const { data, error } = await parseBody(req, opportunitySchema);
     if (error) return error;
 
-    const created = await db.transaction(async (tx) => {
-      const company = await resolveCompany(tx, data, session.uid || null);
-      const row = await tx
-        .insert(opportunities)
-        .values({
-          clientId: company.clientId,
-          prospectId: company.prospectId,
-          companyName: company.companyName,
-          // A leadgen person owns what they bring in, from the moment it
-          // exists. Everyone else's requirements start unowned and are
-          // assigned from the detail page.
-          leadOwnerUserId: session.role === 'leadgen' ? session.uid || null : null,
-          title: data.title,
-          experienceMin: data.experienceMin,
-          experienceMax: data.experienceMax,
-          primarySkill: data.primarySkill,
-          secondarySkill: data.secondarySkill,
-          otherSkills: JSON.stringify(data.otherSkills ?? []),
-          workMode: data.workMode,
-          location: data.location,
-          timezone: data.timezone,
-          engagementType: data.engagementType,
-          requiredCount: data.requiredCount,
-          currency: data.currency,
-          budgetMin: data.budgetMin,
-          budgetMax: data.budgetMax,
-          dealValue: data.dealValue,
-          hiringBudgetMin: data.hiringBudgetMin,
-          hiringBudgetMax: data.hiringBudgetMax,
-          jdContent: data.jdContent,
-          publicCompanyLabel: data.publicCompanyLabel,
-          showClientName: data.showClientName,
-          workingDays: data.workingDays,
-          workingHours: data.workingHours,
-          stage: 'requirement',
-          priority: data.priority,
-          nextStep: data.nextStep,
-          nextStepDate: data.nextStepDate,
-          shareToken: newShareToken(),
-        })
-        .returning()
-        .get();
+    return leadgen(async () => {
+      // M66 (R5): raised from a lead, the requirement takes the lead's
+      // company and both its owners, whatever the form sent for them. Checked
+      // before the transaction: the access check reads the team lists.
+      const lead = data.leadId ? await leadForRequirement(db, viewer, data.leadId) : null;
+      const created = await db.transaction(async (tx) => {
+        const company = await resolveCompany(
+          tx,
+          lead
+            ? { clientId: lead.clientId ?? undefined, prospectId: lead.prospectId ?? undefined, companyName: lead.companyName }
+            : data,
+          { uid: viewer.uid || null, role: viewer.role },
+        );
+        const row = await tx
+          .insert(opportunities)
+          .values({
+            clientId: company.clientId,
+            prospectId: company.prospectId,
+            companyName: company.companyName,
+            leadId: lead?.id ?? null,
+            // A leadgen person owns what they bring in, from the moment it
+            // exists. Everyone else's requirements start unowned and are
+            // assigned from the detail page — unless a lead already says who.
+            leadOwnerUserId: lead ? lead.leadOwnerUserId : viewer.role === 'leadgen' ? viewer.uid || null : null,
+            salesOwnerUserId: lead ? lead.salesOwnerUserId : null,
+            title: data.title,
+            experienceMin: data.experienceMin,
+            experienceMax: data.experienceMax,
+            primarySkill: data.primarySkill,
+            secondarySkill: data.secondarySkill,
+            otherSkills: JSON.stringify(data.otherSkills ?? []),
+            workMode: data.workMode,
+            location: data.location,
+            timezone: data.timezone,
+            engagementType: data.engagementType,
+            requiredCount: data.requiredCount,
+            currency: data.currency,
+            budgetMin: data.budgetMin,
+            budgetMax: data.budgetMax,
+            dealValue: data.dealValue,
+            hiringBudgetMin: data.hiringBudgetMin,
+            hiringBudgetMax: data.hiringBudgetMax,
+            jdContent: data.jdContent,
+            publicCompanyLabel: data.publicCompanyLabel,
+            showClientName: data.showClientName,
+            workingDays: data.workingDays,
+            workingHours: data.workingHours,
+            stage: 'requirement',
+            priority: data.priority,
+            nextStep: data.nextStep,
+            nextStepDate: data.nextStepDate,
+            shareToken: newShareToken(),
+          })
+          .returning()
+          .get();
 
-      await tx.insert(opportunityStageHistory)
-        .values({
-          opportunityId: row.id,
-          fromStage: null,
-          toStage: 'requirement',
-          note: 'Opportunity created',
-          userId: session.uid || null,
-        })
-        .run();
+        await tx.insert(opportunityStageHistory)
+          .values({
+            opportunityId: row.id,
+            fromStage: null,
+            toStage: 'requirement',
+            note: lead ? `Raised from lead #${lead.id}` : 'Opportunity created',
+            userId: viewer.uid || null,
+          })
+          .run();
 
-      return row;
+        if (lead) await markRequirementRaised(tx, lead.id);
+        return row;
+      });
+
+      return ok(created, 201);
     });
-
-    return ok(created, 201);
   });
 }

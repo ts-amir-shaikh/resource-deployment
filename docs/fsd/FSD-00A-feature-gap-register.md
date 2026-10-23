@@ -100,19 +100,19 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-PLT-13 | Activity timeline on each record (client, requirement, candidate, resource) | Scattered across tables | `Good to have` | This review |
 | G-PLT-14 | Bulk import from the app instead of the command line | CSV import tool for operators | `Good to have` | This review |
 | **Lead generation · Leadgen** | | | | |
-| G-LED-01 | Prospect list and page: status, owner, several contacts, source, notes. Create one without a requirement | Prospect only created from the requirement form | `Must` | FS-CLI-05 · FSD-15 |
-| G-LED-02 | Outreach log: call, email, LinkedIn, event, with outcome and next follow-up date | None | `Must` | FSD-14 |
-| G-LED-03 | Campaign record: name, segment, channel, dates, with outreach and prospects linked to it | None | `Must` | FSD-14 |
-| G-LED-04 | Meetings: date, attendees, notes, outcome, next step, on a prospect or lead | None | `Must` | FSD-15 |
-| G-LED-05 | Convert prospect → lead, then lead → one or more requirements | Requirement stands in for a lead | `Must` | D4 · FSD-15 |
-| G-LED-06 | Duplicate check on prospect and client names | None | `Must` | FS-CLI-02 |
-| G-LED-07 | Campaign results: reached, responded, meetings, leads, conversion | None | `Good to have` | FSD-14 |
+| G-LED-01 | Prospect list and page: status, owner, several contacts, source, notes. Create one without a requirement | **Built** (FR-LED-001 to 004), awaiting release | `Must` | FS-CLI-05 · FSD-15 |
+| G-LED-02 | Outreach log: call, email, LinkedIn, event, with outcome and next follow-up date | **Built** (FR-CMP-003 to 005), awaiting release | `Must` | FSD-14 |
+| G-LED-03 | Campaign record: name, segment, channel, dates, with outreach and prospects linked to it | **Built** (FR-CMP-001, 002), awaiting release | `Must` | FSD-14 |
+| G-LED-04 | Meetings: date, attendees, notes, outcome, next step, on a prospect or lead | **Built** (FR-LED-005) — a meeting is an activity. Awaiting release | `Must` | FSD-15 |
+| G-LED-05 | Convert prospect → lead, then lead → one or more requirements | **Built** (FR-LED-006, 009, 010) with temperature per D12. Awaiting release | `Must` | D4 · FSD-15 |
+| G-LED-06 | Duplicate check on prospect and client names | **Built** (FR-LED-012): a warning on prospect and client names. Awaiting release | `Must` | FS-CLI-02 |
+| G-LED-07 | Campaign results: reached, responded, meetings, leads, conversion | **Built** (FR-CMP-006), awaiting release | `Good to have` | FSD-14 |
 | G-LED-08 | Import target lists from CSV | None | `Good to have` | This review |
 | G-LED-09 | Email sequences and calendar sync for meetings | None | `Good to have` | This review |
 | **Inside sales / Sales · Sales** | | | | |
 | G-SAL-01 | Client account view for Sales: contacts, projects, people deployed, billing, all costs hidden | Clients is Admin-only | `Must` | D8 · FS-CLI-03 |
-| G-SAL-02 | Leads raised from existing clients (account growth) | New requirements only | `Must` | D4 |
-| G-SAL-03 | Qualification checklist before a requirement moves on | Stage with no criteria | `Must` | FSD-00 §3 |
+| G-SAL-02 | Leads raised from existing clients (account growth) | **Part built** (FR-LED-007): a lead can be raised on an existing client; no account view yet | `Must` | D4 |
+| G-SAL-03 | Qualification checklist before a requirement moves on | **Part built** (FR-LED-008): BANT ticks on the lead, gating nothing | `Must` | FSD-00 §3 |
 | G-SAL-04 | Link the Agreement stage to an agreement record, and hand it to Accounts | Unlinked | `Must` | FSD-00 §3 |
 | G-SAL-05 | Forecast by month from weighted pipeline and expected start dates | Snapshot only | `Good to have` | This review |
 | G-SAL-06 | Won and lost reason analysis per period | Free-text reasons | `Good to have` | FS-PIP-06 |
@@ -213,3 +213,4 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | 1.5 | 21 Oct 2026 | **D9–D16 settled** (FSD-00 Rev 1.2), scoping M62–M67. **G-TLY-08 superseded** and **G-TLY-09 promoted to Must** — outbound Tally writes are in scope behind an approval gate, with no delete capability in the bridge. Three gaps added: **G-TLY-18** expense ledgers (D16), **G-ACC-10** proforma as a pre-invoice state (D15), **G-RM-09** client feedback login, deferred (D13). G-RES-02 and 04 are re-scoped for hours and tasks (D9–D11), and G-LED-01 and 05 for a lead temperature separate from stage (D12). The stale header figure of 61 Must is corrected. **57 Must and 35 Good to have remain.** |
 | 1.4 | 20 Oct 2026 | Accounts & sign-in **released** to production (M60), together with CSV export (M61). G-PLT-02, 03, 04, 11 close and G-PLT-06 closes for password links; G-PLT-01 and 07 stay part built. G-MGT-01 is partly met — the export half shipped, the fixed reports did not. **55 Must and 35 Good to have remain.** |
 | 1.6 | 21 Oct 2026 | **M65 Timesheets built** on `feat/m65-timesheets` (FSD-18 Rev 1.0): G-RES-01 to 04 and G-RM-01 marked Built, awaiting release. Counts are unchanged until the release, as for M60 in Rev 1.4. |
+| 1.7 | 22 Oct 2026 | **M66 Leadgen pipeline built** on `feat/m66-leadgen` (FSD-14 and FSD-15 Rev 1.0): G-LED-01 to 07 marked Built; G-SAL-02 and 03 part built (Q5). Counts are unchanged until the release. |

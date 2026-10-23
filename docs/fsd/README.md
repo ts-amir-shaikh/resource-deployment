@@ -25,21 +25,21 @@ Documents are issued in order. FSD-00 checks the whole set against the platform 
 |---|---|---|---|---|---|---|
 | FSD-00 | [Platform Vision & Coverage](FSD-00-platform-vision-coverage.md) | VIS | — | Rev 1.1 | `Issued` | — |
 | FSD-00A | [Feature Gap Register](FSD-00A-feature-gap-register.md) | GAP | — | Rev 1.3 | `Issued` | — |
-| FSD-01 | [Platform, Roles & Access](FSD-01-platform-roles-access.md) | PLT | v4.0 (built; v3.1 live) | Rev 2.0 | `Issued` | M0 · M10 · M21 · M37 · M41 · M47 · M49 · Accounts & sign-in |
-| FSD-02 | [Staffing Pipeline](FSD-02-staffing-pipeline.md) | PIP | v4.0 | Rev 1.0 | `Issued` | M8 M12 M13 M17 M18 M42 M46 M48 M52–M56 |
+| FSD-01 | [Platform, Roles & Access](FSD-01-platform-roles-access.md) | PLT | v4.2 (built; v3.1 live) | Rev 2.2 | `Issued` | M0 · M10 · M21 · M37 · M41 · M47 · M49 · Accounts & sign-in |
+| FSD-02 | [Staffing Pipeline](FSD-02-staffing-pipeline.md) | PIP | v4.1 (built; v4.0 live) | Rev 1.1 | `Issued` | M8 M12 M13 M17 M18 M42 M46 M48 M52–M56 M66 |
 | FSD-03 | [Candidates & Interviews](FSD-03-candidates-interviews.md) | CAN | v3.1 | Rev 1.0 | `Issued` | M9 M22 M26–M29 M32–M36 |
 | FSD-04 | [Job Board & Referrals](FSD-04-job-board-referrals.md) | JOB | v3.0 | Rev 1.0 | `Issued` | M13 M16 M23 M24 |
-| FSD-05 | [Role Workspaces](FSD-05-role-workspaces.md) | WRK | v2.1 | Rev 1.0 | `Issued` | M25 M27 M30 M38 M43–M45 |
+| FSD-05 | [Role Workspaces](FSD-05-role-workspaces.md) | WRK | v2.2 (built; v2.1 live) | Rev 1.1 | `Issued` | M25 M27 M30 M38 M43–M45 M66 |
 | FSD-06 | [AI Agents](FSD-06-ai-agents.md) | AGT | v3.1 | Rev 1.0 | `Issued` | M19 M20 M28 |
 | FSD-07 | [Resources](FSD-07-resources.md) | RES | v1.3 | Rev 1.0 | `Issued` | M1 M15 M39 |
-| FSD-08 | [Clients](FSD-08-clients.md) | CLI | v1.3 | Rev 1.0 | `Issued` | M2 M14 M15 M46 |
+| FSD-08 | [Clients](FSD-08-clients.md) | CLI | v1.4 (built; v1.3 live) | Rev 1.1 | `Issued` | M2 M14 M15 M46 M66 |
 | FSD-09 | [Projects](FSD-09-projects.md) | PRJ | v1.4 (built; v1.3 live) | Rev 1.1 | `Issued` | M3 M14 M15 M47 M65 |
 | FSD-10 | [Deployments](FSD-10-deployments.md) | DEP | v2.3 (built; v2.2 live) | Rev 1.1 | `Issued` | M4 M14 M15 M40 M58 M65 |
 | FSD-11 | [Agreements & POs](FSD-11-agreements-pos.md) | AGR | v1.5 | Rev 1.0 | `Issued` | M6 M11 M14 M15 |
 | FSD-12 | [Invoices](FSD-12-invoices.md) | INV | v2.2 (built; v2.1 live) | Rev 1.1 | `Issued` | M7 M14 M15 M57 M59 M65 |
 | FSD-13 | [Dashboard & KPIs](FSD-13-dashboard-kpis.md) | DSH | v2.1 | Rev 1.0 | `Issued` | M5 M18 M30 M40 M55 |
-| FSD-14 | Campaigns & Outreach | CMP | — | — | `Proposed` | see FSD-00 |
-| FSD-15 | Prospects, Meetings & Leads | LED | — | — | `Proposed` | see FSD-00 |
+| FSD-14 | [Campaigns & Outreach](../plans/mxxwork/m66work/FSD-14-campaigns-outreach.md) | CMP | v1.0 (built, not released) | Rev 1.0 | `Built` | M66 |
+| FSD-15 | [Prospects, Meetings & Leads](../plans/mxxwork/m66work/FSD-15-prospects-meetings-leads.md) | LED | v1.0 (built, not released) | Rev 1.0 | `Built` | M66 |
 | FSD-16 | Interviewer Portal | INT | — | — | `Proposed` | M31 · see FSD-00 |
 | FSD-17 | Resource Management | RMG | — | — | `Proposed` | see FSD-00 |
 | FSD-18 | [Timesheets & Self-Service](../plans/mxxwork/m65work/FSD-18-timesheets.md) | TSH | v1.0 (built, not released) | Rev 1.0 | `Built` | M65 |

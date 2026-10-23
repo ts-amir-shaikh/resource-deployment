@@ -8,6 +8,15 @@ import {
   TIMESHEET_VERSIONS,
   isIsoDate,
 } from './timesheet-rules';
+import {
+  ACTIVITY_OUTCOMES,
+  ACTIVITY_TYPES,
+  CAMPAIGN_CHANNELS,
+  CAMPAIGN_STATUSES,
+  PROSPECT_SOURCES,
+  SETTABLE_PROSPECT_STAGES,
+  TEMPERATURES,
+} from './leadgen-rules';
 
 /**
  * A link to a document that lives somewhere else.
@@ -440,6 +449,14 @@ export const opportunitySchema = z
     priority: z.enum(['low', 'medium', 'high']).default('medium'),
     nextStep: optionalStr,
     nextStepDate: optionalDate,
+    /**
+     * M66: raised from a lead (D4). The route checks the lead is one this
+     * person may raise from, and takes the company and owners from it.
+     */
+    leadId: z
+      .union([z.literal(''), z.null(), z.coerce.number().int().positive()])
+      .optional()
+      .transform((v) => (v === '' || v == null ? undefined : Number(v))),
   })
   .refine(
     (d) =>
@@ -862,4 +879,143 @@ export const holidaySchema = z.object({
     .union([z.literal(''), z.coerce.number().int().positive(), z.null()])
     .optional()
     .transform((v) => (v === '' || v == null ? null : Number(v))),
+});
+
+/* ── M66: Leadgen pipeline ─────────────────────────────────── */
+
+/** '' and null both mean "none"; a number is an id. Literal first — see optionalMoney. */
+const optionalId = z
+  .union([z.literal(''), z.null(), z.coerce.number().int().positive()])
+  .optional()
+  .transform((v) => (v === '' || v == null ? null : Number(v)));
+
+/**
+ * An owner: absent means "leave it as it is", '' or null means "nobody". The
+ * difference matters on edit, where a member's form has no owner field and
+ * must not read as clearing the owner.
+ */
+const ownerId = z
+  .union([z.literal(''), z.null(), z.coerce.number().int().positive()])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === '' || v === null ? null : Number(v)));
+
+const optionalEnum = <T extends readonly [string, ...string[]]>(values: T) =>
+  z
+    .union([z.literal(''), z.null(), z.enum(values)])
+    .optional()
+    .transform((v) => (v === '' || v == null ? null : v));
+
+const flag = z.coerce.boolean().default(false);
+
+export const prospectContactSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(120),
+  designation: optionalStr,
+  email: optionalEmail,
+  mobile: optionalStr,
+  linkedin: optionalUrl,
+  isPrimary: flag,
+});
+
+/**
+ * One schema for create and edit. Whether the owner may be changed is a
+ * row-level question the route answers (only a head or Admin reassigns);
+ * whether the stage move is allowed is lib/leadgen-rules.ts.
+ */
+export const prospectSchema = z
+  .object({
+    companyName: z.string().trim().min(1, 'Company name is required').max(200),
+    stage: z.enum(SETTABLE_PROSPECT_STAGES).default('new'),
+    temperature: z.enum(TEMPERATURES).default('cold'),
+    ownerUserId: ownerId,
+    source: optionalEnum(PROSPECT_SOURCES),
+    campaignId: optionalId,
+    website: optionalUrl,
+    industry: optionalStr,
+    location: optionalStr,
+    notes: optionalStr,
+    deadReason: optionalStr,
+    /** Create only: the first contacts, entered on the same form. */
+    contacts: z.array(prospectContactSchema).max(20).default([]),
+    /** Q6: the user saw the duplicate warning and chose to go ahead. */
+    confirmDuplicate: flag,
+  })
+  .refine((d) => d.stage !== 'dead' || Boolean(d.deadReason), {
+    message: 'Give a reason for marking the prospect dead',
+    path: ['deadReason'],
+  });
+
+export const campaignSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Name the campaign').max(200),
+    segment: optionalStr,
+    channel: z.enum(CAMPAIGN_CHANNELS).default('mixed'),
+    startDate: optionalDate,
+    endDate: optionalDate,
+    status: z.enum(CAMPAIGN_STATUSES).default('planned'),
+    ownerUserId: ownerId,
+    notes: optionalStr,
+  })
+  .refine((d) => !d.startDate || !d.endDate || d.endDate >= d.startDate, {
+    message: 'The campaign ends before it starts',
+    path: ['endDate'],
+  });
+
+/** R2/R4. On a prospect, a lead, or both. */
+export const activitySchema = z
+  .object({
+    prospectId: optionalId,
+    leadId: optionalId,
+    campaignId: optionalId,
+    contactId: optionalId,
+    type: z.enum(ACTIVITY_TYPES),
+    activityDate: dateStr,
+    outcome: optionalEnum(ACTIVITY_OUTCOMES),
+    notes: optionalStr,
+    nextFollowUp: optionalDate,
+    attendees: optionalStr,
+    nextStep: optionalStr,
+    /** R4: the form's "move to Meeting set" tick. */
+    advanceStage: flag,
+  })
+  .refine((d) => d.prospectId !== null || d.leadId !== null, {
+    message: 'An activity belongs to a prospect or a lead',
+    path: ['prospectId'],
+  })
+  .refine((d) => !d.nextFollowUp || d.nextFollowUp >= d.activityDate, {
+    message: 'The follow-up is before the activity',
+    path: ['nextFollowUp'],
+  });
+
+const leadFields = {
+  title: z.string().trim().min(1, 'Say what the need is').max(200),
+  summary: optionalStr,
+  temperature: z.enum(TEMPERATURES).default('warm'),
+  bantBudget: flag,
+  bantAuthority: flag,
+  bantNeed: flag,
+  bantTimeline: flag,
+};
+
+/** D4: converting a qualified prospect. The company and owner come from the prospect. */
+export const leadConvertSchema = z.object(leadFields);
+
+/** Q5: a lead on an existing client — account growth, no prospect. */
+export const leadCreateSchema = z.object({
+  ...leadFields,
+  clientId: z.coerce.number().int().positive('Pick the client'),
+});
+
+export const leadUpdateSchema = z.object({
+  ...leadFields,
+  /** Only the hand moves in leadMoveError; absent leaves the status as it is. */
+  status: z.enum(['open', 'closed_lost']).optional(),
+  closedReason: optionalStr,
+});
+
+export const leadHandoffSchema = z.object({
+  suggestedSalesUserId: optionalId,
+});
+
+export const leadAssignSchema = z.object({
+  salesOwnerUserId: optionalId,
 });

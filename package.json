@@ -13,6 +13,7 @@
     "db:clean": "node --env-file=.env --import tsx scripts/clean.ts",
     "db:user": "node --env-file=.env --import tsx scripts/user.ts",
     "db:seed-timesheets": "node --env-file=.env --import tsx scripts/seed-timesheets.ts",
+    "db:seed-leadgen": "node --env-file=.env --import tsx scripts/seed-leadgen.ts",
     "test": "vitest run"
   },
   "dependencies": {
