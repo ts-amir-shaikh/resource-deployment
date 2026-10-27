@@ -5,11 +5,14 @@ import type { z } from 'zod';
 import { db } from './db';
 import {
   accountReviews,
+  accountReviewVersions,
   clients,
   deployments,
   opportunities,
   performanceReviews,
+  performanceReviewExtraScores,
   performanceReviewScores,
+  performanceReviewVersions,
   projects,
   resources,
   resourceSkills,
@@ -22,7 +25,11 @@ import type { Viewer } from './session';
 import {
   averageScore,
   completion,
+  changeNoteError,
+  diffAccount,
+  diffPerformance,
   dueInPeriod,
+  extraScoresError,
   isReviewEditable,
   normaliseSkillName,
   periodBounds,
@@ -31,9 +38,12 @@ import {
   skillKey,
   submitError,
   type AccountRating,
+  type AccountSnapshot,
   type Completion,
+  type PerformanceSnapshot,
   type ReviewAction,
   type ReviewStatus,
+  type VersionChange,
 } from './review-rules';
 import { periodSummary, type PeriodSummary } from './timesheet-rules';
 import { holidaysBetween } from './timesheets';
@@ -126,8 +136,14 @@ async function averagesFor(reviewIds: number[]): Promise<Map<number, number | nu
     .from(performanceReviewScores)
     .where(inArray(performanceReviewScores.reviewId, reviewIds))
     .all();
-  const byReview = new Map<number, number[]>();
-  for (const r of rows) {
+  // Extra criteria are part of the review's average, so every list, tracker and trend agrees with the detail page.
+  const extras = await db
+    .select({ reviewId: performanceReviewExtraScores.reviewId, score: performanceReviewExtraScores.score })
+    .from(performanceReviewExtraScores)
+    .where(inArray(performanceReviewExtraScores.reviewId, reviewIds))
+    .all();
+  const byReview = new Map<number, (number | null)[]>();
+  for (const r of [...rows, ...extras]) {
     const list = byReview.get(r.reviewId) ?? [];
     list.push(r.score);
     byReview.set(r.reviewId, list);
@@ -290,7 +306,20 @@ export type HistoryRow = {
   status: ReviewStatus;
   average: number | null;
   scores: Record<number, number>;
+  /** How many extra criteria that month's review carried. They are in the average, not in the columns. */
+  extraCount: number;
 };
+
+/** One locked version of a review, newest first in a list. `changes` is against the version before it. */
+export type VersionRow = {
+  version: number;
+  lockedAt: string;
+  lockedByName: string | null;
+  changeNote: string | null;
+  changes: VersionChange[];
+};
+
+export type ExtraScoreRow = { label: string; description: string | null; score: number | null; note: string | null };
 
 export type PerformanceReviewDetail = {
   id: number;
@@ -318,7 +347,16 @@ export type PerformanceReviewDetail = {
   /** Active criteria, plus any retired one this review was scored on. */
   criteria: CriterionRow[];
   scores: { criterionId: number; score: number; note: string | null }[];
+  /** Criteria added to this review alone, in the order they were added. */
+  extraScores: ExtraScoreRow[];
+  /**
+   * What this engagement's previous review carried as extras, unscored, so
+   * "copy last month's" is one click. Offered, never applied by itself.
+   */
+  previousExtras: { label: string; description: string | null }[];
   average: number | null;
+  /** Every time it was locked, newest first, each with what changed since the one before. */
+  versions: VersionRow[];
   timesheet: PeriodSummary;
   /** This resource's last six months of reviews, newest first, across clients. */
   history: HistoryRow[];
@@ -378,12 +416,19 @@ async function resourceHistory(resourceId: number, upTo: string): Promise<Histor
     .from(performanceReviewScores)
     .where(inArray(performanceReviewScores.reviewId, rows.map((r) => r.reviewId)))
     .all();
+  const extraRows = await db
+    .select({ reviewId: performanceReviewExtraScores.reviewId, score: performanceReviewExtraScores.score })
+    .from(performanceReviewExtraScores)
+    .where(inArray(performanceReviewExtraScores.reviewId, rows.map((r) => r.reviewId)))
+    .all();
   return rows.map((r) => {
     const mine = scoreRows.filter((s) => s.reviewId === r.reviewId);
+    const extras = extraRows.filter((x) => x.reviewId === r.reviewId);
     return {
       ...r,
-      average: averageScore(mine.map((s) => s.score)),
+      average: averageScore([...mine.map((s) => s.score), ...extras.map((x) => x.score)]),
       scores: Object.fromEntries(mine.map((s) => [s.criterionId, s.score])),
+      extraCount: extras.length,
     };
   });
 }
@@ -443,12 +488,18 @@ export async function getPerformanceReview(v: Pick<Viewer, 'role'>, id: number):
   const scored = new Set(scores.map((s) => s.criterionId));
   const criteria = (await listCriteria()).filter((c) => c.active || scored.has(c.id));
 
+  const extraScores = await loadExtras(id);
+  const previousExtras = await previousMonthExtras(r.deploymentId, r.period);
+
   const { fullDayHours, clientId, ...rest } = r;
   return {
     ...rest,
     criteria,
     scores,
-    average: averageScore(scores.map((s) => s.score)),
+    extraScores,
+    previousExtras,
+    average: averageScore([...scores.map((s) => s.score), ...extraScores.map((x) => x.score)]),
+    versions: await loadPerformanceVersions(id),
     timesheet: await monthTimesheet(
       { id: r.deploymentId, clientId, startDate: r.startDate, endDate: r.endDate, fullDayHours },
       r.period,
@@ -457,20 +508,48 @@ export async function getPerformanceReview(v: Pick<Viewer, 'role'>, id: number):
   };
 }
 
+async function loadExtras(reviewId: number): Promise<ExtraScoreRow[]> {
+  return db
+    .select({
+      label: performanceReviewExtraScores.label,
+      description: performanceReviewExtraScores.description,
+      score: performanceReviewExtraScores.score,
+      note: performanceReviewExtraScores.note,
+    })
+    .from(performanceReviewExtraScores)
+    .where(eq(performanceReviewExtraScores.reviewId, reviewId))
+    .orderBy(asc(performanceReviewExtraScores.sortOrder), asc(performanceReviewExtraScores.id))
+    .all();
+}
+
+/** The extras on the same deployment's review for the month before, labels only. */
+async function previousMonthExtras(deploymentId: number, period: string) {
+  const prev = await db
+    .select({ id: performanceReviews.id })
+    .from(performanceReviews)
+    .where(and(eq(performanceReviews.deploymentId, deploymentId), eq(performanceReviews.period, shiftPeriod(period, -1))))
+    .get();
+  if (!prev) return [];
+  return (await loadExtras(prev.id)).map((e) => ({ label: e.label, description: e.description }));
+}
+
 async function loadPerformanceStatus(id: number): Promise<ReviewStatus> {
   const row = await db.select({ status: performanceReviews.status }).from(performanceReviews).where(eq(performanceReviews.id, id)).get();
   if (!row) throw notFound('Review');
   return row.status;
 }
 
-/** Saves a draft: its text and every score. Scores not sent are removed. */
+/** Saves a draft: its text, every score and its extra criteria. Whatever is not sent is removed. */
 export async function savePerformanceReview(id: number, data: z.output<typeof performanceReviewSchema>): Promise<void> {
   const status = await loadPerformanceStatus(id);
   if (!isReviewEditable(status)) {
-    throw new ReviewError('This review has been submitted and can no longer be edited.', 409);
+    throw new ReviewError('This review is locked. Ask Admin to reopen it to change it.', 409);
   }
 
-  const known = new Set((await listCriteria()).map((c) => c.id));
+  const standard = await listCriteria();
+  const extraErr = extraScoresError(data.extraScores, standard.map((c) => c.label));
+  if (extraErr) throw new ReviewError(extraErr);
+  const known = new Set(standard.map((c) => c.id));
   const unknown = data.scores.find((s) => !known.has(s.criterionId));
   if (unknown) throw new ReviewError('One of the criteria no longer exists. Reload the page.');
   const seen = new Set<number>();
@@ -501,20 +580,193 @@ export async function savePerformanceReview(id: number, data: z.output<typeof pe
         .values({ reviewId: id, criterionId: s.criterionId, score: s.score, note: s.note })
         .run();
     }
+    // Sent whole, like the scores: what is on screen replaces what was stored.
+    await tx.delete(performanceReviewExtraScores).where(eq(performanceReviewExtraScores.reviewId, id)).run();
+    for (const [i, e] of data.extraScores.entries()) {
+      await tx
+        .insert(performanceReviewExtraScores)
+        .values({ reviewId: id, label: e.label, description: e.description, score: e.score, note: e.note, sortOrder: i })
+        .run();
+    }
   });
 }
 
-/** Submit (Resource Manager), approve or return (Admin — enforced in lib/access.ts). */
+/* ── Versions ──────────────────────────────────────────────── */
+
+function parseSnapshot<S>(raw: string): S | null {
+  try {
+    return JSON.parse(raw) as S;
+  } catch {
+    // A snapshot that cannot be read is skipped in the comparison rather than failing the page.
+    return null;
+  }
+}
+
+/** Newest first, each compared with the version before it. */
+function toVersionRows<S>(
+  rows: { version: number; snapshot: string; lockedAt: string; changeNote: string | null; lockedByName: string | null }[],
+  diff: (a: S, b: S) => VersionChange[],
+): VersionRow[] {
+  const out: VersionRow[] = [];
+  let prev: S | null = null;
+  for (const r of rows) {
+    const snap = parseSnapshot<S>(r.snapshot);
+    out.push({
+      version: r.version,
+      lockedAt: r.lockedAt,
+      lockedByName: r.lockedByName,
+      changeNote: r.changeNote,
+      changes: prev && snap ? diff(prev, snap) : [],
+    });
+    if (snap) prev = snap;
+  }
+  return out.reverse();
+}
+
+async function performanceSnapshot(id: number): Promise<PerformanceSnapshot> {
+  const r = await db
+    .select({
+      summary: performanceReviews.summary,
+      strengths: performanceReviews.strengths,
+      improvements: performanceReviews.improvements,
+      clientFeedback: performanceReviews.clientFeedback,
+      clientFeedbackBy: performanceReviews.clientFeedbackBy,
+      clientFeedbackDate: performanceReviews.clientFeedbackDate,
+    })
+    .from(performanceReviews)
+    .where(eq(performanceReviews.id, id))
+    .get();
+  if (!r) throw notFound('Review');
+  const scores = await db
+    .select({ label: reviewCriteria.label, score: performanceReviewScores.score, note: performanceReviewScores.note })
+    .from(performanceReviewScores)
+    .innerJoin(reviewCriteria, eq(performanceReviewScores.criterionId, reviewCriteria.id))
+    .where(eq(performanceReviewScores.reviewId, id))
+    .orderBy(asc(reviewCriteria.sortOrder), asc(reviewCriteria.id))
+    .all();
+  const extras = (await loadExtras(id)).map((e) => ({ label: e.label, score: e.score, note: e.note }));
+  return { ...r, scores, extras, average: averageScore([...scores.map((x) => x.score), ...extras.map((x) => x.score)]) };
+}
+
+async function accountSnapshot(id: number): Promise<AccountSnapshot> {
+  const r = await db
+    .select({
+      rating: accountReviews.rating,
+      summary: accountReviews.summary,
+      risks: accountReviews.risks,
+      opportunities: accountReviews.opportunities,
+      actions: accountReviews.actions,
+    })
+    .from(accountReviews)
+    .where(eq(accountReviews.id, id))
+    .get();
+  if (!r) throw notFound('Review');
+  return r;
+}
+
+async function loadPerformanceVersions(id: number): Promise<VersionRow[]> {
+  const locker = alias(users, 'locker');
+  const rows = await db
+    .select({
+      version: performanceReviewVersions.version,
+      snapshot: performanceReviewVersions.snapshot,
+      lockedAt: performanceReviewVersions.lockedAt,
+      changeNote: performanceReviewVersions.changeNote,
+      lockedByName: locker.name,
+    })
+    .from(performanceReviewVersions)
+    .leftJoin(locker, eq(performanceReviewVersions.lockedByUserId, locker.id))
+    .where(eq(performanceReviewVersions.reviewId, id))
+    .orderBy(asc(performanceReviewVersions.version))
+    .all();
+  return toVersionRows<PerformanceSnapshot>(rows, diffPerformance);
+}
+
+async function loadAccountVersions(id: number): Promise<VersionRow[]> {
+  const locker = alias(users, 'locker');
+  const rows = await db
+    .select({
+      version: accountReviewVersions.version,
+      snapshot: accountReviewVersions.snapshot,
+      lockedAt: accountReviewVersions.lockedAt,
+      changeNote: accountReviewVersions.changeNote,
+      lockedByName: locker.name,
+    })
+    .from(accountReviewVersions)
+    .leftJoin(locker, eq(accountReviewVersions.lockedByUserId, locker.id))
+    .where(eq(accountReviewVersions.reviewId, id))
+    .orderBy(asc(accountReviewVersions.version))
+    .all();
+  return toVersionRows<AccountSnapshot>(rows, diffAccount);
+}
+
+async function latestPerformanceVersion(id: number): Promise<number> {
+  const r = await db
+    .select({ n: sql<number>`coalesce(max(${performanceReviewVersions.version}), 0)` })
+    .from(performanceReviewVersions)
+    .where(eq(performanceReviewVersions.reviewId, id))
+    .get();
+  return Number(r?.n ?? 0);
+}
+
+async function latestAccountVersion(id: number): Promise<number> {
+  const r = await db
+    .select({ n: sql<number>`coalesce(max(${accountReviewVersions.version}), 0)` })
+    .from(accountReviewVersions)
+    .where(eq(accountReviewVersions.reviewId, id))
+    .get();
+  return Number(r?.n ?? 0);
+}
+
+/**
+ * A review locked before versioning existed has no version 1. Take it as it
+ * stands when Admin reopens or returns it, so whatever Resource Manager changes
+ * is compared against what was locked rather than against nothing.
+ */
+async function ensurePerformanceBaseline(id: number): Promise<void> {
+  if ((await latestPerformanceVersion(id)) > 0) return;
+  const r = await db
+    .select({ at: performanceReviews.submittedAt, by: performanceReviews.submittedByUserId })
+    .from(performanceReviews)
+    .where(eq(performanceReviews.id, id))
+    .get();
+  await db
+    .insert(performanceReviewVersions)
+    .values({ reviewId: id, version: 1, snapshot: JSON.stringify(await performanceSnapshot(id)), lockedByUserId: r?.by ?? null, lockedAt: r?.at ?? now() })
+    .onConflictDoNothing()
+    .run();
+}
+
+async function ensureAccountBaseline(id: number): Promise<void> {
+  if ((await latestAccountVersion(id)) > 0) return;
+  const r = await db
+    .select({ at: accountReviews.submittedAt, by: accountReviews.submittedByUserId })
+    .from(accountReviews)
+    .where(eq(accountReviews.id, id))
+    .get();
+  await db
+    .insert(accountReviewVersions)
+    .values({ reviewId: id, version: 1, snapshot: JSON.stringify(await accountSnapshot(id)), lockedByUserId: r?.by ?? null, lockedAt: r?.at ?? now() })
+    .onConflictDoNothing()
+    .run();
+}
+
+export type ActionInput = { reason?: string; changeNote?: string | null };
+
+/** Submit (Resource Manager, which locks it), approve, return or reopen (Admin — enforced in lib/access.ts). */
 export async function actOnPerformanceReview(
   uid: number,
   id: number,
   action: ReviewAction,
-  reason?: string,
+  input: ActionInput = {},
 ): Promise<ReviewStatus> {
   const status = await loadPerformanceStatus(id);
   const move = reviewTransition(status, action);
   if (move.error !== undefined) throw new ReviewError(move.error, 409);
 
+  let snapshot: PerformanceSnapshot | null = null;
+  let nextVersion = 0;
+  if (action === 'return' || action === 'reopen') await ensurePerformanceBaseline(id);
   if (action === 'submit') {
     const active = (await listCriteria()).filter((c) => c.active).map((c) => c.id);
     const scores = await db
@@ -522,18 +774,44 @@ export async function actOnPerformanceReview(
       .from(performanceReviewScores)
       .where(eq(performanceReviewScores.reviewId, id))
       .all();
-    const err = submitError(active, scores);
+    const extras = await db
+      .select({ score: performanceReviewExtraScores.score })
+      .from(performanceReviewExtraScores)
+      .where(eq(performanceReviewExtraScores.reviewId, id))
+      .all();
+    const err = submitError(active, scores, extras);
     if (err) throw new ReviewError(err);
+    const existing = await latestPerformanceVersion(id);
+    const noteErr = changeNoteError(existing, input.changeNote);
+    if (noteErr) throw new ReviewError(noteErr);
+    nextVersion = existing + 1;
+    snapshot = await performanceSnapshot(id);
   }
 
-  const res = await db
-    .update(performanceReviews)
-    .set(transitionFields(action, uid, reason))
-    // Guarded on the status read above, so two people acting at once cannot
-    // both succeed: the second update matches no row and is told so.
-    .where(and(eq(performanceReviews.id, id), eq(performanceReviews.status, status)))
-    .run();
-  if (res.rowsAffected === 0) throw new ReviewError('Someone else changed this review. Reload the page.', 409);
+  await db.transaction(async (tx) => {
+    const res = await tx
+      .update(performanceReviews)
+      .set(transitionFields(action, uid, input.reason))
+      // Guarded on the status read above, so two people acting at once cannot
+      // both succeed: the second update matches no row and is told so.
+      .where(and(eq(performanceReviews.id, id), eq(performanceReviews.status, status)))
+      .run();
+    if (res.rowsAffected === 0) throw new ReviewError('Someone else changed this review. Reload the page.', 409);
+    // Locking and recording the version are one step: a lock with no version would leave nothing to compare.
+    if (snapshot) {
+      await tx
+        .insert(performanceReviewVersions)
+        .values({
+          reviewId: id,
+          version: nextVersion,
+          snapshot: JSON.stringify(snapshot),
+          lockedByUserId: uid || null,
+          lockedAt: now(),
+          changeNote: nextVersion > 1 ? (input.changeNote?.trim() ?? null) : null,
+        })
+        .run();
+    }
+  });
   return move.to;
 }
 
@@ -544,6 +822,10 @@ function transitionFields(action: ReviewAction, uid: number, reason?: string) {
   }
   if (action === 'approve') {
     return { status: 'approved' as const, approvedAt: at, approvedByUserId: uid || null, updatedAt: at };
+  }
+  if (action === 'reopen') {
+    // Back to a draft and no longer approved: Sales stops seeing it until it is approved again.
+    return { status: 'draft' as const, returnedReason: reason?.trim() || 'Reopened by Admin', approvedAt: null, approvedByUserId: null, updatedAt: at };
   }
   return { status: 'draft' as const, returnedReason: reason?.trim() || 'Returned for changes', updatedAt: at };
 }
@@ -647,6 +929,8 @@ export type AccountReviewDetail = {
   resources: AccountReviewResource[];
   /** The client's last six months of ratings, newest first. */
   history: { period: string; status: ReviewStatus; rating: AccountRating | null }[];
+  /** Locked versions, newest first. Empty for Sales, which sees the approved review and nothing of its history. */
+  versions: VersionRow[];
 };
 
 export async function getAccountReview(v: Pick<Viewer, 'role' | 'uid' | 'isTeamLead'>, id: number): Promise<AccountReviewDetail> {
@@ -741,6 +1025,7 @@ export async function getAccountReview(v: Pick<Viewer, 'role' | 'uid' | 'isTeamL
       };
     }),
     history,
+    versions: full ? await loadAccountVersions(r.id) : [],
   };
 }
 
@@ -753,7 +1038,7 @@ async function loadAccountStatus(id: number): Promise<ReviewStatus> {
 export async function saveAccountReview(id: number, data: z.output<typeof accountReviewSchema>): Promise<void> {
   const status = await loadAccountStatus(id);
   if (!isReviewEditable(status)) {
-    throw new ReviewError('This review has been submitted and can no longer be edited.', 409);
+    throw new ReviewError('This review is locked. Ask Admin to reopen it to change it.', 409);
   }
   await db
     .update(accountReviews)
@@ -769,10 +1054,13 @@ export async function saveAccountReview(id: number, data: z.output<typeof accoun
     .run();
 }
 
-export async function actOnAccountReview(uid: number, id: number, action: ReviewAction, reason?: string): Promise<ReviewStatus> {
+export async function actOnAccountReview(uid: number, id: number, action: ReviewAction, input: ActionInput = {}): Promise<ReviewStatus> {
   const status = await loadAccountStatus(id);
   const move = reviewTransition(status, action);
   if (move.error !== undefined) throw new ReviewError(move.error, 409);
+  let snapshot: AccountSnapshot | null = null;
+  let nextVersion = 0;
+  if (action === 'return' || action === 'reopen') await ensureAccountBaseline(id);
   if (action === 'submit') {
     const row = await db
       .select({ rating: accountReviews.rating, summary: accountReviews.summary })
@@ -781,13 +1069,33 @@ export async function actOnAccountReview(uid: number, id: number, action: Review
       .get();
     if (!row?.rating) throw new ReviewError('Give the account a rating before submitting.');
     if (!row.summary) throw new ReviewError('Write a summary before submitting.');
+    const existing = await latestAccountVersion(id);
+    const noteErr = changeNoteError(existing, input.changeNote);
+    if (noteErr) throw new ReviewError(noteErr);
+    nextVersion = existing + 1;
+    snapshot = await accountSnapshot(id);
   }
-  const res = await db
-    .update(accountReviews)
-    .set(transitionFields(action, uid, reason))
-    .where(and(eq(accountReviews.id, id), eq(accountReviews.status, status)))
-    .run();
-  if (res.rowsAffected === 0) throw new ReviewError('Someone else changed this review. Reload the page.', 409);
+  await db.transaction(async (tx) => {
+    const res = await tx
+      .update(accountReviews)
+      .set(transitionFields(action, uid, input.reason))
+      .where(and(eq(accountReviews.id, id), eq(accountReviews.status, status)))
+      .run();
+    if (res.rowsAffected === 0) throw new ReviewError('Someone else changed this review. Reload the page.', 409);
+    if (snapshot) {
+      await tx
+        .insert(accountReviewVersions)
+        .values({
+          reviewId: id,
+          version: nextVersion,
+          snapshot: JSON.stringify(snapshot),
+          lockedByUserId: uid || null,
+          lockedAt: now(),
+          changeNote: nextVersion > 1 ? (input.changeNote?.trim() ?? null) : null,
+        })
+        .run();
+    }
+  });
   return move.to;
 }
 

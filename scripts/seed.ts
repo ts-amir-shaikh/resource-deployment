@@ -53,6 +53,9 @@ for (const t of [
   'agreements',
   // M67: reviews and skill levels point at deployments, clients and
   // resources. The skill catalogue and review criteria are configuration.
+  'performance_review_versions',
+  'account_review_versions',
+  'performance_review_extra_scores',
   'performance_review_scores',
   'performance_reviews',
   'account_reviews',

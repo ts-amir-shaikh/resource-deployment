@@ -14,6 +14,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const { data, error } = await parseBody(req, reviewReturnSchema);
     if (error) return error;
     const session = await requireSession();
-    return reviewed(async () => ok({ status: await actOnAccountReview(session.uid, id, 'return', data.reason) }));
+    return reviewed(async () => ok({ status: await actOnAccountReview(session.uid, id, 'return', { reason: data.reason }) }));
   });
 }

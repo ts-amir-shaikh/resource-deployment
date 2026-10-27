@@ -11,9 +11,10 @@
 /* ── Statuses ──────────────────────────────────────────────── */
 
 /**
- * Q3: the Resource Manager submits, Admin approves or returns it. A returned
- * review goes back to draft rather than to a status of its own, so "what can
- * be edited" stays a single question: is it a draft?
+ * Q3: the Resource Manager submits (which locks the review), Admin approves or
+ * returns it, and may reopen a locked one later. A returned or reopened review
+ * goes back to draft rather than to a status of its own, so "what can be
+ * edited" stays a single question: is it a draft?
  */
 export const REVIEW_STATUSES = ['draft', 'submitted', 'approved'] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
@@ -24,7 +25,7 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
   approved: 'Approved',
 };
 
-export const REVIEW_ACTIONS = ['submit', 'approve', 'return'] as const;
+export const REVIEW_ACTIONS = ['submit', 'approve', 'return', 'reopen'] as const;
 export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
 
 /** The status an action moves a review to, or an error when it may not. */
@@ -35,11 +36,21 @@ export function reviewTransition(
   if (action === 'submit') {
     return status === 'draft' ? { to: 'submitted' } : { error: 'Only a draft can be submitted.' };
   }
+  // Reopen is how a locked review is changed later: from submitted, or from
+  // approved, where Return does not reach. Both end in a draft, and the next
+  // submit is a new version that has to say what changed.
+  if (action === 'reopen') {
+    return status === 'draft' ? { error: 'A draft is already open for editing.' } : { to: 'draft' };
+  }
   if (status !== 'submitted') return { error: 'Only a submitted review can be approved or returned.' };
   return { to: action === 'approve' ? 'approved' : 'draft' };
 }
 
-/** Only a draft is edited; a submitted or approved review is a record. */
+/**
+ * Only a draft is edited; a submitted or approved review is locked. Admin
+ * changes one by reopening it, not by editing it in place, so every change
+ * lands in a new version that can be compared with the last.
+ */
 export function isReviewEditable(status: ReviewStatus): boolean {
   return status === 'draft';
 }
@@ -100,11 +111,141 @@ export function averageScore(scores: readonly (number | null | undefined)[]): nu
 export function submitError(
   criterionIds: readonly number[],
   scores: readonly { criterionId: number; score: number | null }[],
+  extras: readonly { score: number | null }[] = [],
 ): string | null {
   const scored = new Set(scores.filter((s) => isValidScore(s.score)).map((s) => s.criterionId));
-  const missing = criterionIds.filter((id) => !scored.has(id)).length;
+  // An extra criterion counts like any other: it is in the average, so it must be scored.
+  const missing = criterionIds.filter((id) => !scored.has(id)).length + extras.filter((e) => !isValidScore(e.score)).length;
   if (missing === 0) return null;
   return missing === 1 ? 'Score every criterion before submitting — one is missing.' : `Score every criterion before submitting — ${missing} are missing.`;
+}
+
+/* ── Extra criteria (one review, one month) ─────────────────── */
+
+/**
+ * A team head can add criteria the standard list lacks to a single review.
+ * They belong to that resource's review for that month alone: nothing carries
+ * to the next month or to anyone else, so the standard criteria — which
+ * trends compare across months — stay the same for everyone.
+ */
+export const MAX_EXTRA_SCORES = 5;
+export const EXTRA_LABEL_MAX = 60;
+
+/** Trimmed, single-spaced, for storing and for comparing. */
+export function extraLabelKey(label: string | null | undefined): string {
+  return (label ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * Why a review's extra criteria cannot be saved, or null. `reservedLabels` are
+ * the standard criteria: an extra with the same name would read as a duplicate
+ * row in the same list.
+ */
+export function extraScoresError(
+  extras: readonly { label: string }[],
+  reservedLabels: readonly string[] = [],
+): string | null {
+  if (extras.length > MAX_EXTRA_SCORES) return `At most ${MAX_EXTRA_SCORES} extra criteria on one review.`;
+  const seen = new Set(reservedLabels.map(extraLabelKey));
+  for (const e of extras) {
+    const key = extraLabelKey(e.label);
+    if (!key) return 'Name every extra criterion, or remove the empty one.';
+    if (key.length > EXTRA_LABEL_MAX) return `Keep an extra criterion's name under ${EXTRA_LABEL_MAX} characters.`;
+    if (seen.has(key)) return `"${e.label.trim()}" is already on this review.`;
+    seen.add(key);
+  }
+  return null;
+}
+
+/* ── Versions ──────────────────────────────────────────────── */
+
+/**
+ * Every submit locks the review as a numbered version: a snapshot of what it
+ * said at that moment. A review reopened and submitted again becomes version 2,
+ * and so on, and Admin can see what changed between any two. The snapshot is
+ * stored with criterion labels rather than ids, so renaming or retiring a
+ * criterion later does not rewrite history.
+ */
+export type PerformanceSnapshot = {
+  summary: string | null;
+  strengths: string | null;
+  improvements: string | null;
+  clientFeedback: string | null;
+  clientFeedbackBy: string | null;
+  clientFeedbackDate: string | null;
+  scores: { label: string; score: number; note: string | null }[];
+  extras: { label: string; score: number | null; note: string | null }[];
+  average: number | null;
+};
+
+export type AccountSnapshot = {
+  rating: AccountRating | null;
+  summary: string | null;
+  risks: string | null;
+  opportunities: string | null;
+  actions: string | null;
+};
+
+/** One thing that differs between two versions. A null side means "not there". */
+export type VersionChange = { field: string; from: string | null; to: string | null };
+
+export const CHANGE_NOTE_MAX = 1000;
+
+/**
+ * Every submit after the first must say what changed. The first version has
+ * nothing to change from, so it needs no note.
+ */
+export function changeNoteError(existingVersions: number, note: string | null | undefined): string | null {
+  if (existingVersions === 0) return null;
+  return (note ?? '').trim() ? null : 'Say what changed since the last version before submitting.';
+}
+
+const clean = (v: string | null | undefined): string | null => (v == null || v.trim() === '' ? null : v.trim());
+
+function pushIfChanged(out: VersionChange[], field: string, from: string | null | undefined, to: string | null | undefined) {
+  const a = clean(from);
+  const b = clean(to);
+  if (a !== b) out.push({ field, from: a, to: b });
+}
+
+const num = (n: number | null | undefined): string | null => (n == null ? null : String(n));
+
+/** What changed from `prev` to `next`, in the order the review shows it. */
+export function diffPerformance(prev: PerformanceSnapshot, next: PerformanceSnapshot): VersionChange[] {
+  const out: VersionChange[] = [];
+  const keyed = (rows: { label: string; score: number | null; note: string | null }[]) =>
+    new Map(rows.map((r) => [r.label.trim().toLowerCase(), r]));
+  const compare = (before: ReturnType<typeof keyed>, after: ReturnType<typeof keyed>, prefix: string) => {
+    for (const key of [...after.keys(), ...[...before.keys()].filter((k) => !after.has(k))]) {
+      const a = before.get(key);
+      const b = after.get(key);
+      const label = `${prefix}${(b ?? a)!.label}`;
+      if (a?.score !== b?.score) out.push({ field: label, from: num(a?.score), to: num(b?.score) });
+      if (a && b) pushIfChanged(out, `${label} — note`, a.note, b.note);
+    }
+  };
+  compare(keyed(prev.scores), keyed(next.scores), '');
+  compare(keyed(prev.extras), keyed(next.extras), 'Extra: ');
+  if (prev.average !== next.average) {
+    out.push({ field: 'Average', from: prev.average == null ? null : prev.average.toFixed(1), to: next.average == null ? null : next.average.toFixed(1) });
+  }
+  pushIfChanged(out, 'Summary', prev.summary, next.summary);
+  pushIfChanged(out, 'Strengths', prev.strengths, next.strengths);
+  pushIfChanged(out, 'To improve', prev.improvements, next.improvements);
+  pushIfChanged(out, 'Client feedback', prev.clientFeedback, next.clientFeedback);
+  pushIfChanged(out, 'Feedback given by', prev.clientFeedbackBy, next.clientFeedbackBy);
+  pushIfChanged(out, 'Feedback date', prev.clientFeedbackDate, next.clientFeedbackDate);
+  return out;
+}
+
+export function diffAccount(prev: AccountSnapshot, next: AccountSnapshot): VersionChange[] {
+  const out: VersionChange[] = [];
+  pushIfChanged(out, 'Rating', prev.rating, next.rating);
+  pushIfChanged(out, 'Summary', prev.summary, next.summary);
+  pushIfChanged(out, 'Risks', prev.risks, next.risks);
+  pushIfChanged(out, 'Growth opportunities', prev.opportunities, next.opportunities);
+  pushIfChanged(out, 'Actions', prev.actions, next.actions);
+  return out;
 }
 
 /* ── Periods ───────────────────────────────────────────────── */

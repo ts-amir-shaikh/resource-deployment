@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   });
 }
 
-/** Saves a draft: its text, client feedback and every score. */
+/** Saves a draft: its text, client feedback, every score and its extra criteria. A locked review is reopened by Admin first. */
 export async function PUT(req: Request, { params }: Ctx) {
   return handle(async () => {
     const id = parseId(params.id);

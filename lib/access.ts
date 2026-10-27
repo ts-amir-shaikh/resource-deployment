@@ -338,12 +338,12 @@ const RESOURCE_WRITE_RULES: WriteRule[] = [
 
 /**
  * Resource Manager writes: approving and rejecting timesheets; writing and
- * submitting reviews and skill levels (M67). Approving or returning a review
- * is Admin's (Q3) — the person who wrote a review does not sign it off.
+ * submitting reviews and skill levels (M67). Approving, returning or reopening
+ * a review is Admin's (Q3) — the person who wrote a review does not sign it off.
  */
 const RESOURCE_MANAGER_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/timesheets/approvals'), allow: true },
-  { test: (p) => /^\/api\/reviews\/(performance|accounts)\/\d+\/(approve|return)$/.test(p), allow: false },
+  { test: (p) => /^\/api\/reviews\/(performance|accounts)\/\d+\/(approve|return|reopen)$/.test(p), allow: false },
   { test: (p) => p.startsWith('/api/reviews/'), allow: true },
   { test: (p) => p.startsWith('/api/skills'), allow: true },
   { test: (p) => p.startsWith('/api/leaves/approvals'), allow: true },
@@ -352,6 +352,9 @@ const RESOURCE_MANAGER_WRITE_RULES: WriteRule[] = [
 /** Can this role mutate at this path? (POST / PUT / PATCH / DELETE) */
 export function canWrite(role: Role, pathname: string): boolean {
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
+  // Admin signs reviews off, it does not write them: saving and submitting a
+  // review is the Resource Manager's, including on a draft Admin reopened.
+  if (role === 'admin' && /^\/api\/reviews\/(performance|accounts)\/\d+(\/submit)?$/.test(pathname)) return false;
   if (role === 'admin') return true;
   // Management mirrors Admin's view with every write withheld.
   if (role === 'management') return false;

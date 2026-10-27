@@ -625,6 +625,46 @@ CREATE TABLE IF NOT EXISTS performance_review_scores (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS perf_score_uq ON performance_review_scores(review_id, criterion_id);
 
+-- Criteria added by hand to ONE review (one resource, one month). Not part of
+-- review_criteria, so they never reach anyone else's review or the trend columns.
+CREATE TABLE IF NOT EXISTS performance_review_extra_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  review_id INTEGER NOT NULL REFERENCES performance_reviews(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  description TEXT,
+  score INTEGER,
+  note TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS perf_extra_uq ON performance_review_extra_scores(review_id, lower(label));
+
+-- Each submit locks a review as a numbered snapshot, so a reopened and
+-- resubmitted review can be compared with what it said before.
+CREATE TABLE IF NOT EXISTS performance_review_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  review_id INTEGER NOT NULL REFERENCES performance_reviews(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  snapshot TEXT NOT NULL,
+  locked_by_user_id INTEGER,
+  locked_at TEXT NOT NULL,
+  change_note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS perf_version_uq ON performance_review_versions(review_id, version);
+
+CREATE TABLE IF NOT EXISTS account_review_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  review_id INTEGER NOT NULL REFERENCES account_reviews(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  snapshot TEXT NOT NULL,
+  locked_by_user_id INTEGER,
+  locked_at TEXT NOT NULL,
+  change_note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS account_version_uq ON account_review_versions(review_id, version);
+
 CREATE TABLE IF NOT EXISTS account_reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_id INTEGER NOT NULL REFERENCES clients(id),

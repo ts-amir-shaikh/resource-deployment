@@ -18,7 +18,7 @@ import {
   SETTABLE_PROSPECT_STAGES,
   TEMPERATURES,
 } from './leadgen-rules';
-import { ACCOUNT_RATINGS, MAX_SCORE, MIN_SCORE, isPeriod } from './review-rules';
+import { ACCOUNT_RATINGS, CHANGE_NOTE_MAX, EXTRA_LABEL_MAX, MAX_EXTRA_SCORES, MAX_SCORE, MIN_SCORE, isPeriod } from './review-rules';
 import { LEAVE_TYPES } from './leave-rules';
 
 /**
@@ -1094,6 +1094,23 @@ export const performanceReviewSchema = z.object({
     )
     .max(50)
     .default([]),
+  /** Criteria added to this review alone; sent whole, like the scores. */
+  extraScores: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1, 'Name the criterion').max(EXTRA_LABEL_MAX, `Keep it under ${EXTRA_LABEL_MAX} characters`),
+        description: z
+          .string()
+          .trim()
+          .max(200)
+          .optional()
+          .transform((v) => (v === '' || v === undefined ? null : v)),
+        score: optionalScore,
+        note: reviewText,
+      }),
+    )
+    .max(MAX_EXTRA_SCORES, `At most ${MAX_EXTRA_SCORES} extra criteria`)
+    .default([]),
 });
 
 export const accountReviewSchema = z.object({
@@ -1104,7 +1121,17 @@ export const accountReviewSchema = z.object({
   actions: reviewText,
 });
 
-/** Q3: Admin sends a submitted review back, and says why. */
+/** Submitting: the note saying what changed, required from the second version on (checked in the rules). */
+export const reviewSubmitSchema = z.object({
+  changeNote: z
+    .string()
+    .trim()
+    .max(CHANGE_NOTE_MAX, `Keep it under ${CHANGE_NOTE_MAX} characters`)
+    .optional()
+    .transform((v) => (v === '' || v === undefined ? null : v)),
+});
+
+/** Q3: Admin sends a submitted review back, or reopens a locked one, and says why. */
 export const reviewReturnSchema = z.object({
   reason: z.string().trim().min(1, 'Say what needs to change').max(1000),
 });

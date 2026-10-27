@@ -211,6 +211,113 @@ async function seedSkills() {
   console.log(`Added ${added} skill level(s) across ${people.length} resource(s).`);
 }
 
+/**
+ * Scenarios the bulk seed above does not reach, topped up even when reviews
+ * already exist. Each is skipped if its marker is already there, and nothing
+ * existing is changed:
+ *
+ * - Sales scoping: the demo opportunities are prospects (no client), so no
+ *   salesperson owns a requirement at a client that has reviews and every Sales
+ *   login sees an empty list. Adds a requirement at two reviewed clients, owned
+ *   by two different non-lead salespeople: each should see only their own
+ *   client's approved reviews, and a Sales head should see both;
+ * - a returned review: a draft carrying Admin's reason, which is how "sent
+ *   back" is stored, so the banner and the resubmit path have a row to open.
+ */
+const MOCK_REQ = 'Mock requirement (review testing)';
+
+async function seedScenarios() {
+  const sales = (await client.execute("select id, is_team_lead from users where role = 'sales' and active = 1 order by id")).rows;
+  const reps = sales.filter((u) => !u.is_team_lead).map((u) => Number(u.id));
+  const reviewed = (
+    await client.execute("select distinct client_id from account_reviews where status = 'approved' order by client_id")
+  ).rows.map((r) => Number(r.client_id));
+  const existing = Number((await client.execute({ sql: 'select count(*) c from opportunities where title = ?', args: [MOCK_REQ] })).rows[0].c);
+  if (existing > 0) {
+    console.log('Sales ownership scenario already present.');
+  } else if (reps.length < 2 || reviewed.length < 2) {
+    console.log('Needs two non-lead Sales accounts and two clients with approved account reviews — Sales scenario skipped.');
+  } else {
+    for (const [i, clientId] of reviewed.slice(0, 2).entries()) {
+      const { rows } = await client.execute({ sql: 'select company_name from clients where id = ?', args: [clientId] });
+      await insert(
+        'insert into opportunities (client_id, company_name, title, sales_owner_user_id, share_token) values (?, ?, ?, ?, ?)',
+        [clientId, String(rows[0].company_name), MOCK_REQ, reps[i], crypto.randomUUID()],
+      );
+    }
+    console.log(`Sales ${reps[0]} now owns a requirement at client ${reviewed[0]}, Sales ${reps[1]} at client ${reviewed[1]}.`);
+  }
+
+  const thisMonth = periodOf(new Date().toISOString().slice(0, 10));
+
+  // Extra criteria on one review: a draft this month carries two, scored, and
+  // the same engagement's review last month carried one of them, so "Copy
+  // last month's" has something to offer. Every other review has none.
+  if (Number((await client.execute('select count(*) c from performance_review_extra_scores')).rows[0].c) > 0) {
+    console.log('Extra criteria already exist.');
+  } else {
+    const draft = (
+      await client.execute({
+        sql: "select id, deployment_id from performance_reviews where period = ? and status = 'draft' and returned_reason is null order by id limit 1",
+        args: [thisMonth],
+      })
+    ).rows[0];
+    if (draft) {
+      const extra = (reviewId: number, label: string, description: string | null, score: number | null, order: number) =>
+        insert(
+          'insert into performance_review_extra_scores (review_id, label, description, score, sort_order) values (?, ?, ?, ?, ?)',
+          [reviewId, label, description, score, order],
+        );
+      await extra(Number(draft.id), 'Mentoring', 'Helping the junior developers on the team.', 5, 0);
+      await extra(Number(draft.id), 'Production support', 'Handling the on-call rota this month.', 4, 1);
+      const last = (
+        await client.execute({
+          sql: 'select id from performance_reviews where deployment_id = ? and period = ?',
+          args: [draft.deployment_id, shiftPeriod(thisMonth, -1)],
+        })
+      ).rows[0];
+      if (last) await extra(Number(last.id), 'Mentoring', 'Helping the junior developers on the team.', 4, 0);
+      console.log(`Added extra criteria to review ${draft.id}${last ? ` and last month's review ${last.id}` : ''}.`);
+    }
+  }
+
+  const returned = Number(
+    (await client.execute({ sql: 'select count(*) c from performance_reviews where returned_reason is not null', args: [] })).rows[0].c,
+  );
+  if (returned > 0) {
+    console.log('A returned review already exists.');
+    return;
+  }
+  const { rows: free } = await client.execute({
+    sql: `select d.id, d.resource_id, p.client_id, d.start_date, d.end_date
+            from deployments d join projects p on p.id = d.project_id
+           where not exists (select 1 from performance_reviews r where r.deployment_id = d.id and r.period = ?)
+           order by d.id`,
+    args: [thisMonth],
+  });
+  const dep = free.find((d) =>
+    activeInPeriod({ startDate: String(d.start_date), endDate: d.end_date == null ? null : String(d.end_date) }, thisMonth),
+  );
+  const criteria = (await client.execute('select id from review_criteria where active = 1 order by sort_order, id')).rows.map((r) => Number(r.id));
+  if (!dep) {
+    console.log('Every active deployment already has a review this month — returned scenario skipped.');
+    return;
+  }
+  const rm = await firstUser('resource_manager');
+  const at = new Date().toISOString();
+  const id = await insert(
+    `insert into performance_reviews (deployment_id, resource_id, client_id, period, status, summary, strengths, improvements,
+                                      submitted_at, submitted_by_user_id, returned_reason, created_by_user_id, updated_at)
+     values (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [dep.id, dep.resource_id, dep.client_id, thisMonth, 'Good month.', 'Reliable.', 'Be more specific.', at, rm,
+     'Summary is too generic — add one concrete example and a score note for Communication.', rm, at],
+  );
+  for (const criterionId of criteria) {
+    await insert('insert into performance_review_scores (review_id, criterion_id, score) values (?, ?, ?)', [id, criterionId, 3]);
+  }
+  console.log(`Added a returned performance review for deployment ${dep.id} (${thisMonth}).`);
+}
+
 async function main() {
   const { rows: tables } = await client.execute(
     "select name from sqlite_master where type='table' and name in ('skills', 'resource_skills', 'review_criteria', 'performance_reviews', 'performance_review_scores', 'account_reviews')",
@@ -221,6 +328,7 @@ async function main() {
   }
   await seedReviews();
   await seedSkills();
+  await seedScenarios();
 }
 
 main()

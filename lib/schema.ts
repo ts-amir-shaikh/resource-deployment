@@ -1566,6 +1566,26 @@ export const performanceReviewScores = sqliteTable(
   }),
 );
 
+/**
+ * Criteria a team head adds to a single review, scored like the standard ones
+ * and counted in its average. They live on the review rather than in
+ * review_criteria, which is what keeps them to one resource and one month.
+ * The score may be empty on a draft; it is required to submit. The label is
+ * unique per review case-insensitively (the DDL index is on lower(label)).
+ */
+export const performanceReviewExtraScores = sqliteTable('performance_review_extra_scores', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  reviewId: integer('review_id')
+    .notNull()
+    .references(() => performanceReviews.id, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  description: text('description'),
+  score: integer('score'),
+  note: text('note'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  ...timestamps,
+});
+
 /** G-RM-05. One per client per month. */
 export const accountReviews = sqliteTable(
   'account_reviews',
@@ -1595,6 +1615,46 @@ export const accountReviews = sqliteTable(
     clientPeriodUq: uniqueIndex('account_review_client_period_uq').on(t.clientId, t.period),
     periodIdx: index('account_review_period_idx').on(t.period),
   }),
+);
+
+/**
+ * A review's locked history. Every submit writes the next version: a JSON
+ * snapshot of what the review said (criterion labels, not ids, so later
+ * renames do not rewrite it), who locked it, when, and from the second
+ * version on the note saying what changed. Never updated or deleted.
+ */
+export const performanceReviewVersions = sqliteTable(
+  'performance_review_versions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    reviewId: integer('review_id')
+      .notNull()
+      .references(() => performanceReviews.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    snapshot: text('snapshot').notNull(),
+    lockedByUserId: integer('locked_by_user_id'),
+    lockedAt: text('locked_at').notNull(),
+    changeNote: text('change_note'),
+    ...timestamps,
+  },
+  (t) => ({ reviewVersionUq: uniqueIndex('perf_version_uq').on(t.reviewId, t.version) }),
+);
+
+export const accountReviewVersions = sqliteTable(
+  'account_review_versions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    reviewId: integer('review_id')
+      .notNull()
+      .references(() => accountReviews.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    snapshot: text('snapshot').notNull(),
+    lockedByUserId: integer('locked_by_user_id'),
+    lockedAt: text('locked_at').notNull(),
+    changeNote: text('change_note'),
+    ...timestamps,
+  },
+  (t) => ({ reviewVersionUq: uniqueIndex('account_version_uq').on(t.reviewId, t.version) }),
 );
 
 /* ── Relations ─────────────────────────────────────────────── */

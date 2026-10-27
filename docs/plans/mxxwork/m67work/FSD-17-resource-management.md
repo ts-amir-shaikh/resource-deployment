@@ -7,8 +7,8 @@ The Resource Manager keeps a skill matrix of every resource and writes the month
 | Field | Value |
 |---|---|
 | Module code | RMG |
-| Module version | v1.0 |
-| Doc revision | Rev 1.0 |
+| Module version | v1.2 |
+| Doc revision | Rev 1.2 |
 | Status | `Built` — on branch `feat/m67-resource-review`, not yet released |
 | Plan module | M67 |
 | Appears as | Reviews · Skill Matrix · Account Reviews (Sales) |
@@ -53,12 +53,17 @@ Not in scope (deferred, by decision): the **Health report** (Q1, undefined), a c
 | FR-RMG-003 | **Client feedback (D13).** On the performance review: what the client said, who said it (name and role) and when. Recorded by the Resource Manager or Admin; the client has no login. | v1.0 | `Built` |
 | FR-RMG-004 | **Timesheet context.** The performance review shows that month's approved timesheet figures for the deployment: days approved of expected, worked, paid and unpaid leave (FSD-18). | v1.0 | `Built` |
 | FR-RMG-005 | **Account review.** One per client per month: a green/amber/red rating, summary, risks, growth opportunities, actions, and the people deployed that month with their performance review status and average. | v1.0 | `Built` |
-| FR-RMG-006 | **Approval (Q3).** The Resource Manager submits; Admin approves, or returns it to draft with a reason that is shown on the draft until it is submitted again. Only a draft can be edited; an approved review is final. | v1.0 | `Built` |
+| FR-RMG-006 | **Approval (Q3).** The Resource Manager submits; Admin approves, or returns it to draft with a reason that is shown on the draft until it is submitted again. Submitting locks the review: only a draft can be edited, by anyone. Admin changes a locked review by reopening it (FR-RMG-013), not by editing it in place. | v1.0 | `Built` |
 | FR-RMG-007 | **Trends (G-RM-07).** A performance review shows the resource's last six months of reviews across clients, per criterion and average. An account review shows the client's last six monthly ratings. | v1.0 | `Built` |
 | FR-RMG-008 | **Review criteria (Q4, Q7).** A managed list, seeded with Technical skill, Communication, Reliability & timesheets and Client satisfaction. Add, retire, restore; never delete. At least one stays active. A review scored on a since-retired criterion still shows it. | v1.0 | `Built` |
 | FR-RMG-009 | **Skill matrix (G-RM-02).** `/skills` lists every resource with their assessed skills and levels (1 Beginner … 5 Expert), filterable by skill and minimum level. The Resource Manager sets a resource's levels together. | v1.0 | `Built` |
 | FR-RMG-010 | **Skills list.** A catalogue, unique case-insensitively. Add, rename, retire, restore; never delete. A retired skill is not offered for new levels; existing levels on it stay. Seeded once from the free-text skills on resources. | v1.0 | `Built` |
 | FR-RMG-011 | **Account reviews for Sales (Q5).** `/reviews/accounts` lists account reviews across months; Sales sees only the approved reviews of its clients, without performance data. | v1.0 | `Built` |
+| FR-RMG-012 | **Extra criteria on one review.** The Resource Manager or Admin can add up to five criteria of their own to a single performance review (for example Mentoring), scored 1–5 like the standard ones, with an optional description and note. They belong to that resource's review for that month alone: they are not added to anyone else's review or to the next month, and the standard criteria and trend columns are unchanged. They count in the review's average, and each must be scored before the review can be submitted. "Copy last month's" offers the previous month's extras for the same engagement, unscored, and applies nothing by itself. A name may not repeat on a review or match a standard criterion. | v1.1 | `Built` |
+| FR-RMG-013 | **Reopen (performance and account reviews).** Admin can reopen a submitted or an approved review, giving a reason. It goes back to a draft, shown with that reason; an approved review stops being approved, so Sales no longer sees an account review until it is approved again. Return still reaches a submitted review only. The Resource Manager cannot reopen. | v1.2 | `Built` |
+| FR-RMG-014 | **Versions.** Every submit locks the review as the next numbered version: a snapshot of what it said, who locked it and when. A review locked before versioning existed is captured as version 1 when Admin first reopens or returns it. Snapshots hold criterion names rather than ids, so renaming or retiring a criterion does not rewrite them. | v1.2 | `Built` |
+| FR-RMG-015 | **Change note.** Every submit after the first must say what changed since the last version; the first needs none. The note is kept with the version. | v1.2 | `Built` |
+| FR-RMG-016 | **Version history.** Both review pages list the versions newest first, each with who, when, the note, and the differences from the version before it: scores, extra criteria, the average, text and feedback (performance); rating and text (account). Visible to Resource Manager, Admin and Management. Sales receives no version data. | v1.2 | `Built` |
 
 ## 4. Business rules
 
@@ -117,3 +122,5 @@ Every response is built field by field: no billing, commission, overhead or CTC 
 | Rev | Date | Module ver. | Change |
 |---|---|---|---|
 | 1.0 | 23 Oct 2026 | v1.0 | First issue, written against branch `feat/m67-resource-review`. |
+| 1.1 | 27 Oct 2026 | v1.1 | Extra criteria on a single review (FR-RMG-012), requested by the team head, and Admin editing a submitted performance review (FR-RMG-013). One additive table, `performance_review_extra_scores`. |
+| 1.2 | 27 Oct 2026 | v1.2 | Locking, Reopen and versioning, from the product owner's note. Admin editing a submitted performance review in place (FR-RMG-013 in Rev 1.1) is withdrawn: Admin reopens instead. Two additive tables, `performance_review_versions` and `account_review_versions`. A final lock and a chain of approvals are left for the next phase. |

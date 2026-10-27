@@ -3,13 +3,13 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, Send, Undo2 } from 'lucide-react';
+import { ArrowLeft, Check, RotateCcw, Send, Undo2 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
 import { formatDate } from '@/lib/utils';
 import type { AccountReviewDetail } from '@/lib/reviews';
 import { ACCOUNT_RATINGS, ACCOUNT_RATING_LABELS, isReviewEditable, periodLabel } from '@/lib/review-rules';
 import { Field, Modal, PageHeader, TableShell } from '@/components/ui';
-import { RatingBadge, ReturnedNote, ReviewStatusBadge, ScoreValue } from '@/components/review-ui';
+import { ChangeNoteField, LockedNote, RatingBadge, ReturnedNote, ReviewStatusBadge, ScoreValue, VersionHistory } from '@/components/review-ui';
 
 export default function AccountReviewClient({
   review: r,
@@ -24,6 +24,9 @@ export default function AccountReviewClient({
 }) {
   const router = useRouter();
   const editable = canEdit && isReviewEditable(r.status);
+  // A version already exists, so submitting again makes the next one and has to say what changed.
+  const nextVersion = r.versions.length > 0 ? r.versions[0].version + 1 : 1;
+  const needsNote = r.versions.length > 0;
   const [form, setForm] = useState({
     rating: r.rating ?? '',
     summary: r.summary ?? '',
@@ -34,8 +37,9 @@ export default function AccountReviewClient({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [returnOpen, setReturnOpen] = useState(false);
+  const [dialog, setDialog] = useState<'return' | 'reopen' | null>(null);
   const [reason, setReason] = useState('');
+  const [changeNote, setChangeNote] = useState('');
 
   async function run(fn: () => Promise<unknown>, done: string) {
     setBusy(true);
@@ -56,16 +60,27 @@ export default function AccountReviewClient({
   }
 
   const save = () => run(() => api(`/api/reviews/accounts/${r.id}`, { method: 'PUT', json: form }), 'Saved.');
-  const submit = () =>
-    run(async () => {
+  const submit = () => {
+    if (needsNote && !changeNote.trim()) {
+      setBanner({ tone: 'error', text: 'Say what changed before submitting.' });
+      setErrors({ changeNote: 'Say what changed since the last version.' });
+      return Promise.resolve(false);
+    }
+    return run(async () => {
       await api(`/api/reviews/accounts/${r.id}`, { method: 'PUT', json: form });
-      await api(`/api/reviews/accounts/${r.id}/submit`, { method: 'POST' });
-    }, 'Submitted to Admin for approval.');
+      await api(`/api/reviews/accounts/${r.id}/submit`, { method: 'POST', json: { changeNote } });
+    }, 'Locked and sent to Admin for approval.');
+  };
   const approve = () => run(() => api(`/api/reviews/accounts/${r.id}/approve`, { method: 'POST' }), 'Approved.');
   async function sendBack() {
-    const ok = await run(() => api(`/api/reviews/accounts/${r.id}/return`, { method: 'POST', json: { reason } }), 'Returned to the Resource Manager.');
+    const kind = dialog;
+    if (!kind) return;
+    const ok = await run(
+      () => api(`/api/reviews/accounts/${r.id}/${kind}`, { method: 'POST', json: { reason } }),
+      kind === 'return' ? 'Returned to the Resource Manager.' : 'Reopened. The Resource Manager can now update it.',
+    );
     if (ok) {
-      setReturnOpen(false);
+      setDialog(null);
       setReason('');
     }
   }
@@ -102,13 +117,18 @@ export default function AccountReviewClient({
             )}
             {canApprove && r.status === 'submitted' && (
               <>
-                <button className="btn-ghost" disabled={busy} onClick={() => setReturnOpen(true)}>
+                <button className="btn-ghost" disabled={busy} onClick={() => setDialog('return')}>
                   <Undo2 className="h-4 w-4" /> Return
                 </button>
                 <button className="btn-primary" disabled={busy} onClick={approve}>
                   <Check className="h-4 w-4" /> Approve
                 </button>
               </>
+            )}
+            {canApprove && r.status === 'approved' && (
+              <button className="btn-ghost" disabled={busy} onClick={() => setDialog('reopen')}>
+                <RotateCcw className="h-4 w-4" /> Reopen
+              </button>
             )}
           </div>
         }
@@ -130,28 +150,32 @@ export default function AccountReviewClient({
       </div>
 
       <div className="grid gap-4 px-6 pt-4 lg:grid-cols-3">
-        <section className="card space-y-4 p-4 lg:col-span-2">
-          <Field label="Account rating" error={errors.rating} required={editable}>
-            {editable ? (
-              <select className="input w-64" value={form.rating} onChange={(e) => setForm({ ...form, rating: e.target.value })}>
-                <option value="">Choose…</option>
-                {ACCOUNT_RATINGS.map((x) => (
-                  <option key={x} value={x}>
-                    {ACCOUNT_RATING_LABELS[x]}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div>
-                <RatingBadge value={r.rating} />
-              </div>
-            )}
-          </Field>
-          {text('summary', 'Summary', 'How the account stands this month.')}
-          {text('risks', 'Risks', 'Roll-offs, renewals due, escalations, unhappy stakeholders.')}
-          {text('opportunities', 'Growth opportunities', 'New roles, extensions, other teams.')}
-          {text('actions', 'Actions', 'Who does what next.')}
-        </section>
+        <div className="space-y-4 lg:col-span-2">
+          {editable && needsNote && <ChangeNoteField value={changeNote} onChange={setChangeNote} error={errors.changeNote} nextVersion={nextVersion} />}
+          <section className="card space-y-4 p-4">
+            <Field label="Account rating" error={errors.rating} required={editable}>
+              {editable ? (
+                <select className="input w-64" value={form.rating} onChange={(e) => setForm({ ...form, rating: e.target.value })}>
+                  <option value="">Choose…</option>
+                  {ACCOUNT_RATINGS.map((x) => (
+                    <option key={x} value={x}>
+                      {ACCOUNT_RATING_LABELS[x]}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div>
+                  <RatingBadge value={r.rating} />
+                </div>
+              )}
+            </Field>
+            {text('summary', 'Summary', 'How the account stands this month.')}
+            {text('risks', 'Risks', 'Roll-offs, renewals due, escalations, unhappy stakeholders.')}
+            {text('opportunities', 'Growth opportunities', 'New roles, extensions, other teams.')}
+            {text('actions', 'Actions', 'Who does what next.')}
+          </section>
+          <VersionHistory versions={r.versions} />
+        </div>
 
         <div className="space-y-4">
           <section className="card space-y-2 p-4 text-sm">
@@ -167,6 +191,7 @@ export default function AccountReviewClient({
                 Approved: {r.approvedAt ? `${formatDate(r.approvedAt)}${r.approvedByName ? ` by ${r.approvedByName}` : ''}` : '—'}
               </div>
             </dl>
+            {showPerformance && r.status !== 'draft' && <LockedNote />}
           </section>
 
           <section className="card p-4 text-sm">
@@ -231,17 +256,26 @@ export default function AccountReviewClient({
         </div>
       </section>
 
-      <Modal open={returnOpen} onClose={() => setReturnOpen(false)} title="Return for changes" description="The review goes back to draft so the Resource Manager can change it.">
+      <Modal
+        open={dialog !== null}
+        onClose={() => setDialog(null)}
+        title={dialog === 'reopen' ? 'Reopen this review' : 'Return for changes'}
+        description={
+          dialog === 'reopen'
+            ? 'It goes back to a draft. The Resource Manager updates it and says what changed, and it is saved as a new version.'
+            : 'The review goes back to draft so the Resource Manager can change it.'
+        }
+      >
         <div className="space-y-4">
-          <Field label="What needs to change" error={errors.reason} required>
+          <Field label={dialog === 'reopen' ? 'Why is it being reopened' : 'What needs to change'} error={errors.reason} required>
             <textarea className="input min-h-[96px]" value={reason} onChange={(e) => setReason(e.target.value)} />
           </Field>
           <div className="flex justify-end gap-2">
-            <button className="btn-ghost" onClick={() => setReturnOpen(false)}>
+            <button className="btn-ghost" onClick={() => setDialog(null)}>
               Cancel
             </button>
             <button className="btn-primary" disabled={busy || !reason.trim()} onClick={sendBack}>
-              Return
+              {dialog === 'reopen' ? 'Reopen' : 'Return'}
             </button>
           </div>
         </div>

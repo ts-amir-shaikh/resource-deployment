@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   activeInPeriod,
   averageScore,
+  changeNoteError,
+  diffAccount,
+  diffPerformance,
   completion,
   dueInPeriod,
+  extraLabelKey,
+  extraScoresError,
   isPeriod,
   isReviewEditable,
   isValidScore,
+  MAX_EXTRA_SCORES,
   normaliseSkillName,
   periodBounds,
   periodOf,
@@ -150,5 +156,129 @@ describe('skills', () => {
       { primarySkill: 'Kotlin', secondarySkill: null, otherSkills: '{"a":1}' },
     ]);
     expect(names).toEqual(['AWS', 'Java', 'Kotlin', 'react']);
+  });
+});
+
+describe('extra criteria on one review', () => {
+  it('an extra score moves the average like any other', () => {
+    expect(averageScore([5, 5, 4, 5])).toBe(4.8);
+    expect(averageScore([5, 5, 4, 5, 2])).toBe(4.2);
+  });
+
+  it('an unscored extra is left out of the average, never counted as 0', () => {
+    expect(averageScore([4, 4, null])).toBe(4);
+  });
+
+  it('an unscored extra stops a submit, the same as a missing criterion', () => {
+    const scores = [{ criterionId: 1, score: 4 }];
+    expect(submitError([1], scores, [{ score: null }])).toMatch(/one is missing/);
+    expect(submitError([1], scores, [{ score: 3 }])).toBeNull();
+    expect(submitError([1], scores)).toBeNull();
+  });
+
+  it('counts a missing criterion and a missing extra together', () => {
+    expect(submitError([1, 2], [{ criterionId: 1, score: 4 }], [{ score: null }])).toMatch(/2 are missing/);
+  });
+
+  it('refuses a blank, duplicate or too many extras', () => {
+    expect(extraScoresError([{ label: 'Mentoring' }])).toBeNull();
+    expect(extraScoresError([{ label: '  ' }])).toMatch(/Name every/);
+    expect(extraScoresError([{ label: 'Mentoring' }, { label: ' mentoring ' }])).toMatch(/already on this review/);
+    const many = Array.from({ length: MAX_EXTRA_SCORES + 1 }, (_, i) => ({ label: `Extra ${i}` }));
+    expect(extraScoresError(many)).toMatch(/At most/);
+  });
+
+  it('refuses an extra named like a standard criterion', () => {
+    expect(extraScoresError([{ label: 'communication' }], ['Technical skill', 'Communication'])).toMatch(/already on this review/);
+    expect(extraScoresError([{ label: 'Mentoring' }], ['Technical skill', 'Communication'])).toBeNull();
+  });
+
+  it('compares labels without case or spacing', () => {
+    expect(extraLabelKey('  On   Call ')).toBe('on call');
+  });
+});
+
+describe('reopening a locked review', () => {
+  it('Admin can reopen a submitted or an approved review, never a draft', () => {
+    expect(reviewTransition('submitted', 'reopen')).toEqual({ to: 'draft' });
+    expect(reviewTransition('approved', 'reopen')).toEqual({ to: 'draft' });
+    expect(reviewTransition('draft', 'reopen').error).toBeTruthy();
+  });
+
+  it('return still only reaches a submitted review', () => {
+    expect(reviewTransition('approved', 'return').error).toBeTruthy();
+  });
+
+  it('a locked review is not edited in place by anyone', () => {
+    expect(isReviewEditable('draft')).toBe(true);
+    expect(isReviewEditable('submitted')).toBe(false);
+    expect(isReviewEditable('approved')).toBe(false);
+  });
+});
+
+describe('change note', () => {
+  it('the first version needs none', () => {
+    expect(changeNoteError(0, null)).toBeNull();
+    expect(changeNoteError(0, '')).toBeNull();
+  });
+
+  it('every later version has to say what changed', () => {
+    expect(changeNoteError(1, null)).toMatch(/what changed/);
+    expect(changeNoteError(1, '   ')).toMatch(/what changed/);
+    expect(changeNoteError(2, 'Raised Communication to 5')).toBeNull();
+  });
+});
+
+describe('what changed between versions', () => {
+  const base = {
+    summary: 'Good month.',
+    strengths: null,
+    improvements: null,
+    clientFeedback: null,
+    clientFeedbackBy: null,
+    clientFeedbackDate: null,
+    scores: [
+      { label: 'Technical skill', score: 4, note: null },
+      { label: 'Communication', score: 3, note: null },
+    ],
+    extras: [{ label: 'Mentoring', score: 4, note: null }],
+    average: 3.7,
+  };
+
+  it('is empty when nothing differs', () => {
+    expect(diffPerformance(base, { ...base })).toEqual([]);
+  });
+
+  it('lists a changed score, with the average that moved with it', () => {
+    const next = { ...base, scores: [base.scores[0], { label: 'Communication', score: 5, note: null }], average: 4.3 };
+    expect(diffPerformance(base, next)).toEqual([
+      { field: 'Communication', from: '3', to: '5' },
+      { field: 'Average', from: '3.7', to: '4.3' },
+    ]);
+  });
+
+  it('lists an extra criterion that was added or removed', () => {
+    const added = { ...base, extras: [...base.extras, { label: 'On-call', score: 2, note: null }] };
+    expect(diffPerformance(base, added)).toContainEqual({ field: 'Extra: On-call', from: null, to: '2' });
+    const removed = { ...base, extras: [] };
+    expect(diffPerformance(base, removed)).toContainEqual({ field: 'Extra: Mentoring', from: '4', to: null });
+  });
+
+  it('matches criteria by name, ignoring case and spacing', () => {
+    const next = { ...base, scores: [{ label: ' technical skill ', score: 4, note: null }, base.scores[1]] };
+    expect(diffPerformance(base, next)).toEqual([]);
+  });
+
+  it('lists changed text, and treats blank and missing as the same', () => {
+    const next = { ...base, summary: 'Excellent month.', strengths: '  ' };
+    expect(diffPerformance(base, next)).toEqual([{ field: 'Summary', from: 'Good month.', to: 'Excellent month.' }]);
+  });
+
+  it('compares an account review field by field', () => {
+    const a = { rating: 'green' as const, summary: 's', risks: null, opportunities: null, actions: 'x' };
+    expect(diffAccount(a, { ...a, rating: 'amber', actions: 'y' })).toEqual([
+      { field: 'Rating', from: 'green', to: 'amber' },
+      { field: 'Actions', from: 'x', to: 'y' },
+    ]);
   });
 });

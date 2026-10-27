@@ -288,17 +288,31 @@ describe('M67: reviews and the skill matrix', () => {
     }
   });
 
-  it('only Admin approves or returns a review (Q3)', () => {
+  it('only Admin approves, returns or reopens a review (Q3)', () => {
     for (const path of [
       '/api/reviews/performance/4/approve',
       '/api/reviews/performance/4/return',
+      '/api/reviews/performance/4/reopen',
       '/api/reviews/accounts/2/approve',
       '/api/reviews/accounts/2/return',
+      '/api/reviews/accounts/2/reopen',
     ]) {
       expect(canWrite('resource_manager', path), path).toBe(false);
       expect(canWrite('management', path), path).toBe(false);
       expect(canWrite('sales', path), path).toBe(false);
       expect(canWrite('admin', path), path).toBe(true);
+    }
+  });
+
+  it('Admin signs reviews off but does not write or submit them', () => {
+    for (const path of [
+      '/api/reviews/performance/4',
+      '/api/reviews/performance/4/submit',
+      '/api/reviews/accounts/2',
+      '/api/reviews/accounts/2/submit',
+    ]) {
+      expect(canWrite('admin', path), path).toBe(false);
+      expect(canWrite('resource_manager', path), path).toBe(true);
     }
   });
 

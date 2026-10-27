@@ -108,7 +108,7 @@ export default function ReviewsClient({
                           Open
                         </Link>
                       ) : canWrite ? (
-                        <button className="btn-primary" disabled={busy !== null} onClick={() => start('accounts', a.clientId)}>
+                        <button className="btn-primary" disabled={busy === `accounts:${a.clientId}`} onClick={() => start('accounts', a.clientId)}>
                           {busy === `accounts:${a.clientId}` ? 'Starting…' : 'Start review'}
                         </button>
                       ) : null}
@@ -170,7 +170,7 @@ export default function ReviewsClient({
                           Open
                         </Link>
                       ) : canWrite ? (
-                        <button className="btn-primary" disabled={busy !== null} onClick={() => start('performance', p.deploymentId)}>
+                        <button className="btn-primary" disabled={busy === `performance:${p.deploymentId}`} onClick={() => start('performance', p.deploymentId)}>
                           {busy === `performance:${p.deploymentId}` ? 'Starting…' : 'Start review'}
                         </button>
                       ) : null}
