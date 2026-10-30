@@ -13,6 +13,7 @@ import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
  *   /api/share/*  the matching read endpoint and referral submission
  *   /jobs/*       the public job board and its apply form
  *   /api/jobs/*   the matching read and apply endpoints
+ *   /api/integration/*  machine callers, authenticated by API key per route
  *   /api/health   liveness/readiness for the deploy script and proxy
  *   /set-password the landing page of an emailed password link, and its API
  *   /api/auth/google/*  Google sign-in's start and callback
@@ -21,7 +22,16 @@ import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
  * route is covered by the policy the moment it exists, instead of being open
  * until someone remembers to add a guard to it.
  */
-export const PUBLIC_PREFIXES = ['/share/', '/api/share/', '/jobs/', '/api/jobs/'];
+export const PUBLIC_PREFIXES = [
+  '/share/',
+  '/api/share/',
+  '/jobs/',
+  '/api/jobs/',
+  // M62: the integration API. No cookie session here; every route
+  // authenticates a bearer key itself (lib/integration.ts), and
+  // tests/integration-routes.test.ts fails if one does not.
+  '/api/integration/',
+];
 export const PUBLIC_EXACT = [
   '/login',
   '/api/auth/login',

@@ -10,7 +10,7 @@ import {
 import { invoiceSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody } from '@/lib/api';
 import { withTimesheetLeave } from '@/lib/timesheets';
-import { isInvoiceOverdue, today, invoiceLineRow } from '@/lib/utils';
+import { isInvoiceOverdue, today, invoiceLineRow, defaultDueDate } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,11 +90,15 @@ export async function POST(req: Request) {
     if (error) return error;
 
     const project = await db
-      .select({ id: projects.id })
+      .select({ id: projects.id, defaultDueDays: clients.defaultDueDays })
       .from(projects)
+      .innerJoin(clients, eq(projects.clientId, clients.id))
       .where(eq(projects.id, data.projectId))
       .get();
     if (!project) return fail('Selected project no longer exists', 422);
+
+    // M62: a blank due date takes the client's payment terms; a typed one wins.
+    const dueDate = data.dueDate ?? defaultDueDate(data.invoiceDate, project.defaultDueDays);
 
     if (data.agreementId) {
       const agreement = await db
@@ -135,7 +139,7 @@ export async function POST(req: Request) {
           amount: data.amount,
           gstAmount: data.gstAmount,
           invoiceDate: data.invoiceDate,
-          dueDate: data.dueDate,
+          dueDate,
           status: 'not_raised',
           notes: data.notes,
         })

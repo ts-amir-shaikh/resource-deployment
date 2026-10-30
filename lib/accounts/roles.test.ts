@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { canAccess, canExport, canWrite, isExportPath, landingPath, navFor, HOLDING_PATH } from '@/lib/access';
+import { canAccess, canExport, canWrite, isExportPath, landingPath, navFor, stripClientBilling, HOLDING_PATH } from '@/lib/access';
+import { clientBillingSchema } from '@/lib/validations';
+import { defaultDueDate } from '@/lib/utils';
 import { PENDING_ROLES, ROLES } from '@/lib/auth';
 import { USER_ROLES } from '@/lib/schema';
 
@@ -380,5 +382,98 @@ describe('CSV export is back office only', () => {
     expect(isExportPath('/api/candidates/12')).toBe(false);
     expect(isExportPath('/api/opportunities/3/export')).toBe(false);
     expect(isExportPath('/api/exportsfoo')).toBe(false);
+  });
+});
+
+describe('M62: accounts', () => {
+  it('is no longer held on the welcome page and lands on the invoices', () => {
+    expect(PENDING_ROLES).not.toContain('accounts');
+    expect(landingPath('accounts')).toBe('/invoices');
+  });
+
+  it('opens the billing screens and the figures behind them', () => {
+    for (const path of [
+      '/invoices', '/invoices/3', '/agreements', '/agreements/2', '/clients', '/clients/4',
+      '/projects', '/deployments', '/resources', '/resources/5',
+      '/api/invoices', '/api/agreements', '/api/clients', '/api/resources', '/api/deployments',
+    ]) {
+      expect(canAccess('accounts', path), path).toBe(true);
+    }
+  });
+
+  it('opens nothing else', () => {
+    for (const path of [
+      '/', '/my', '/pipeline', '/candidates', '/agents', '/people', '/reviews', '/skills',
+      '/timesheets', '/timesheet', '/approvals', '/prospects', '/campaigns', '/lead-records', '/holidays',
+      '/api/opportunities', '/api/candidates', '/api/users', '/api/timesheets/dashboard', '/api/leadgen/leads',
+      '/api/reviews', '/api/skills', '/api/dashboard/pipeline',
+    ]) {
+      expect(canAccess('accounts', path), path).toBe(false);
+    }
+  });
+
+  it('writes invoices, agreements and client billing details', () => {
+    for (const path of [
+      '/api/invoices', '/api/invoices/3', '/api/invoices/3/advance', '/api/invoices/bulk-advance',
+      '/api/agreements', '/api/agreements/2', '/api/agreements/2/renew', '/api/agreements/2/correct',
+      '/api/clients/4/billing',
+    ]) {
+      expect(canWrite('accounts', path), path).toBe(true);
+    }
+  });
+
+  it('cannot rewrite or delete a client, or write anywhere else', () => {
+    for (const path of [
+      '/api/clients', '/api/clients/4', '/api/projects', '/api/projects/2', '/api/deployments',
+      '/api/resources', '/api/resources/5', '/api/users', '/api/opportunities', '/api/reviews/performance/1',
+    ]) {
+      expect(canWrite('accounts', path), path).toBe(false);
+    }
+  });
+
+  it('cannot export in bulk', () => {
+    expect(canExport('accounts')).toBe(false);
+    expect(canAccess('accounts', '/api/invoices/export')).toBe(false);
+  });
+
+  it('sees the billing screens in its navigation and no pipeline', () => {
+    const hrefs = navFor('accounts').map((n) => n.href);
+    expect(hrefs).toEqual(expect.arrayContaining(['/invoices', '/agreements', '/clients']));
+    expect(hrefs).not.toContain('/pipeline');
+    expect(hrefs).not.toContain('/people');
+  });
+
+  it('billing details are stripped for the pipeline roles and kept for billing and back office', () => {
+    const row = { id: 1, companyName: 'Acme', gstin: '27AAPFU0939F1ZV', billingAddress: 'x', paymentTerms: 'Net 30', defaultDueDays: 30 };
+    for (const role of ['ta', 'leadgen', 'sales', 'resource', 'resource_manager'] as const) {
+      expect(stripClientBilling(role, row)).toEqual({ id: 1, companyName: 'Acme' });
+    }
+    for (const role of ['admin', 'management', 'accounts'] as const) {
+      expect(stripClientBilling(role, row)).toEqual(row);
+    }
+  });
+});
+
+describe('M62: client billing details', () => {
+  it('accepts a valid GSTIN, upper-casing it', () => {
+    expect(clientBillingSchema.parse({ gstin: '27aapfu0939f1zv' }).gstin).toBe('27AAPFU0939F1ZV');
+  });
+
+  it('rejects a malformed GSTIN and a bad due-days value', () => {
+    expect(clientBillingSchema.safeParse({ gstin: 'NOTAGSTIN' }).success).toBe(false);
+    expect(clientBillingSchema.safeParse({ defaultDueDays: 0 }).success).toBe(false);
+    expect(clientBillingSchema.safeParse({ defaultDueDays: 1.5 }).success).toBe(false);
+  });
+
+  it('reads empty strings as cleared, not as zero', () => {
+    const r = clientBillingSchema.parse({ gstin: '', billingAddress: '', paymentTerms: '', defaultDueDays: '' });
+    expect(r).toEqual({ gstin: undefined, billingAddress: undefined, paymentTerms: undefined, defaultDueDays: undefined });
+  });
+
+  it('derives a due date from the invoice date and default days', () => {
+    expect(defaultDueDate('2026-01-15', 30)).toBe('2026-02-14');
+    expect(defaultDueDate('2026-12-20', 30)).toBe('2027-01-19');
+    expect(defaultDueDate(undefined, 30)).toBeUndefined();
+    expect(defaultDueDate('2026-01-15', null)).toBeUndefined();
   });
 });

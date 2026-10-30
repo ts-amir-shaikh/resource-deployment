@@ -11,6 +11,7 @@
     "db:migrate": "node --env-file=.env --import tsx scripts/migrate.ts",
     "db:import": "node --env-file=.env --import tsx scripts/import.ts",
     "db:clean": "node --env-file=.env --import tsx scripts/clean.ts",
+    "db:integration-key": "node --env-file=.env --import tsx scripts/integration-key.ts",
     "db:user": "node --env-file=.env --import tsx scripts/user.ts",
     "db:seed-timesheets": "node --env-file=.env --import tsx scripts/seed-timesheets.ts",
     "db:seed-leadgen": "node --env-file=.env --import tsx scripts/seed-leadgen.ts",

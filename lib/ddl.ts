@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS clients (
   spoc_name TEXT, spoc_email TEXT, spoc_mobile TEXT, spoc_designation TEXT,
   account_name TEXT, account_email TEXT, account_mobile TEXT,
   alt_spoc_name TEXT, alt_spoc_email TEXT, alt_spoc_mobile TEXT, alt_spoc_designation TEXT,
+  gstin TEXT, billing_address TEXT, payment_terms TEXT, default_due_days INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   collected_date TEXT,
   status TEXT NOT NULL DEFAULT 'not_raised',
   notes TEXT,
+  external_id TEXT, external_reference TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS inv_project_idx ON invoices(project_id);
@@ -703,4 +705,40 @@ CREATE TABLE IF NOT EXISTS leave_requests (
 );
 CREATE INDEX IF NOT EXISTS leave_resource_idx ON leave_requests(resource_id, start_date);
 CREATE INDEX IF NOT EXISTS leave_status_idx ON leave_requests(status);
+
+CREATE TABLE IF NOT EXISTS integration_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  scope TEXT NOT NULL DEFAULT 'read',
+  last_used_at TEXT,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS integration_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key_id INTEGER,
+  method TEXT NOT NULL,
+  path TEXT NOT NULL,
+  status INTEGER NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS intlog_created_idx ON integration_log(created_at);
+
+CREATE TABLE IF NOT EXISTS invoice_receipts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id),
+  external_id TEXT,
+  received_date TEXT NOT NULL,
+  amount REAL NOT NULL,
+  tds_deducted REAL NOT NULL DEFAULT 0,
+  note TEXT,
+  source TEXT NOT NULL DEFAULT 'integration',
+  key_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS rcpt_invoice_idx ON invoice_receipts(invoice_id);
+CREATE UNIQUE INDEX IF NOT EXISTS rcpt_external_idx ON invoice_receipts(external_id);
 `;

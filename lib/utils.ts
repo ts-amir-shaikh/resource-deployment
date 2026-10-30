@@ -698,3 +698,16 @@ export function invoiceLineRow(
     amount: math.amount,
   };
 }
+
+/**
+ * M62: a new invoice's due date when the form left it blank. The client's
+ * default payment terms count from the invoice date; with no invoice date or
+ * no default there is nothing to derive, and the date stays empty.
+ */
+export function defaultDueDate(invoiceDate: string | null | undefined, dueDays: number | null | undefined): string | undefined {
+  if (!invoiceDate || !dueDays || dueDays < 1) return undefined;
+  const d = new Date(`${invoiceDate}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return undefined;
+  d.setUTCDate(d.getUTCDate() + dueDays);
+  return d.toISOString().slice(0, 10);
+}

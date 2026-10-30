@@ -5,6 +5,8 @@ import { clientSchema } from '@/lib/validations';
 import { handle, ok, parseBody } from '@/lib/api';
 import { guardCompanyDuplicates } from '@/lib/leadgen';
 import { leadgen } from '@/lib/leadgen-api';
+import { stripClientBilling } from '@/lib/access';
+import { currentRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,9 +51,10 @@ export async function GET(req: Request) {
       .groupBy(projects.clientId)
       .all();
 
+    const role = await currentRole();
     return ok(
       rows.map((c) => ({
-        ...c,
+        ...stripClientBilling(role, c),
         projectCount: projectCounts.find((p) => p.clientId === c.id)?.count ?? 0,
         monthlyBilling: billing.find((b) => b.clientId === c.id)?.total ?? 0,
       })),

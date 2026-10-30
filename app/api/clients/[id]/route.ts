@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { clients, projects, opportunities } from '@/lib/schema';
 import { clientSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
+import { stripClientBilling } from '@/lib/access';
+import { currentRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +25,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       .orderBy(projects.projectName)
       .all();
 
-    return ok({ ...row, projects: linked });
+    return ok({ ...stripClientBilling(await currentRole(), row), projects: linked });
   });
 }
 

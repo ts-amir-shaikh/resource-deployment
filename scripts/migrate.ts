@@ -460,6 +460,38 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'lead_id',
     ddl: 'ALTER TABLE opportunities ADD COLUMN lead_id INTEGER',
   },
+  // M62: the other system's reference on an invoice, nullable.
+  {
+    table: 'invoices',
+    column: 'external_id',
+    ddl: 'ALTER TABLE invoices ADD COLUMN external_id TEXT',
+  },
+  {
+    table: 'invoices',
+    column: 'external_reference',
+    ddl: 'ALTER TABLE invoices ADD COLUMN external_reference TEXT',
+  },
+  // M62: client billing details, all nullable.
+  {
+    table: 'clients',
+    column: 'gstin',
+    ddl: 'ALTER TABLE clients ADD COLUMN gstin TEXT',
+  },
+  {
+    table: 'clients',
+    column: 'billing_address',
+    ddl: 'ALTER TABLE clients ADD COLUMN billing_address TEXT',
+  },
+  {
+    table: 'clients',
+    column: 'payment_terms',
+    ddl: 'ALTER TABLE clients ADD COLUMN payment_terms TEXT',
+  },
+  {
+    table: 'clients',
+    column: 'default_due_days',
+    ddl: 'ALTER TABLE clients ADD COLUMN default_due_days INTEGER',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

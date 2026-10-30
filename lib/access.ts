@@ -25,6 +25,8 @@ const BACK_OFFICE: readonly Role[] = ['admin', 'management'];
 const FULFILMENT: readonly Role[] = ['admin', 'management', 'ta', 'sales'];
 /** M66: the front of the funnel — prospects, campaigns and leads. */
 const FUNNEL: readonly Role[] = ['admin', 'management', 'leadgen', 'sales'];
+/** M62: the billing screens, which Accounts works in alongside the back office. */
+const BILLING: readonly Role[] = ['admin', 'management', 'accounts'];
 
 export const NAV: NavItem[] = [
   { href: '/', label: 'Dashboard', roles: BACK_OFFICE },
@@ -39,12 +41,12 @@ export const NAV: NavItem[] = [
   { href: '/pipeline', label: 'Staffing Pipeline', roles: ALL },
   { href: '/candidates', label: 'Candidates', roles: FULFILMENT },
   { href: '/agents', label: 'Agents', roles: FULFILMENT },
-  { href: '/resources', label: 'Resources', roles: BACK_OFFICE },
-  { href: '/clients', label: 'Clients', roles: BACK_OFFICE },
-  { href: '/projects', label: 'Projects', roles: BACK_OFFICE },
-  { href: '/deployments', label: 'Deployments', roles: BACK_OFFICE },
-  { href: '/agreements', label: 'Agreements & POs', roles: BACK_OFFICE },
-  { href: '/invoices', label: 'Invoices', roles: BACK_OFFICE },
+  { href: '/resources', label: 'Resources', roles: BILLING },
+  { href: '/clients', label: 'Clients', roles: BILLING },
+  { href: '/projects', label: 'Projects', roles: BILLING },
+  { href: '/deployments', label: 'Deployments', roles: BILLING },
+  { href: '/agreements', label: 'Agreements & POs', roles: BILLING },
+  { href: '/invoices', label: 'Invoices', roles: BILLING },
   // Admin manages logins here; Management sees the same list read-only.
   { href: '/people', label: 'People', roles: BACK_OFFICE },
   // M65. Admin keeps the approval queue too: it retains overrides.
@@ -84,6 +86,8 @@ export function landingPath(role: Role): string {
       return '/leads';
     case 'sales':
       return '/sales';
+    case 'accounts':
+      return '/invoices';
     case 'resource':
       return '/timesheet';
     case 'resource_manager':
@@ -197,6 +201,28 @@ const RESOURCE_MANAGER_READ_PREFIXES = [
   '/api/leaves/approvals',
 ];
 
+/**
+ * Accounts (M62, D-A4): the billing screens and what they read. Resources and
+ * deployments are here because margin and CTC are computed from them, and
+ * Accounts sees those figures; Management already does through BACK_OFFICE.
+ * No pipeline, candidates, reviews, timesheets or people: a billing role has
+ * no business in them.
+ */
+const ACCOUNTS_READ_PREFIXES = [
+  '/invoices',
+  '/agreements',
+  '/clients',
+  '/projects',
+  '/deployments',
+  '/resources',
+  '/api/invoices',
+  '/api/agreements',
+  '/api/clients',
+  '/api/projects',
+  '/api/deployments',
+  '/api/resources',
+];
+
 /** Paths every signed-in role may reach regardless of role. */
 const COMMON_PREFIXES = ['/api/auth/'];
 
@@ -242,6 +268,7 @@ export function canAccess(role: Role, pathname: string): boolean {
   if (role === 'admin' || role === 'management') return true;
   if (role === 'leadgen') return matchesPrefix(pathname, LEADGEN_READ_PREFIXES);
   if (role === 'sales') return matchesPrefix(pathname, SALES_READ_PREFIXES);
+  if (role === 'accounts') return matchesPrefix(pathname, ACCOUNTS_READ_PREFIXES);
   if (role === 'resource') return matchesPrefix(pathname, RESOURCE_READ_PREFIXES);
   if (role === 'resource_manager') return matchesPrefix(pathname, RESOURCE_MANAGER_READ_PREFIXES);
   return matchesPrefix(pathname, TA_READ_PREFIXES);
@@ -329,6 +356,17 @@ const SALES_WRITE_RULES: WriteRule[] = [
   { test: (p) => p === '/api/leadgen/activities', allow: true },
 ];
 
+/**
+ * Accounts writes (D-A6): raising, correcting and advancing invoices and
+ * agreements, and a client's billing details. Not the client record itself
+ * (`/api/clients/:id` also deletes), projects, deployments or resources.
+ */
+const ACCOUNTS_WRITE_RULES: WriteRule[] = [
+  { test: (p) => p.startsWith('/api/invoices'), allow: true },
+  { test: (p) => p.startsWith('/api/agreements'), allow: true },
+  { test: (p) => /^\/api\/clients\/\d+\/billing$/.test(p), allow: true },
+];
+
 /** Resource writes: entering and submitting their own days. */
 const RESOURCE_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/timesheets/mine'), allow: true },
@@ -365,6 +403,8 @@ export function canWrite(role: Role, pathname: string): boolean {
       ? LEADGEN_WRITE_RULES
       : role === 'sales'
         ? SALES_WRITE_RULES
+        : role === 'accounts'
+          ? ACCOUNTS_WRITE_RULES
         : role === 'resource'
           ? RESOURCE_WRITE_RULES
           : role === 'resource_manager'
@@ -408,4 +448,23 @@ export function stripClientBudgetAll<T extends Record<string, unknown>>(
 ): T[] {
   if (role !== 'ta') return rows;
   return rows.map((r) => stripClientBudget(role, r));
+}
+
+/**
+ * M62: a client's billing details — GSTIN, address, payment terms. Billing and
+ * the back office use them; the pipeline roles read the client list for its
+ * names and do not need them. Stripped on the server on the way out, as
+ * stripClientBudget is.
+ */
+export const CLIENT_BILLING_FIELDS = ['gstin', 'billingAddress', 'paymentTerms', 'defaultDueDays'] as const;
+
+export function canSeeClientBilling(role: Role): boolean {
+  return BILLING.includes(role);
+}
+
+export function stripClientBilling<T extends Record<string, unknown>>(role: Role, row: T): T {
+  if (canSeeClientBilling(role)) return row;
+  const out = { ...row };
+  for (const f of CLIENT_BILLING_FIELDS) delete out[f];
+  return out;
 }

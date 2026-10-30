@@ -123,6 +123,64 @@ export const clientSchema = z.object({
   altSpocDesignation: optionalStr,
 });
 
+/**
+ * M62 (G-ACC-02): a client's billing details, saved apart from the contact
+ * record so Accounts can edit them without being able to rewrite or delete the
+ * client. GSTIN is the 15-character Indian format; the empty string is first
+ * in each union because z.coerce.number() would read '' as 0.
+ */
+export const GSTIN_PATTERN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+export const clientBillingSchema = z.object({
+  gstin: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .optional()
+    .transform((v) => (v === '' ? undefined : v))
+    .refine((v) => v === undefined || GSTIN_PATTERN.test(v), {
+      message: 'Enter a valid 15-character GSTIN',
+    }),
+  billingAddress: optionalStr,
+  paymentTerms: optionalStr,
+  defaultDueDays: z
+    .union([z.literal(''), z.null(), z.coerce.number().int('Whole days only').positive('Must be at least 1 day').max(365, 'At most 365 days')])
+    .optional()
+    .transform((v) => (v === '' || v === null || v === undefined ? undefined : Number(v))),
+});
+
+/* ── Integration API (M62) ─────────────────────────────────── */
+
+const moneyAmount = z.object({
+  amount: z.number({ invalid_type_error: 'Amount must be a number' }).finite().nonnegative('Amount cannot be negative'),
+  currency: z.enum(['INR', 'AED', 'USD']),
+});
+
+export const externalReferenceSchema = z.object({
+  externalId: z.string().trim().min(1, 'externalId is required').max(100),
+  reference: z.string().trim().min(1, 'reference is required').max(200),
+});
+
+/** One of invoiceId or invoiceNumber names the invoice; the amount is positive. */
+export const receiptPushSchema = z
+  .object({
+    externalId: z.string().trim().min(1, 'externalId is required').max(100),
+    invoiceId: z.number().int().positive().optional(),
+    invoiceNumber: z.string().trim().min(1).max(100).optional(),
+    receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a valid date'),
+    amount: moneyAmount.refine((m) => m.amount > 0, { message: 'Amount must be greater than 0', path: ['amount'] }),
+    tdsDeducted: moneyAmount.optional(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .refine((d) => d.invoiceId !== undefined || d.invoiceNumber !== undefined, {
+    message: 'Give invoiceId or invoiceNumber',
+    path: ['invoiceNumber'],
+  })
+  .refine((d) => !d.tdsDeducted || d.tdsDeducted.currency === d.amount.currency, {
+    message: 'TDS must be in the same currency as the amount',
+    path: ['tdsDeducted'],
+  });
+
 /* ── Projects ──────────────────────────────────────────────── */
 
 export const projectSchema = z.object({
@@ -628,6 +686,7 @@ export const convertSchema = z.object({
 
 export type ResourceInput = z.input<typeof resourceSchema>;
 export type ClientInput = z.input<typeof clientSchema>;
+export type ClientBillingInput = z.input<typeof clientBillingSchema>;
 export type ProjectInput = z.input<typeof projectSchema>;
 export type DeploymentInput = z.input<typeof deploymentSchema>;
 export type AgreementInput = z.input<typeof agreementSchema>;

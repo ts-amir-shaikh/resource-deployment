@@ -69,6 +69,14 @@ export const clients = sqliteTable('clients', {
   altSpocMobile: text('alt_spoc_mobile'),
   altSpocDesignation: text('alt_spoc_designation'),
 
+  /* M62: billing details. All nullable — a client created before these
+   * existed stays valid with all four empty. */
+  gstin: text('gstin'),
+  billingAddress: text('billing_address'),
+  paymentTerms: text('payment_terms'),
+  /** Days after the invoice date; seeds a new invoice's due date. */
+  defaultDueDays: integer('default_due_days'),
+
   ...timestamps,
 });
 
@@ -292,6 +300,10 @@ export const invoices = sqliteTable(
       .notNull()
       .default('not_raised'),
     notes: text('notes'),
+    /** M62: the other system's record of this invoice, written back through
+     *  the integration API. Nullable — most invoices will never have one. */
+    externalId: text('external_id'),
+    externalReference: text('external_reference'),
     ...timestamps,
   },
   (t) => ({
@@ -1814,3 +1826,62 @@ export type OpportunityComment = typeof opportunityComments.$inferSelect;
 export type OpportunityStage = (typeof OPPORTUNITY_STAGES)[number];
 export type CandidateSource = (typeof CANDIDATE_SOURCES)[number];
 export type CandidateStatus = (typeof CANDIDATE_STATUSES)[number];
+
+/* ── M62: Integration API ──────────────────────────────────── */
+
+export const INTEGRATION_SCOPES = ['read', 'read-write'] as const;
+
+/** One key per calling application. Only the SHA-256 of the key is stored. */
+export const integrationKeys = sqliteTable('integration_keys', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  keyHash: text('key_hash').notNull().unique(),
+  scope: text('scope', { enum: INTEGRATION_SCOPES }).notNull().default('read'),
+  lastUsedAt: text('last_used_at'),
+  revokedAt: text('revoked_at'),
+  ...timestamps,
+});
+
+/** Every call the integration API answers, for Admin and Accounts to read. */
+export const integrationLog = sqliteTable(
+  'integration_log',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    keyId: integer('key_id'),
+    method: text('method').notNull(),
+    path: text('path').notNull(),
+    status: integer('status').notNull(),
+    note: text('note'),
+    ...timestamps,
+  },
+  (t) => ({
+    createdIdx: index('intlog_created_idx').on(t.createdAt),
+  }),
+);
+
+/**
+ * A payment against an invoice. Never edited or deleted: a mistaken receipt
+ * is reversed by a counter-entry, so the table is a ledger.
+ */
+export const invoiceReceipts = sqliteTable(
+  'invoice_receipts',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => invoices.id),
+    /** The caller's own ID; unique so a retried push never doubles a payment. */
+    externalId: text('external_id'),
+    receivedDate: text('received_date').notNull(),
+    amount: real('amount').notNull(),
+    tdsDeducted: real('tds_deducted').notNull().default(0),
+    note: text('note'),
+    source: text('source').notNull().default('integration'),
+    keyId: integer('key_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    invoiceIdx: index('rcpt_invoice_idx').on(t.invoiceId),
+    externalIdx: uniqueIndex('rcpt_external_idx').on(t.externalId),
+  }),
+);

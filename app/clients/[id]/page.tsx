@@ -19,10 +19,12 @@ import {
   DetailEmpty,
 } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
+import BillingForm from './billing-form';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ClientDetailPage({ params }: { params: { id: string } }) {
+  // The page is only reachable by roles that may see billing details (access.ts).
   await requireCurrentAccount();
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) notFound();
@@ -146,6 +148,18 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
                 designation={row.altSpocDesignation}
               />
             </div>
+          </DetailSection>
+
+          <DetailSection title="Billing details" hint="Used on invoices; the default due days fills a new invoice's due date">
+            <BillingForm
+              clientId={row.id}
+              initial={{
+                gstin: row.gstin,
+                billingAddress: row.billingAddress,
+                paymentTerms: row.paymentTerms,
+                defaultDueDays: row.defaultDueDays,
+              }}
+            />
           </DetailSection>
 
           <DetailSection title="Projects" count={projectRows.length}>

@@ -18,6 +18,7 @@ import {
   DetailEmpty,
 } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
+import { poConsumption } from '@/lib/po-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,10 @@ export default async function AgreementDetailPage({ params }: { params: { id: st
       .all(),
   ]);
 
+  const po = poConsumption(
+    { value: row.value, currency: row.currency },
+    invoiceRows.map((i) => ({ amount: i.amount, currency: i.currency, status: i.status })),
+  );
   const cardTotal = rateCard.reduce((s, r) => s + r.billingAmount, 0);
   const daysLeft = row.status === 'active' ? daysUntil(row.endDate) : null;
 
@@ -123,6 +128,30 @@ export default async function AgreementDetailPage({ params }: { params: { id: st
 
       <div className="grid gap-6 px-6 py-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <DetailSection title="PO consumption" hint="Invoiced before GST against the PO value, raised invoices only">
+            <DetailFacts
+              columns={4}
+              facts={[
+                ['PO value', formatMoney(po.value, row.currency)],
+                ['Invoiced', formatMoney(po.invoiced, row.currency)],
+                ['Remaining', formatMoney(po.remaining, row.currency)],
+                ['Consumed', `${Math.round(po.consumed * 100)}%`],
+              ]}
+            />
+            {(po.state !== 'ok' || po.otherCurrency > 0) && (
+              <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
+                {po.state === 'low' && <Badge tone="amber">15% or less of the PO is left</Badge>}
+                {po.state === 'exhausted' && <Badge tone="rose">PO fully invoiced</Badge>}
+                {po.state === 'over' && <Badge tone="rose">Invoiced beyond the PO value</Badge>}
+                {po.otherCurrency > 0 && (
+                  <span className="text-xs text-ink3">
+                    {po.otherCurrency} invoice{po.otherCurrency > 1 ? 's' : ''} in another currency not counted
+                  </span>
+                )}
+              </div>
+            )}
+          </DetailSection>
+
           <DetailSection title="Terms">
             <DetailFacts
               facts={[
