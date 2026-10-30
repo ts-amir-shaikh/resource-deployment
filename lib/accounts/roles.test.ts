@@ -394,7 +394,7 @@ describe('M62: accounts', () => {
   it('opens the billing screens and the figures behind them', () => {
     for (const path of [
       '/invoices', '/invoices/3', '/agreements', '/agreements/2', '/clients', '/clients/4',
-      '/projects', '/deployments', '/resources', '/resources/5',
+      '/projects', '/deployments', '/resources', '/resources/5', '/tally',
       '/api/invoices', '/api/agreements', '/api/clients', '/api/resources', '/api/deployments',
     ]) {
       expect(canAccess('accounts', path), path).toBe(true);
@@ -420,6 +420,16 @@ describe('M62: accounts', () => {
     ]) {
       expect(canWrite('accounts', path), path).toBe(true);
     }
+  });
+
+  it('M63: reads the Tally mirror; nobody writes it from a session', () => {
+    expect(navFor('accounts').map((n) => n.href)).toContain('/tally');
+    for (const role of ['ta', 'leadgen', 'sales', 'resource', 'resource_manager'] as const) {
+      expect(canAccess(role, '/tally'), role).toBe(false);
+      expect(navFor(role).map((n) => n.href), role).not.toContain('/tally');
+    }
+    expect(canWrite('accounts', '/tally')).toBe(false);
+    expect(canWrite('management', '/tally')).toBe(false);
   });
 
   it('cannot rewrite or delete a client, or write anywhere else', () => {

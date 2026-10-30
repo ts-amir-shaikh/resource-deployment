@@ -741,4 +741,45 @@ CREATE TABLE IF NOT EXISTS invoice_receipts (
 );
 CREATE INDEX IF NOT EXISTS rcpt_invoice_idx ON invoice_receipts(invoice_id);
 CREATE UNIQUE INDEX IF NOT EXISTS rcpt_external_idx ON invoice_receipts(external_id);
+
+CREATE TABLE IF NOT EXISTS tally_companies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  books_from TEXT,
+  last_push_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tally_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_key TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  guid TEXT NOT NULL,
+  alter_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  parent TEXT,
+  date TEXT,
+  data TEXT NOT NULL,
+  is_deleted INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT,
+  source_updated_at TEXT,
+  received_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS tally_rec_key_idx ON tally_records(company_key, entity, guid);
+CREATE INDEX IF NOT EXISTS tally_rec_name_idx ON tally_records(company_key, entity, name);
+CREATE INDEX IF NOT EXISTS tally_rec_date_idx ON tally_records(company_key, entity, date);
+
+CREATE TABLE IF NOT EXISTS tally_sync_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key_id INTEGER,
+  company_key TEXT NOT NULL,
+  received INTEGER NOT NULL,
+  inserted INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  unchanged INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS tally_run_created_idx ON tally_sync_runs(created_at);
 `;

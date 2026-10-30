@@ -47,6 +47,8 @@ export const NAV: NavItem[] = [
   { href: '/deployments', label: 'Deployments', roles: BILLING },
   { href: '/agreements', label: 'Agreements & POs', roles: BILLING },
   { href: '/invoices', label: 'Invoices', roles: BILLING },
+  // M63: the read-only mirror of TallyPrime, pushed by the bridge.
+  { href: '/tally', label: 'Tally Data', roles: BILLING },
   // Admin manages logins here; Management sees the same list read-only.
   { href: '/people', label: 'People', roles: BACK_OFFICE },
   // M65. Admin keeps the approval queue too: it retains overrides.
@@ -215,6 +217,9 @@ const ACCOUNTS_READ_PREFIXES = [
   '/projects',
   '/deployments',
   '/resources',
+  // M63: read only. Nothing under it is written by a person; the bridge
+  // writes through /api/integration, which has its own key check.
+  '/tally',
   '/api/invoices',
   '/api/agreements',
   '/api/clients',

@@ -1885,3 +1885,65 @@ export const invoiceReceipts = sqliteTable(
     externalIdx: uniqueIndex('rcpt_external_idx').on(t.externalId),
   }),
 );
+
+/* ── M63: Tally inbound (mirror of TallyPrime, pushed by the bridge) ── */
+
+/** A Tally company the bridge has pushed. `companyKey` is the bridge's own key for it. */
+export const tallyCompanies = sqliteTable('tally_companies', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  companyKey: text('company_key').notNull().unique(),
+  name: text('name').notNull(),
+  booksFrom: text('books_from'),
+  lastPushAt: text('last_push_at'),
+  ...timestamps,
+});
+
+/**
+ * One Tally master or voucher, as Tally last reported it. Keyed by Tally's
+ * GUID; AlterID is the version. Never deleted: `isDeleted` marks a record
+ * removed in Tally. `data` is the full record as JSON text.
+ */
+export const tallyRecords = sqliteTable(
+  'tally_records',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    companyKey: text('company_key').notNull(),
+    entity: text('entity').notNull(),
+    guid: text('guid').notNull(),
+    alterId: integer('alter_id').notNull(),
+    name: text('name').notNull(),
+    parent: text('parent'),
+    date: text('date'),
+    data: text('data').notNull(),
+    isDeleted: integer('is_deleted', { mode: 'boolean' }).notNull().default(false),
+    deletedAt: text('deleted_at'),
+    /** When the bridge last saw it change (its clock). */
+    sourceUpdatedAt: text('source_updated_at'),
+    /** When this app last stored a change to it (our clock). */
+    receivedAt: text('received_at').notNull(),
+    ...timestamps,
+  },
+  (t) => ({
+    keyIdx: uniqueIndex('tally_rec_key_idx').on(t.companyKey, t.entity, t.guid),
+    nameIdx: index('tally_rec_name_idx').on(t.companyKey, t.entity, t.name),
+    dateIdx: index('tally_rec_date_idx').on(t.companyKey, t.entity, t.date),
+  }),
+);
+
+/** One push received from the bridge, for the sync log. */
+export const tallySyncRuns = sqliteTable(
+  'tally_sync_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    keyId: integer('key_id'),
+    companyKey: text('company_key').notNull(),
+    received: integer('received').notNull(),
+    inserted: integer('inserted').notNull(),
+    updated: integer('updated').notNull(),
+    unchanged: integer('unchanged').notNull(),
+    ...timestamps,
+  },
+  (t) => ({
+    createdIdx: index('tally_run_created_idx').on(t.createdAt),
+  }),
+);
