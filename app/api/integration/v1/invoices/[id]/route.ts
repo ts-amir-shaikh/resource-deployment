@@ -1,6 +1,6 @@
 import { asc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { invoices, invoiceResources, invoiceReceipts, projects, resources } from '@/lib/schema';
+import { invoices, invoiceResources, invoiceReceipts, invoiceCreditNotes, projects, resources } from '@/lib/schema';
 import { fail, ok, parseId } from '@/lib/api';
 import { integration } from '@/lib/integration';
 import { invoiceShape, toInvoice } from '@/lib/integration-shapes';
@@ -51,10 +51,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         .all(),
     ]);
 
+    const creditRows = await db
+      .select({ amount: invoiceCreditNotes.amount, gstAmount: invoiceCreditNotes.gstAmount })
+      .from(invoiceCreditNotes)
+      .where(eq(invoiceCreditNotes.invoiceId, id))
+      .all();
+    const credited = creditRows.reduce((s, c) => s + c.amount + c.gstAmount, 0);
     const received = receipts.reduce((s, r) => s + r.amount, 0);
     const tds = receipts.reduce((s, r) => s + r.tdsDeducted, 0);
     return ok({
-      ...toInvoice(row, { amount: received, tds }),
+      ...toInvoice(row, { amount: received, tds }, credited),
       lines: lines.map((l) => ({
         resourceName: l.resourceName,
         billedDays: l.billedDays,

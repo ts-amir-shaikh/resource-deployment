@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { projects, clients, resources } from '@/lib/schema';
 import { loadAgreements } from '@/lib/lists/load/agreements';
-import { canExport } from '@/lib/access';
+import { canExport, canWrite } from '@/lib/access';
 import AgreementsClient from './client';
 import { requireCurrentAccount } from '@/lib/session';
 
@@ -38,6 +38,7 @@ export default async function AgreementsPage() {
       projects={projectOptions}
       resources={resourceOptions}
       canExport={canExport(session.role)}
+      canDelete={canWrite(session.role, '/api/agreements/0', 'DELETE')}
     />
   );
 }

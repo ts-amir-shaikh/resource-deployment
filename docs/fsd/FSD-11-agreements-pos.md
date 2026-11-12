@@ -7,8 +7,8 @@ The signed commercial terms behind a project: the PO or agreement number, its va
 | Field | Value |
 |---|---|
 | Module code | AGR |
-| Module version | v1.5 |
-| Doc revision | Rev 1.0 |
+| Module version | v1.6 (built; v1.5 live) |
+| Doc revision | Rev 1.1 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Agreements & POs |
@@ -43,6 +43,7 @@ An agreement belongs to one project. It is either **Individual** (one resource) 
 | **Detail and deletion** | | | |
 | FR-AGR-008 | The agreement page shows the terms, the rate card with its total, the invoices raised against it, the full renewal chain version by version, and the deployments that bill under it. | v1.4 | `Live` |
 | FR-AGR-009 | An agreement cannot be deleted if it has a newer version, any invoice, or any deployment against it. | v1.0 | `Live` |
+| FR-AGR-010 | **PO consumption (M62, FS-AGR-01).** The agreement page shows PO value, invoiced before GST, remaining and the share consumed, per the agreement's currency. Invoices in another currency are counted aside, never converted. Not Raised and proforma invoices do not count; credit notes hand value back. A badge appears at 15% or less remaining, when fully invoiced, and when over. | v1.6 | `Built` |
 
 ## 4. Business rules
 
@@ -95,7 +96,7 @@ A correction cannot remove a resource from the rate card while a deployment for 
 
 | ID | Item | Source | Priority | Status |
 |---|---|---|---|---|
-| FS-AGR-01 | PO consumption — How much of the PO value has been invoiced and what remains, with a warning as it runs low. The detail page lists invoices raised but does not total them against the value. | This review | High | `Proposed` |
+| FS-AGR-01 | PO consumption — How much of the PO value has been invoiced and what remains, with a warning as it runs low. The detail page lists invoices raised but does not total them against the value. | This review | High | `Built (M62)` |
 | FS-AGR-02 | Renewal reminders — A dated prompt ahead of expiry, beyond the 30-day list, for example on the owner's board or by email once a provider exists. | This review | Medium | `Proposed` |
 | FS-AGR-03 | Store the signed document — A link to the signed PO or agreement, in the same way candidates have resume links. | This review | Medium | `Proposed` |
 | FS-AGR-04 | A correction log — Corrections are recorded as text in the notes. A structured record of what changed from and to would make audits easier. | This review | Low | `Proposed` |
@@ -110,3 +111,4 @@ A correction cannot remove a resource from the rate card while a deployment for 
 | Rev | Date | Module ver. | Change |
 |---|---|---|---|
 | 1.0 | 27 Sep 2026 | v1.5 | First issue, written against commit `5e43f82`. |
+| 1.1 | 3 Nov 2026 | v1.6 (built) | M62: FR-AGR-010 PO consumption (FS-AGR-01 built). Accounts may write agreements but not delete them. |

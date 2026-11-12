@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     const filters = [];
     if (
       status === 'not_raised' ||
+      status === 'proforma' ||
       status === 'raised' ||
       status === 'pending_collection' ||
       status === 'collected'

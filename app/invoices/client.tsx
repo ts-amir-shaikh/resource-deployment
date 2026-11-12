@@ -45,12 +45,13 @@ import {
   type Tone,
 } from '@/components/ui';
 import { ExportButton } from '@/components/export-dialog';
+import DraftMonthButton from './draft-month';
 import { invoicesList, type InvoiceFilters } from '@/lib/lists/invoices';
 import type { InvoiceRow } from '@/lib/lists/load/invoices';
 import { Combobox, type ComboOption } from '@/components/combobox';
 import { coverageLabel, isIsoDate, type PeriodSummary } from '@/lib/timesheet-rules';
 
-type Status = 'not_raised' | 'raised' | 'pending_collection' | 'collected';
+type Status = 'not_raised' | 'proforma' | 'raised' | 'pending_collection' | 'collected';
 
 type Row = InvoiceRow;
 
@@ -87,6 +88,7 @@ type LineForm = {
 
 const STATUS_TONE: Record<Status, Tone> = {
   not_raised: 'neutral',
+  proforma: 'neutral',
   raised: 'amber',
   pending_collection: 'rose',
   collected: 'green',
@@ -127,9 +129,13 @@ export default function InvoicesClient({
   agreements,
   resources,
   canExport,
+  canDelete,
+  canDraft,
 }: {
   initial: Row[];
   canExport: boolean;
+  canDelete: boolean;
+  canDraft: boolean;
   projects: ProjectOption[];
   agreements: AgreementOption[];
   resources: ResourceOption[];
@@ -561,6 +567,7 @@ export default function InvoicesClient({
                 ticks={selected}
               />
             )}
+            {canDraft && <DraftMonthButton />}
             <button className="btn-primary" onClick={openCreate} disabled={!projects.length}>
               <Plus className="h-4 w-4" /> Add Invoice
             </button>
@@ -569,7 +576,7 @@ export default function InvoicesClient({
       />
 
       {/* Pipeline summary — doubles as the status filter */}
-      <div className="grid grid-cols-2 gap-3 px-6 py-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 px-6 py-4 lg:grid-cols-5">
         {INVOICE_STATUS_ORDER.map((st) => {
           const active = statusFilter === st;
           return (
@@ -865,14 +872,16 @@ export default function InvoicesClient({
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          onClick={() => remove(i)}
-                          disabled={i.status === 'collected'}
-                          className="rounded p-1.5 text-ink3 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 dark:hover:bg-rose-950"
-                          aria-label={`Delete invoice ${i.invoiceNumber ?? i.id}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => remove(i)}
+                            disabled={i.status === 'collected'}
+                            className="rounded p-1.5 text-ink3 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 dark:hover:bg-rose-950"
+                            aria-label={`Delete invoice ${i.invoiceNumber ?? i.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

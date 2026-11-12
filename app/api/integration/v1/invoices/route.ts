@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { invoices, invoiceReceipts, projects } from '@/lib/schema';
+import { invoices, invoiceReceipts, invoiceCreditNotes, projects } from '@/lib/schema';
 import { ok } from '@/lib/api';
 import { integration, pageOf, pageParams } from '@/lib/integration';
 import { invoiceShape, toInvoice } from '@/lib/integration-shapes';
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     const agreementId = Number(url.searchParams.get('agreementId'));
 
     const filters = [gt(invoices.id, cursor)];
-    if (status === 'not_raised' || status === 'raised' || status === 'pending_collection' || status === 'collected') {
+    if (status === 'not_raised' || status === 'proforma' || status === 'raised' || status === 'pending_collection' || status === 'collected') {
       filters.push(eq(invoices.status, status));
     }
     if (Number.isInteger(agreementId) && agreementId > 0) filters.push(eq(invoices.agreementId, agreementId));
@@ -45,10 +45,23 @@ export async function GET(req: Request) {
           .all()
       : [];
 
+    const credits = ids.length
+      ? await db
+          .select({
+            invoiceId: invoiceCreditNotes.invoiceId,
+            total: sql<number>`coalesce(sum(${invoiceCreditNotes.amount} + ${invoiceCreditNotes.gstAmount}), 0)`,
+          })
+          .from(invoiceCreditNotes)
+          .where(inArray(invoiceCreditNotes.invoiceId, ids))
+          .groupBy(invoiceCreditNotes.invoiceId)
+          .all()
+      : [];
+
     return ok({
       items: page.items.map((r) => {
         const s = sums.find((x) => x.invoiceId === r.id);
-        return toInvoice(r, { amount: s?.amount ?? 0, tds: s?.tds ?? 0 });
+        const c = credits.find((x) => x.invoiceId === r.id);
+        return toInvoice(r, { amount: s?.amount ?? 0, tds: s?.tds ?? 0 }, c?.total ?? 0);
       }),
       nextCursor: page.nextCursor,
     });

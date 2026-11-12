@@ -1,6 +1,6 @@
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { invoices } from '@/lib/schema';
+import { invoices, invoiceReceipts, invoiceCreditNotes } from '@/lib/schema';
 import { invoiceBulkAdvanceSchema } from '@/lib/validations';
 import { handle, ok, parseBody } from '@/lib/api';
 import { INVOICE_STATUS_LABELS, INVOICE_STATUS_ORDER, today } from '@/lib/utils';
@@ -32,6 +32,17 @@ export async function POST(req: Request) {
             reason: `Already ${INVOICE_STATUS_LABELS[row.status]}`,
           });
           continue;
+        }
+
+        if (data.targetStatus === 'collected') {
+          // Collected is derived from receipts once any exist.
+          const hasLedger =
+            (await tx.select({ id: invoiceReceipts.id }).from(invoiceReceipts).where(eq(invoiceReceipts.invoiceId, row.id)).get()) ??
+            (await tx.select({ id: invoiceCreditNotes.id }).from(invoiceCreditNotes).where(eq(invoiceCreditNotes.invoiceId, row.id)).get());
+          if (hasLedger) {
+            skipped.push({ id: row.id, reason: 'Has payments or credit notes; record the payment as a receipt' });
+            continue;
+          }
         }
 
         const patch: Partial<typeof invoices.$inferInsert> = {

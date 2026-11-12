@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { invoices } from '@/lib/schema';
+import { invoices, invoiceReceipts, invoiceCreditNotes } from '@/lib/schema';
 import { invoiceAdvanceSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
 import {
@@ -47,6 +47,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     const patch: Partial<typeof invoices.$inferInsert> = { status: target as never };
+
+    // D15: a proforma carries its own number.
+    if (target === 'proforma') {
+      const number = data.proformaNumber ?? existing.proformaNumber;
+      if (!number) {
+        return fail('Give the proforma a number.', 422, { fields: { proformaNumber: 'Enter the proforma number' } });
+      }
+      patch.proformaNumber = number;
+    }
+
+    // Collected is derived from receipts once any exist (M62 slice B). Moving
+    // it by hand would leave the status and the money disagreeing.
+    if (target === 'collected') {
+      const ledgerRow =
+        (await db.select({ id: invoiceReceipts.id }).from(invoiceReceipts).where(eq(invoiceReceipts.invoiceId, id)).get()) ??
+        (await db.select({ id: invoiceCreditNotes.id }).from(invoiceCreditNotes).where(eq(invoiceCreditNotes.invoiceId, id)).get());
+      if (ledgerRow) {
+        return fail('Payments or credit notes are recorded on this invoice. Record the remaining payment as a receipt and it becomes Collected.', 409);
+      }
+    }
 
     // Stamp the dates the crossed stages imply, without overwriting real entries.
     if (targetIdx >= INVOICE_STATUS_ORDER.indexOf('raised') && !existing.invoiceDate) {

@@ -363,7 +363,7 @@ const SALES_WRITE_RULES: WriteRule[] = [
 
 /**
  * Accounts writes (D-A6): raising, correcting and advancing invoices and
- * agreements, and a client's billing details. Not the client record itself
+ * agreements, and a client's billing details. Never DELETE: see canWrite. Not the client record itself
  * (`/api/clients/:id` also deletes), projects, deployments or resources.
  */
 const ACCOUNTS_WRITE_RULES: WriteRule[] = [
@@ -392,9 +392,19 @@ const RESOURCE_MANAGER_WRITE_RULES: WriteRule[] = [
   { test: (p) => p.startsWith('/api/leaves/approvals'), allow: true },
 ];
 
-/** Can this role mutate at this path? (POST / PUT / PATCH / DELETE) */
-export function canWrite(role: Role, pathname: string): boolean {
+/**
+ * Can this role mutate at this path? (POST / PUT / PATCH / DELETE)
+ *
+ * `method` is optional: screens ask "may this role write here at all" to decide
+ * whether to show a form and pass none. Middleware passes the real method so a
+ * rule can allow edits at a path yet withhold DELETE there.
+ */
+export function canWrite(role: Role, pathname: string, method?: string): boolean {
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
+  // Accounts raises, corrects and advances invoices and agreements; it never
+  // deletes them. A raised invoice may already be linked to a Tally voucher or
+  // carry receipts, so a wrong one is cancelled by a credit note, not removed.
+  if (role === 'accounts' && method === 'DELETE') return false;
   // Admin signs reviews off, it does not write them: saving and submitting a
   // review is the Resource Manager's, including on a draft Admin reopened.
   if (role === 'admin' && /^\/api\/reviews\/(performance|accounts)\/\d+(\/submit)?$/.test(pathname)) return false;

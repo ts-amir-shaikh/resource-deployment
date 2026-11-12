@@ -44,7 +44,7 @@ type Row = {
   externalReference: string | null;
 };
 
-export function toInvoice(r: Row, received: { amount: number; tds: number }) {
+export function toInvoice(r: Row, received: { amount: number; tds: number }, credited = 0) {
   const m = (amount: number) => ({ amount, currency: r.currency });
   const total = Math.round((r.amount + r.gstAmount) * 100) / 100;
   return {
@@ -64,7 +64,9 @@ export function toInvoice(r: Row, received: { amount: number; tds: number }) {
     dueDate: r.dueDate,
     collectedDate: r.collectedDate,
     status: r.status,
+    credited: m(credited),
     received: m(received.amount),
+    outstanding: m(Math.round((total - credited - received.amount - received.tds) * 100) / 100),
     tdsDeducted: m(received.tds),
     externalId: r.externalId,
     externalReference: r.externalReference,

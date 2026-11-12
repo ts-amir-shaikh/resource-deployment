@@ -90,7 +90,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (WRITE_METHODS.has(req.method) && !canWrite(session.role, pathname)) {
+  if (WRITE_METHODS.has(req.method) && !canWrite(session.role, pathname, req.method)) {
     return NextResponse.json(
       {
         error:

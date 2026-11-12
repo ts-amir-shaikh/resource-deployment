@@ -432,6 +432,30 @@ describe('M62: accounts', () => {
     expect(canWrite('management', '/tally')).toBe(false);
   });
 
+  it('M62 slice B and C: records payments, issues credit notes and drafts the month, as Accounts and Admin only', () => {
+    for (const path of ['/api/invoices/3/receipts', '/api/invoices/3/receipts/9/reverse', '/api/invoices/3/credit-notes', '/api/invoices/drafts']) {
+      expect(canWrite('accounts', path, 'POST'), path).toBe(true);
+      expect(canWrite('admin', path, 'POST'), path).toBe(true);
+      for (const role of ['management', 'ta', 'sales', 'leadgen', 'resource', 'resource_manager'] as const) {
+        expect(canWrite(role, path, 'POST'), `${role} ${path}`).toBe(false);
+      }
+      // Receipts and credit notes are never deleted from a session.
+      expect(canWrite('accounts', path, 'DELETE'), path).toBe(false);
+    }
+  });
+
+  it('edits invoices and agreements but never deletes them', () => {
+    for (const path of ['/api/invoices/3', '/api/agreements/2']) {
+      expect(canWrite('accounts', path, 'PUT'), path).toBe(true);
+      expect(canWrite('accounts', path, 'DELETE'), path).toBe(false);
+    }
+    expect(canWrite('accounts', '/api/invoices', 'POST')).toBe(true);
+    // The method is optional: screens ask only whether the role may write at all.
+    expect(canWrite('accounts', '/api/invoices/3')).toBe(true);
+    // Admin keeps delete.
+    expect(canWrite('admin', '/api/invoices/3', 'DELETE')).toBe(true);
+  });
+
   it('cannot rewrite or delete a client, or write anywhere else', () => {
     for (const path of [
       '/api/clients', '/api/clients/4', '/api/projects', '/api/projects/2', '/api/deployments',

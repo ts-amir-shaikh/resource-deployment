@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KEY_PREFIX, applyReceipt, bearerFrom, generateKey, hashKey, scopeAllows } from '@/lib/integration-rules';
+import { KEY_PREFIX, applyReceipt, editFitsReceipts, bearerFrom, generateKey, hashKey, scopeAllows } from '@/lib/integration-rules';
 
 describe('integration keys', () => {
   it('generates distinct prefixed keys and hashes them stably', () => {
@@ -56,5 +56,23 @@ describe('applyReceipt', () => {
   it('is not thrown by floating-point sums', () => {
     const r = applyReceipt({ ...inv, amount: 0.3, gstAmount: 0 }, [{ amount: 0.1, tdsDeducted: 0 }], money(0.2));
     expect(r).toMatchObject({ ok: true, collected: true });
+  });
+});
+
+describe('editFitsReceipts', () => {
+  const paid = [{ amount: 600, tdsDeducted: 40 }];
+  it('allows any edit while nothing is paid', () => {
+    expect(editFitsReceipts({ amount: 1, gstAmount: 0, currency: 'USD' }, { currency: 'INR' }, [])).toEqual({ ok: true });
+  });
+  it('refuses a total below payments plus TDS', () => {
+    const r = editFitsReceipts({ amount: 500, gstAmount: 90, currency: 'INR' }, { currency: 'INR' }, paid);
+    expect(r.ok).toBe(false);
+  });
+  it('allows a total equal to or above what is paid', () => {
+    expect(editFitsReceipts({ amount: 542, gstAmount: 98, currency: 'INR' }, { currency: 'INR' }, paid).ok).toBe(true);
+    expect(editFitsReceipts({ amount: 1000, gstAmount: 180, currency: 'INR' }, { currency: 'INR' }, paid).ok).toBe(true);
+  });
+  it('refuses a currency change once payments exist', () => {
+    expect(editFitsReceipts({ amount: 1000, gstAmount: 0, currency: 'AED' }, { currency: 'INR' }, paid).ok).toBe(false);
   });
 });

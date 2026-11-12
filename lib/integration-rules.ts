@@ -34,8 +34,46 @@ export type ReceiptInvoice = {
   amount: number;
   gstAmount: number;
   currency: string;
-  status: 'not_raised' | 'raised' | 'pending_collection' | 'collected';
+  status: 'not_raised' | 'proforma' | 'raised' | 'pending_collection' | 'collected';
+  /** Credit notes against the invoice, GST included; they lower what can be received. */
+  credited?: number;
 };
+
+/**
+ * Whether an edit to an invoice's money still covers what has been paid on it.
+ * Without this an edit could drop the total below receipts + TDS and leave a
+ * negative outstanding. A receipt is in the invoice's currency (applyReceipt
+ * refuses any other), so a currency change is refused once receipts exist.
+ */
+export function editFitsReceipts(
+  edit: { amount: number; gstAmount: number; currency: string },
+  stored: { currency: string; amount?: number; gstAmount?: number },
+  receipts: { amount: number; tdsDeducted: number }[],
+  credits: { amount: number; gstAmount: number }[] = [],
+): { ok: true } | { ok: false; message: string } {
+  // Credit notes were sized against the invoice as it stood, so its money is
+  // fixed once any exist. A mistake is corrected with a further credit note.
+  if (credits.length > 0) {
+    if (
+      edit.currency !== stored.currency ||
+      (stored.amount !== undefined && round2(edit.amount) !== round2(stored.amount)) ||
+      (stored.gstAmount !== undefined && round2(edit.gstAmount) !== round2(stored.gstAmount))
+    ) {
+      return { ok: false, message: 'Credit notes are issued against this invoice, so its amount, GST and currency can no longer change.' };
+    }
+  }
+  if (receipts.length === 0) return { ok: true };
+  if (edit.currency !== stored.currency) {
+    return { ok: false, message: `Payments are already recorded in ${stored.currency}, so the currency cannot change.` };
+  }
+  const paid = round2(receipts.reduce((s, r) => s + r.amount + r.tdsDeducted, 0));
+  const credited = round2(credits.reduce((s, c) => s + c.amount + c.gstAmount, 0));
+  const total = round2(edit.amount + edit.gstAmount - credited);
+  if (total < paid) {
+    return { ok: false, message: `Payments and TDS of ${paid} are already recorded; the invoice total cannot go below that (new total ${total}).` };
+  }
+  return { ok: true };
+}
 
 export type ReceiptOutcome =
   | { ok: true; received: number; tds: number; total: number; outstanding: number; collected: boolean }
@@ -52,8 +90,12 @@ export function applyReceipt(
   earlier: { amount: number; tdsDeducted: number }[],
   incoming: { amount: number; tdsDeducted: number; currency: string },
 ): ReceiptOutcome {
-  if (invoice.status === 'not_raised') {
+  if (invoice.status === 'not_raised' || invoice.status === 'proforma') {
     return { ok: false, reason: 'not-raised', message: 'This invoice has not been raised, so it cannot receive a payment.' };
+  }
+  // D-A2: collected before receipts were tracked reads as paid in full.
+  if (invoice.status === 'collected' && earlier.length === 0) {
+    return { ok: false, reason: 'exceeds', message: 'This invoice was collected in full before payments were tracked, so no further payment can be applied.' };
   }
   if (incoming.currency !== invoice.currency) {
     return {
@@ -62,7 +104,7 @@ export function applyReceipt(
       message: `This invoice is in ${invoice.currency}; a receipt in ${incoming.currency} cannot be applied. Amounts are never converted.`,
     };
   }
-  const total = round2(invoice.amount + invoice.gstAmount);
+  const total = round2(invoice.amount + invoice.gstAmount - (invoice.credited ?? 0));
   const received = round2(earlier.reduce((s, r) => s + r.amount, 0) + incoming.amount);
   const tds = round2(earlier.reduce((s, r) => s + r.tdsDeducted, 0) + incoming.tdsDeducted);
   if (round2(received + tds) > total) {

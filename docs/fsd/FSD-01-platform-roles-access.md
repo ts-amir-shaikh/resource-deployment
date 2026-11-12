@@ -7,8 +7,8 @@ Sign-in (email and password, or Google), accounts and the People screen, the nin
 | Field | Value |
 |---|---|
 | Module code | PLT |
-| Module version | v4.4 (v3.1 is live until v4.0 is released) |
-| Doc revision | Rev 2.5 |
+| Module version | v4.5 (v3.1 is live until v4.0 is released) |
+| Doc revision | Rev 2.6 |
 | Status | `Built` — v4.0 is merged and verified, awaiting the production migration and deploy |
 | Baseline | 5e43f82 · 27 Sep 2026; v4.0 on `feat/accounts-sign-in` |
 | Appears as | Sign-in page, Set password page, People, sidebar |
@@ -90,6 +90,7 @@ The four roles added in v4.0 (Accounts, Resource Manager, Interviewer and Resour
 | FR-PLT-009 | Every account has one of five roles: Admin, Management, TA Team, Lead Generation or Sales. | v3.0 | `Retired` in v4.0, replaced by FR-PLT-036 |
 | FR-PLT-036 | Every account has one of nine roles: the five above, plus Accounts, Resource Manager, Interviewer and Resource. The four new roles land on a holding page and are refused everything else until their access is defined. R23, G-PLT-01 (part). | v4.0 | `Built` |
 | FR-PLT-036a | **Resource and Resource Manager leave the holding page (M65).** A Resource lands on `/timesheet` and may reach only its own timesheet routes; a Resource Manager lands on `/approvals` and may reach only the approval queue. Accounts and Interviewer still land on the holding page. Access is in `lib/access.ts`; see FSD-18 §2. | v4.1 | `Built` |
+| FR-PLT-036f | **Accounts leaves the holding page (M62).** Accounts lands on `/invoices` and may open invoices, agreements, clients, projects, deployments and resources (margin and CTC are computed from the last two). It may write invoices, agreements, a client's billing details, payments, credit notes and monthly drafts, but never DELETE, and nothing else. Management stays view-only. Access is in `lib/access.ts`. | v4.5 | `Built` |
 | FR-PLT-036b | **Leadgen pipeline access (M66).** Lead Generation and Sales reach Prospects, Campaigns and Leads (`/prospects`, `/campaigns`, `/lead-records`, `/api/leadgen`); Admin and Management as always. Lead Generation writes its side of the funnel but never assigns a lead's salesperson; Sales writes only handed-off leads, their assignment and activity on them. Which rows each sees is per row; see FSD-15 §2. TA and the other roles are refused. | v4.2 | `Built` |
 | FR-PLT-036c | **Timesheet dashboard is Admin only (D20).** `/timesheets`, `/api/timesheets/dashboard` and `/api/timesheets/entries` are refused to Management, the Resource Manager and everyone else, by an explicit rule above the shortcut that lets Management reach every Admin path. | v4.3 | `Built` |
 | FR-PLT-036d | **Leave (FSD-21).** A Resource reaches `/leaves` and `/api/leaves/mine` (its own requests); the Resource Manager and Admin decide requests through `/api/leaves/approvals`; Management reads. Rules are in `lib/access.ts`. | v4.3 | `Built` |
@@ -260,3 +261,4 @@ The rules in FR-PLT-030 and FR-PLT-031 live in one module that the People form a
 | 2.3 | 23 Oct 2026 | v4.3 (built) | M65 addendum: FR-PLT-036c, the Admin-only timesheet dashboard. |
 | 2.4 | 23 Oct 2026 | v4.3 (built) | M65 addendum: FR-PLT-036d, leave access. |
 | 2.5 | 23 Oct 2026 | v4.4 (built) | M67: FR-PLT-036e — the Resource Manager given Reviews and the Skill Matrix; Sales given read-only account reviews (FSD-17). |
+| 2.6 | 3 Nov 2026 | v4.5 (built) | M62: FR-PLT-036f — Accounts given the billing screens. |

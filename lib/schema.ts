@@ -253,6 +253,9 @@ export const agreementResources = sqliteTable(
 export const INVOICE_SCOPES = ['individual', 'team'] as const;
 export const INVOICE_STATUSES = [
   'not_raised',
+  // M62 slice C (D15): a pre-invoice document, optional. Sits ahead of Raised
+  // so the forward-only lifecycle still holds. Not_raised -> proforma -> raised.
+  'proforma',
   'raised',
   'pending_collection',
   'collected',
@@ -304,6 +307,8 @@ export const invoices = sqliteTable(
      *  the integration API. Nullable — most invoices will never have one. */
     externalId: text('external_id'),
     externalReference: text('external_reference'),
+    /** M62 slice C: the proforma's own number, kept apart from the tax invoice's. */
+    proformaNumber: text('proforma_number'),
     ...timestamps,
   },
   (t) => ({
@@ -1878,11 +1883,40 @@ export const invoiceReceipts = sqliteTable(
     note: text('note'),
     source: text('source').notNull().default('integration'),
     keyId: integer('key_id'),
+    /** M62 slice B: set on a counter-entry, which carries the negated amounts
+     *  of the receipt it reverses. A receipt is never edited or deleted. */
+    reversesId: integer('reverses_id'),
+    createdByUserId: integer('created_by_user_id'),
     ...timestamps,
   },
   (t) => ({
     invoiceIdx: index('rcpt_invoice_idx').on(t.invoiceId),
     externalIdx: uniqueIndex('rcpt_external_idx').on(t.externalId),
+  }),
+);
+
+/**
+ * M62 slice B (G-ACC-03): a credit note cancels all or part of a raised
+ * invoice. A void is not a backward status move; the invoice keeps its status
+ * and number and shows its net amount. Never edited or deleted.
+ */
+export const invoiceCreditNotes = sqliteTable(
+  'invoice_credit_notes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => invoices.id),
+    creditDate: text('credit_date').notNull(),
+    /** Before GST, like the invoice's own amount. */
+    amount: real('amount').notNull(),
+    gstAmount: real('gst_amount').notNull().default(0),
+    reason: text('reason').notNull(),
+    createdByUserId: integer('created_by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    invoiceIdx: index('cn_invoice_idx').on(t.invoiceId),
   }),
 );
 

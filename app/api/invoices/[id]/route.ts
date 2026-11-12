@@ -7,11 +7,14 @@ import {
   projects,
   clients,
   agreements,
+  invoiceReceipts,
+  invoiceCreditNotes,
 } from '@/lib/schema';
 import { invoiceSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
 import { withTimesheetLeave } from '@/lib/timesheets';
 import { isInvoiceOverdue, invoiceLineRow } from '@/lib/utils';
+import { editFitsReceipts } from '@/lib/integration-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,13 +94,27 @@ export async function PUT(req: Request, { params }: Ctx) {
 
     if (existing.status === 'collected') {
       return fail(
-        'This invoice is collected and can no longer be edited. Void and re-raise it if a correction is needed.',
+        'This invoice is collected and can no longer be edited. Issue a credit note against it if a correction is needed.',
         409,
       );
     }
 
     const { data, error } = await parseBody(req, invoiceSchema);
     if (error) return error;
+
+    // M62: money already received caps how far the total may be edited down.
+    const receipts = await db
+      .select({ amount: invoiceReceipts.amount, tdsDeducted: invoiceReceipts.tdsDeducted })
+      .from(invoiceReceipts)
+      .where(eq(invoiceReceipts.invoiceId, id))
+      .all();
+    const credits = await db
+      .select({ amount: invoiceCreditNotes.amount, gstAmount: invoiceCreditNotes.gstAmount })
+      .from(invoiceCreditNotes)
+      .where(eq(invoiceCreditNotes.invoiceId, id))
+      .all();
+    const fits = editFitsReceipts(data, existing, receipts, credits);
+    if (!fits.ok) return fail(fits.message, 409);
 
     // The create route has always validated the agreement; this one never did,
     // so an edit could quietly point an invoice at a PO from another project.
@@ -171,6 +188,13 @@ export async function DELETE(_req: Request, { params }: Ctx) {
 
     const existing = await db.select().from(invoices).where(eq(invoices.id, id)).get();
     if (!existing) return fail('Invoice not found', 404);
+
+    // Receipts reference the invoice; deleting under them would fail on the
+    // foreign key or orphan the payment history. Payments are the audit trail.
+    const paid = await db.select({ id: invoiceReceipts.id }).from(invoiceReceipts).where(eq(invoiceReceipts.invoiceId, id)).get();
+    if (paid) return fail('Payments are recorded against this invoice, so it cannot be deleted.', 409);
+    const credited = await db.select({ id: invoiceCreditNotes.id }).from(invoiceCreditNotes).where(eq(invoiceCreditNotes.invoiceId, id)).get();
+    if (credited) return fail('Credit notes are issued against this invoice, so it cannot be deleted.', 409);
 
     if (existing.status === 'collected') {
       return fail('Collected invoices cannot be deleted — they are part of the audit trail.', 409);

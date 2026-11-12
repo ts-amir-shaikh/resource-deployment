@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { projects, clients, agreements, resources } from '@/lib/schema';
 import { loadInvoices } from '@/lib/lists/load/invoices';
-import { canExport } from '@/lib/access';
+import { canExport, canWrite } from '@/lib/access';
 import InvoicesClient from './client';
 import { requireCurrentAccount } from '@/lib/session';
 
@@ -48,6 +48,8 @@ export default async function InvoicesPage() {
       agreements={agreementOptions}
       resources={resourceOptions}
       canExport={canExport(session.role)}
+      canDelete={canWrite(session.role, '/api/invoices/0', 'DELETE')}
+      canDraft={canWrite(session.role, '/api/invoices/drafts', 'POST')}
     />
   );
 }

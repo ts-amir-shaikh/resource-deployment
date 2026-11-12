@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   status TEXT NOT NULL DEFAULT 'not_raised',
   notes TEXT,
   external_id TEXT, external_reference TEXT,
+  proforma_number TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS inv_project_idx ON invoices(project_id);
@@ -737,10 +738,24 @@ CREATE TABLE IF NOT EXISTS invoice_receipts (
   note TEXT,
   source TEXT NOT NULL DEFAULT 'integration',
   key_id INTEGER,
+  reverses_id INTEGER,
+  created_by_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS rcpt_invoice_idx ON invoice_receipts(invoice_id);
 CREATE UNIQUE INDEX IF NOT EXISTS rcpt_external_idx ON invoice_receipts(external_id);
+
+CREATE TABLE IF NOT EXISTS invoice_credit_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id),
+  credit_date TEXT NOT NULL,
+  amount REAL NOT NULL,
+  gst_amount REAL NOT NULL DEFAULT 0,
+  reason TEXT NOT NULL,
+  created_by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS cn_invoice_idx ON invoice_credit_notes(invoice_id);
 
 CREATE TABLE IF NOT EXISTS tally_companies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

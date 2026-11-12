@@ -31,6 +31,7 @@ export const dynamic = 'force-dynamic';
 
 const STATUS_TONE = {
   not_raised: 'neutral',
+  proforma: 'neutral',
   raised: 'amber',
   pending_collection: 'rose',
   collected: 'green',

@@ -442,7 +442,7 @@ async function loadInvoices(
   for (const r of rows) {
     // The same read the invoice save uses, so the two cannot disagree.
     const s = await lineSummary(db, { resourceId: r.resourceId, projectId: r.projectId, from: r.periodFrom, to: r.periodTo });
-    const raised = r.invoiceStatus !== 'not_raised';
+    const raised = r.invoiceStatus !== 'not_raised' && r.invoiceStatus !== 'proforma';
     const flags: InvoiceLineRow['flags'] = [];
     // Only when some days are approved: a line with none has no timesheets
     // behind it at all, which is not the same as a partly approved period.

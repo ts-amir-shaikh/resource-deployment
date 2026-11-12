@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { agreements, projects, clients, invoices, deployments, resources } from '@/lib/schema';
+import { agreements, projects, clients, invoices, deployments, resources, invoiceCreditNotes } from '@/lib/schema';
 import { getAgreementChain, getAgreementResources } from '@/lib/queries';
 import {
   formatMoney,
@@ -80,9 +80,22 @@ export default async function AgreementDetailPage({ params }: { params: { id: st
       .all(),
   ]);
 
+  // Credit notes hand PO value back: amounts before GST, per invoice.
+  const creditRows = invoiceRows.length
+    ? await db
+        .select({ invoiceId: invoiceCreditNotes.invoiceId, amount: invoiceCreditNotes.amount })
+        .from(invoiceCreditNotes)
+        .where(inArray(invoiceCreditNotes.invoiceId, invoiceRows.map((i) => i.id)))
+        .all()
+    : [];
   const po = poConsumption(
     { value: row.value, currency: row.currency },
-    invoiceRows.map((i) => ({ amount: i.amount, currency: i.currency, status: i.status })),
+    invoiceRows.map((i) => ({
+      amount: i.amount,
+      currency: i.currency,
+      status: i.status,
+      credited: creditRows.filter((c) => c.invoiceId === i.id).reduce((s, c) => s + c.amount, 0),
+    })),
   );
   const cardTotal = rateCard.reduce((s, r) => s + r.billingAmount, 0);
   const daysLeft = row.status === 'active' ? daysUntil(row.endDate) : null;

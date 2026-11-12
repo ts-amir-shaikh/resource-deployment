@@ -87,10 +87,12 @@ the policy. There are **nine** roles:
 `admin`, `management`, `ta`, `leadgen`, `sales`, `accounts`,
 `resource_manager`, `interviewer`, `resource`
 
-`accounts` and `interviewer` are in `PENDING_ROLES`: assignable and able to
-sign in, but held at `/welcome` until their screens exist. `resource` (lands on
-`/timesheet`) and `resource_manager` (lands on `/approvals`) left it with M65.
-`management` is view-only everywhere.
+`interviewer` is in `PENDING_ROLES`: assignable and able to sign in, but held
+at `/welcome` until its screens exist. `resource` (lands on `/timesheet`) and
+`resource_manager` (lands on `/approvals`) left it with M65; `accounts` (lands
+on `/invoices`) left it with M62 and may write but never DELETE. `canWrite`
+takes an optional HTTP method for exactly that. `management` is view-only
+everywhere.
 
 **Two server-side chokepoints re-check the account on every request** —
 `requireCurrentAccount()` on pages, `handle()` on API routes — because Edge
@@ -152,8 +154,8 @@ call sites to be revisited instead of leaving silent wrong-currency output.
 
 ## 5. Testing
 
-`npm test` (Vitest) — **434 tests across 17 files**, ~3s. Read that number
-carefully: **146 of the 434 are `tests/chokepoints.test.ts`**, a structural scan
+`npm test` (Vitest) — **555 tests across 24 files**, ~3s. Read that number
+carefully: **154 of the 555 are `tests/chokepoints.test.ts`**, a structural scan
 that generates one assertion per page and route. Of the rest, 116 cover accounts,
 roles and authentication, 31 pin today's invoice and money maths
 (`lib/utils.test.ts`), 32 cover timesheet rules, 23 cover the timesheet dashboard

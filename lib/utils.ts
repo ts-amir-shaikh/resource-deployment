@@ -191,6 +191,7 @@ export function parseSkills(json: string | null | undefined): string[] {
 
 export const INVOICE_STATUS_LABELS: Record<string, string> = {
   not_raised: 'Not Raised',
+  proforma: 'Proforma',
   raised: 'Raised',
   pending_collection: 'Pending to Collect',
   collected: 'Collected',
@@ -199,6 +200,7 @@ export const INVOICE_STATUS_LABELS: Record<string, string> = {
 /** Forward-only lifecycle. */
 export const INVOICE_STATUS_ORDER = [
   'not_raised',
+  'proforma',
   'raised',
   'pending_collection',
   'collected',
@@ -207,6 +209,9 @@ export const INVOICE_STATUS_ORDER = [
 export function nextInvoiceStatus(current: string): string | null {
   const i = INVOICE_STATUS_ORDER.indexOf(current as never);
   if (i === -1 || i === INVOICE_STATUS_ORDER.length - 1) return null;
+  // A proforma is optional: a plain "advance" goes from Not Raised straight to
+  // Raised, as it always has. Proforma is only reached by asking for it.
+  if (INVOICE_STATUS_ORDER[i + 1] === 'proforma') return INVOICE_STATUS_ORDER[i + 2];
   return INVOICE_STATUS_ORDER[i + 1];
 }
 
@@ -325,7 +330,7 @@ export function isFollowUpDue(nextStepDate: string | null | undefined): boolean 
 }
 
 export function isInvoiceOverdue(status: string, dueDate: string | null): boolean {
-  if (status === 'collected' || status === 'not_raised' || !dueDate) return false;
+  if (status === 'collected' || status === 'not_raised' || status === 'proforma' || !dueDate) return false;
   return dueDate < today();
 }
 

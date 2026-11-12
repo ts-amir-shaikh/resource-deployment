@@ -442,12 +442,48 @@ export const invoiceSchema = z
 export const invoiceAdvanceSchema = z.object({
   /** Omit to advance exactly one step. */
   targetStatus: z
-    .enum(['raised', 'pending_collection', 'collected'])
+    .enum(['proforma', 'raised', 'pending_collection', 'collected'])
     .optional(),
+  /** Required when moving to Proforma: it has its own number. */
+  proformaNumber: optionalStr,
+});
+
+/* ── M62 slice B: receipts and credit notes entered by Accounts ── */
+
+/** The amounts are in the invoice's own currency, so none is sent. */
+export const receiptEntrySchema = z.object({
+  receivedDate: dateStr,
+  amount: z.coerce.number().positive('Amount must be greater than 0'),
+  tdsDeducted: z
+    .union([z.literal(''), z.coerce.number().min(0, 'Cannot be negative')])
+    .optional()
+    .transform((v) => (v === '' || v === undefined ? 0 : Number(v))),
+  note: optionalStr,
+});
+
+export const receiptReverseSchema = z.object({ note: optionalStr });
+
+export const creditNoteSchema = z.object({
+  creditDate: dateStr,
+  amount: z
+    .union([z.literal(''), z.coerce.number().min(0, 'Cannot be negative')])
+    .optional()
+    .transform((v) => (v === '' || v === undefined ? 0 : Number(v))),
+  gstAmount: z
+    .union([z.literal(''), z.coerce.number().min(0, 'Cannot be negative')])
+    .optional()
+    .transform((v) => (v === '' || v === undefined ? 0 : Number(v))),
+  reason: z.string().trim().min(3, 'Give the reason for the credit note').max(500),
+});
+
+/** Draft the month's invoices (G-ACC-06): a month as YYYY-MM. */
+export const monthlyDraftSchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Use a month like 2026-10'),
 });
 
 export const invoiceBulkAdvanceSchema = z.object({
   ids: z.array(z.coerce.number().int().positive()).min(1, 'Select at least one invoice'),
+  // No proforma here: it needs its own number, set one invoice at a time.
   targetStatus: z.enum(['raised', 'pending_collection', 'collected']),
 });
 

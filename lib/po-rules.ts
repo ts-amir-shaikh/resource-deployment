@@ -13,7 +13,9 @@ export type PoInvoice = {
   /** Before GST: the PO value covers the work, not the tax on it (D-A5). */
   amount: number;
   currency: string;
-  status: 'not_raised' | 'raised' | 'pending_collection' | 'collected';
+  status: 'not_raised' | 'proforma' | 'raised' | 'pending_collection' | 'collected';
+  /** Credit notes against it, before GST: they hand PO value back (slice B). */
+  credited?: number;
 };
 
 export type PoConsumption = {
@@ -35,12 +37,12 @@ export function poConsumption(
   let otherCurrency = 0;
   for (const inv of invoiceRows) {
     // A draft that has not been raised has not consumed anything yet.
-    if (inv.status === 'not_raised') continue;
+    if (inv.status === 'not_raised' || inv.status === 'proforma') continue;
     if (inv.currency !== agreement.currency) {
       otherCurrency++;
       continue;
     }
-    invoiced += inv.amount;
+    invoiced += inv.amount - (inv.credited ?? 0);
   }
   const remaining = agreement.value - invoiced;
   const consumed = agreement.value > 0 ? invoiced / agreement.value : 0;

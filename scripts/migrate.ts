@@ -471,6 +471,23 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'external_reference',
     ddl: 'ALTER TABLE invoices ADD COLUMN external_reference TEXT',
   },
+  // M62 slices B and C: proforma number, and receipt reversal / author. All
+  // nullable; rows written before them simply have none.
+  {
+    table: 'invoices',
+    column: 'proforma_number',
+    ddl: 'ALTER TABLE invoices ADD COLUMN proforma_number TEXT',
+  },
+  {
+    table: 'invoice_receipts',
+    column: 'reverses_id',
+    ddl: 'ALTER TABLE invoice_receipts ADD COLUMN reverses_id INTEGER',
+  },
+  {
+    table: 'invoice_receipts',
+    column: 'created_by_user_id',
+    ddl: 'ALTER TABLE invoice_receipts ADD COLUMN created_by_user_id INTEGER',
+  },
   // M62: client billing details, all nullable.
   {
     table: 'clients',

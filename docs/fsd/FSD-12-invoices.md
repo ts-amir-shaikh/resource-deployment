@@ -7,8 +7,8 @@ What each client is billed for a period, line by line per resource. Each line ca
 | Field | Value |
 |---|---|
 | Module code | INV |
-| Module version | v2.2 (built; v2.1 live) |
-| Doc revision | Rev 1.3 |
+| Module version | v2.4 (built; v2.1 live) |
+| Doc revision | Rev 1.4 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Invoices |
@@ -50,6 +50,12 @@ An invoice belongs to a project and, optionally, to the agreement it bills under
 | FR-INV-013 | A collected invoice can no longer be edited or deleted. | v1.0 | `Live` |
 | **Detail page** | | | |
 | FR-INV-014 | The invoice page shows the amounts, **Resources Covered** with each line's rate, working days, "Nd paid" and "Nd unpaid" leave, dates, billed days and amount, the billing period and dates, the status with its dates, and the agreement. | v2.1 | `Live` |
+| FR-INV-015 | **Payments (M62, FS-INV-03).** Accounts and Admin record a payment on the invoice page: date, amount in the invoice's currency, TDS deducted and a note. Several payments make a partial or short collection. The first moves Raised to Pending to Collect; the invoice becomes **Collected** when received plus TDS covers the total less credit notes. That is worked out on the server, never taken from the request. A payment that would exceed the total is refused. | v2.4 | `Built` |
+| FR-INV-016 | **Reversing a payment.** A receipt is never edited or deleted. Reversing adds a counter-entry with the negated amounts. If that reopens a Collected invoice it returns to Pending to Collect and its collected date clears: the one backward move in the lifecycle, and it is driven by the ledger, not chosen. A reversal cannot itself be reversed. | v2.4 | `Built` |
+| FR-INV-017 | **Credit notes (M62, FS-INV-02).** A raised invoice is cancelled in whole or part by a credit note: date, amount before GST, GST and a required reason. It keeps its number and status and shows the credit and the net outstanding. Credits together cannot exceed the invoice's amount or its GST, a credit note is never edited or deleted, and once one exists the invoice's amount, GST and currency cannot change. A draft or proforma is edited instead. | v2.4 | `Built` |
+| FR-INV-018 | **Proforma (M62, D15).** An optional state between Not Raised and Raised with its own number. A plain advance still goes Not Raised to Raised; a proforma is entered by asking for it. It cannot receive payments, is never overdue, and does not count against the PO. | v2.4 | `Built` |
+| FR-INV-019 | **Draft the month's invoices (M62, FS-INV-04).** From the list, Accounts or Admin picks a month and the app creates one Not Raised draft per project, agreement and currency from billable deployments, each line priced by BR-INV-01 with timesheet leave where fully approved. Running it again creates nothing new. Foreign-currency projects are skipped, as the exchange rate cannot be guessed. Nothing is raised. | v2.4 | `Built` |
+| FR-INV-020 | **Accounts cannot delete** invoices or agreements. An invoice with payments or credit notes cannot be deleted by anyone, and cannot be edited below what has been paid. Moving an invoice to Collected by hand is refused once it has payments or credit notes. | v2.4 | `Built` |
 
 ## 4. Business rules
 
@@ -124,9 +130,9 @@ Production at 27 Sep 2026: 112 line rows. Lines raised before pro-rating have no
 | ID | Item | Source | Priority | Status |
 |---|---|---|---|---|
 | FS-INV-01 | Confirm what paid leave means against a real SOW — The default bills paid leave. If contracts mean the client pays for neither, both kinds should deduct. That is a one-line change, and it should be settled before the first invoice with leave is raised. | Plan M59 | High | `Proposed` |
-| FS-INV-02 | Void and credit notes — A collected invoice cannot be edited or deleted, and the message tells the user to "void and re-raise it", but there is no void action. A void status, or a credit note linked to the original, would give corrections a proper home. | This review | High | `Proposed` |
-| FS-INV-03 | Record what was actually received — Collection is all or nothing. Tax deducted at source and short payments cannot be recorded, so Collected overstates cash received. | This review | Medium | `Proposed` |
-| FS-INV-04 | Draft the month's invoices from active deployments — One draft per project, with lines from active billable deployments at their rates, for the biller to adjust for leave and part months. | This review | Medium | `Proposed` |
+| FS-INV-02 | Void and credit notes — A collected invoice cannot be edited or deleted, and the message tells the user to "void and re-raise it", but there is no void action. A void status, or a credit note linked to the original, would give corrections a proper home. | This review | High | `Built (M62)` |
+| FS-INV-03 | Record what was actually received — Collection is all or nothing. Tax deducted at source and short payments cannot be recorded, so Collected overstates cash received. | This review | Medium | `Built (M62)` |
+| FS-INV-04 | Draft the month's invoices from active deployments — One draft per project, with lines from active billable deployments at their rates, for the biller to adjust for leave and part months. | This review | Medium | `Built (M62)` |
 | FS-INV-05 | Produce the invoice document — A PDF with the client's billing details and GST breakdown. Needs client billing details first (FS-CLI-01). | This review | Medium | `Proposed` |
 | FS-INV-06 | Revenue in rupees — A reporting view that converts AED and USD invoices at the rate stored on each one. That rate has been captured since v1.2 for this purpose. | Plan M14 | Later | `Planned` |
 | FS-INV-07 | Holiday calendar — Pro-rating uses calendar days by design. A holiday calendar would allow a working-day share, at the cost of maintaining one per client. | Plan M57 | Only if needed | `Deferred` |
@@ -134,7 +140,8 @@ Production at 27 Sep 2026: 112 line rows. Lines raised before pro-rating have no
 
 ## 9. Known limitations
 
-- **Collected invoices cannot be corrected.** See FS-INV-02.
+- **Collected invoices are corrected with a credit note** (FR-INV-017), not edited.
+- **Invoices collected before M62 have no payments.** They read as paid in full and take no further payment (D-A2).
 - **The pre-GST amount can differ from the lines.** It is editable by design, and the form says when it has been overridden.
 - **Paid-leave meaning is a default.** See BR-INV-02 and FS-INV-01.
 
@@ -146,3 +153,4 @@ Production at 27 Sep 2026: 112 line rows. Lines raised before pro-rating have no
 | 1.1 | 21 Oct 2026 | v2.2 (built) | M65: FR-INV-006a — a line's paid and unpaid leave come from approved timesheets when every working day of the period is approved, and are locked on the form and enforced on save. See FSD-18 FR-TSH-010. |
 | 1.2 | 23 Oct 2026 | v2.3 (built) | M65 addendum: FR-INV-006b coverage and link. See FSD-18 FR-TSH-016. |
 | 1.3 | 23 Oct 2026 | v2.3 (built) | FR-INV-006a: leave now also comes from approved leave requests (FSD-21), by the same rule as approved timesheet days. |
+| 1.4 | 3 Nov 2026 | v2.4 (built) | M62 slices B and C: FR-INV-015 to 020 — payments and reversal, credit notes, proforma, monthly drafts, and Accounts' limits. FS-INV-02 to 04 built. |

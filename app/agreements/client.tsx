@@ -89,11 +89,13 @@ const BLANK = {
 export default function AgreementsClient({
   initial,
   canExport,
+  canDelete,
   projects,
   resources,
 }: {
   initial: Row[];
   canExport: boolean;
+  canDelete: boolean;
   projects: ProjectOption[];
   resources: ResourceOption[];
 }) {
@@ -558,13 +560,15 @@ export default function AgreementsClient({
                               <RefreshCw className="h-3.5 w-3.5" />
                             </button>
                           )}
-                          <button
-                            onClick={() => remove(a)}
-                            className="rounded p-1.5 text-ink3 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950"
-                            aria-label={`Delete ${a.title}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {canDelete && (
+                            <button
+                              onClick={() => remove(a)}
+                              className="rounded p-1.5 text-ink3 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950"
+                              aria-label={`Delete ${a.title}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

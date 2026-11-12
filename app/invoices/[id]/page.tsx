@@ -9,6 +9,8 @@ import {
   clients,
   agreements,
   resources,
+  invoiceReceipts,
+  invoiceCreditNotes,
 } from '@/lib/schema';
 import {
   formatMoney,
@@ -25,6 +27,9 @@ import {
   DetailEmpty,
 } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
+import { canWrite } from '@/lib/access';
+import { settle } from '@/lib/invoice-rules';
+import { CreditNotesPanel, PaymentsPanel, ProformaPanel, type ReceiptRow } from './ledger-panel';
 import { invoiceCoverage } from '@/lib/timesheet-dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -54,6 +59,7 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
       collectedDate: invoices.collectedDate,
       status: invoices.status,
       notes: invoices.notes,
+      proformaNumber: invoices.proformaNumber,
       createdAt: invoices.createdAt,
       projectName: projects.projectName,
       clientName: clients.companyName,
@@ -96,6 +102,22 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
   const itemised = covered.some((c) => c.lineAmount > 0 || c.monthlyRate > 0);
   const lineTotal = covered.reduce((s, c) => s + c.lineAmount, 0);
 
+  const receiptRows = await db.select().from(invoiceReceipts).where(eq(invoiceReceipts.invoiceId, id)).orderBy(invoiceReceipts.id).all();
+  const creditRows = await db.select().from(invoiceCreditNotes).where(eq(invoiceCreditNotes.invoiceId, id)).orderBy(invoiceCreditNotes.id).all();
+  const settlement = settle(row, receiptRows, creditRows);
+  const reversedIds = new Set(receiptRows.map((r) => r.reversesId).filter((v): v is number => v !== null));
+  const receiptList: ReceiptRow[] = receiptRows.map((r) => ({
+    id: r.id,
+    receivedDate: r.receivedDate,
+    amount: r.amount,
+    tdsDeducted: r.tdsDeducted,
+    note: r.note,
+    source: r.source,
+    reversesId: r.reversesId,
+    reversed: reversedIds.has(r.id),
+  }));
+  const canEdit = canWrite(session.role, `/api/invoices/${id}/receipts`, 'POST');
+  const raisedInvoice = row.status !== 'not_raised' && row.status !== 'proforma';
   const overdue = isInvoiceOverdue(row.status, row.dueDate);
   const total = row.amount + row.gstAmount;
   const currentStage = INVOICE_STATUS_ORDER.indexOf(row.status);
@@ -139,6 +161,25 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
                 ['Total', formatMoney(total, row.currency)],
               ]}
             />
+            {raisedInvoice && (
+              <DetailFacts
+                columns={4}
+                facts={[
+                  ['Credited', formatMoney(settlement.credited, row.currency)],
+                  ['Received', formatMoney(settlement.received, row.currency)],
+                  ['TDS', formatMoney(settlement.tds, row.currency)],
+                  [
+                    settlement.outstanding < 0 ? 'Refund due' : 'Outstanding',
+                    formatMoney(Math.abs(settlement.outstanding), row.currency),
+                  ],
+                ]}
+              />
+            )}
+            {settlement.legacyPaid && (
+              <p className="border-t border-line px-4 py-2 text-2xs text-ink3">
+                Collected before payments were tracked, so it reads as paid in full.
+              </p>
+            )}
             {row.currency !== 'INR' && (
               <div className="border-t border-line px-4 py-3">
                 <div className="flex items-baseline justify-between">
@@ -155,6 +196,28 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
                 </p>
               </div>
             )}
+          </DetailSection>
+
+          <DetailSection title="Payments" hint="Entered here or received from Tally; a mistake is reversed, never edited">
+            <PaymentsPanel
+              invoiceId={id}
+              currency={row.currency}
+              receipts={receiptList}
+              canEdit={canEdit}
+              canReceive={raisedInvoice && !settlement.legacyPaid}
+            />
+          </DetailSection>
+
+          <DetailSection title="Credit notes" hint="Cancel all or part of a raised invoice">
+            <CreditNotesPanel
+              invoiceId={id}
+              currency={row.currency}
+              invoiceAmount={row.amount}
+              invoiceGst={row.gstAmount}
+              credits={creditRows}
+              canEdit={canEdit}
+              canIssue={raisedInvoice}
+            />
           </DetailSection>
 
           <DetailSection
@@ -362,6 +425,10 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
                 );
               })}
             </ol>
+          </DetailSection>
+
+          <DetailSection title="Proforma" hint="Optional step ahead of the tax invoice">
+            <ProformaPanel invoiceId={id} status={row.status} proformaNumber={row.proformaNumber} canEdit={canEdit} />
           </DetailSection>
 
           <DetailSection title="Agreement / PO">
