@@ -381,6 +381,21 @@ export const invoiceSchema = z
     path: ['dueDate'],
   });
 
+/**
+ * M70: the correction a collected invoice will accept. Deliberately not a
+ * `.partial()` of invoiceSchema — that would pass the money through the
+ * moment someone posts it, and the whole point is that it cannot. The route
+ * narrows again through `collectedInvoicePatch`; this schema only settles
+ * the shape of what arrives.
+ */
+export const collectedInvoiceSchema = z.object({
+  invoiceNumber: optionalStr,
+  invoiceDate: optionalDate,
+  dueDate: optionalDate,
+  collectedDate: dateStr,
+  notes: optionalStr,
+});
+
 export const invoiceAdvanceSchema = z.object({
   /** Omit to advance exactly one step. */
   targetStatus: z

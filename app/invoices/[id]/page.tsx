@@ -2,14 +2,21 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
+import { desc } from 'drizzle-orm';
 import {
   invoices,
+  invoiceEdits,
   invoiceResources,
   projects,
   clients,
   agreements,
   resources,
+  users,
 } from '@/lib/schema';
+import {
+  COLLECTED_FIELD_LABELS,
+  type CollectedEditableField,
+} from '@/lib/invoice-edit-rules';
 import {
   formatMoney,
   formatDate,
@@ -95,6 +102,23 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
   // list of names they were.
   const itemised = covered.some((c) => c.lineAmount > 0 || c.monthlyRate > 0);
   const lineTotal = covered.reduce((s, c) => s + c.lineAmount, 0);
+
+  // M70 (D26): empty for every invoice that has never been corrected after
+  // collection, which is almost all of them.
+  const edits = await db
+    .select({
+      id: invoiceEdits.id,
+      field: invoiceEdits.field,
+      valueBefore: invoiceEdits.valueBefore,
+      valueAfter: invoiceEdits.valueAfter,
+      byName: users.name,
+      createdAt: invoiceEdits.createdAt,
+    })
+    .from(invoiceEdits)
+    .leftJoin(users, eq(invoiceEdits.byUserId, users.id))
+    .where(eq(invoiceEdits.invoiceId, id))
+    .orderBy(desc(invoiceEdits.id))
+    .all();
 
   const overdue = isInvoiceOverdue(row.status, row.dueDate);
   const total = row.amount + row.gstAmount;
@@ -337,6 +361,30 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
               </div>
             )}
           </DetailSection>
+
+          {/* M70: what was corrected after this invoice was collected, and by
+              whom. Absent entirely when nothing has been. */}
+          {edits.length > 0 && (
+            <DetailSection title="Corrections" hint="After collection">
+              <ul className="divide-y divide-line">
+                {edits.map((e) => (
+                  <li key={e.id} className="px-4 py-3 text-sm">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-medium text-ink">
+                        {COLLECTED_FIELD_LABELS[e.field as CollectedEditableField] ?? e.field}
+                      </span>
+                      <span className="text-ink3 line-through">{e.valueBefore ?? '—'}</span>
+                      <span className="text-ink3">→</span>
+                      <span className="text-ink">{e.valueAfter ?? '—'}</span>
+                    </div>
+                    <div className="mt-0.5 text-2xs text-ink3">
+                      {e.byName ?? 'Unknown'} · {formatDate(e.createdAt.slice(0, 10))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </DetailSection>
+          )}
         </div>
 
         <div className="space-y-6">

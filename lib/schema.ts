@@ -371,6 +371,32 @@ export const invoiceResources = sqliteTable(
   }),
 );
 
+/**
+ * M70 (D26): one row per field changed on an invoice that had already been
+ * collected. Collected invoices used to be frozen outright; now their
+ * clerical fields can be corrected, and this is what keeps that from being a
+ * silent rewrite of a financial record. Append-only — nothing updates or
+ * deletes these rows.
+ */
+export const invoiceEdits = sqliteTable(
+  'invoice_edits',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => invoices.id),
+    /** One of COLLECTED_EDITABLE_FIELDS, stored as its camelCase name. */
+    field: text('field').notNull(),
+    valueBefore: text('value_before'),
+    valueAfter: text('value_after'),
+    byUserId: integer('by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    invoiceIdx: index('invedit_invoice_idx').on(t.invoiceId),
+  }),
+);
+
 /* ── M8: Opportunities / Pipeline ──────────────────────────── */
 
 /** Active pipeline stages, in order. Movement is bidirectional. */

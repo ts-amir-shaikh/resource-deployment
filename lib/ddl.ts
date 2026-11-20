@@ -703,4 +703,14 @@ CREATE TABLE IF NOT EXISTS leave_requests (
 );
 CREATE INDEX IF NOT EXISTS leave_resource_idx ON leave_requests(resource_id, start_date);
 CREATE INDEX IF NOT EXISTS leave_status_idx ON leave_requests(status);
+CREATE TABLE IF NOT EXISTS invoice_edits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id),
+  field TEXT NOT NULL,
+  value_before TEXT,
+  value_after TEXT,
+  by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS invedit_invoice_idx ON invoice_edits(invoice_id);
 `;

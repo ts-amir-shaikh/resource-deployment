@@ -1,17 +1,21 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import {
   invoices,
+  invoiceEdits,
   invoiceResources,
   resources,
   projects,
   clients,
   agreements,
+  users,
 } from '@/lib/schema';
-import { invoiceSchema } from '@/lib/validations';
+import { collectedInvoiceSchema, invoiceSchema } from '@/lib/validations';
 import { handle, ok, fail, parseBody, parseId } from '@/lib/api';
+import { requireSession } from '@/lib/session';
 import { withTimesheetLeave } from '@/lib/timesheets';
 import { isInvoiceOverdue, invoiceLineRow } from '@/lib/utils';
+import { collectedEditError, collectedInvoicePatch, invoiceEditDiff } from '@/lib/invoice-edit-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,11 +76,29 @@ export async function GET(_req: Request, { params }: Ctx) {
       .where(eq(invoiceResources.invoiceId, id))
       .all();
 
+    // M70: empty for every invoice that has never been corrected after
+    // collection, which is almost all of them.
+    const edits = await db
+      .select({
+        id: invoiceEdits.id,
+        field: invoiceEdits.field,
+        valueBefore: invoiceEdits.valueBefore,
+        valueAfter: invoiceEdits.valueAfter,
+        byName: users.name,
+        createdAt: invoiceEdits.createdAt,
+      })
+      .from(invoiceEdits)
+      .leftJoin(users, eq(invoiceEdits.byUserId, users.id))
+      .where(eq(invoiceEdits.invoiceId, id))
+      .orderBy(desc(invoiceEdits.id))
+      .all();
+
     return ok({
       ...row,
       totalAmount: row.amount + row.gstAmount,
       overdue: isInvoiceOverdue(row.status, row.dueDate),
       resources: covered,
+      edits,
     });
   });
 }
@@ -89,11 +111,44 @@ export async function PUT(req: Request, { params }: Ctx) {
     const existing = await db.select().from(invoices).where(eq(invoices.id, id)).get();
     if (!existing) return fail('Invoice not found', 404);
 
+    // M70 (D25): a collected invoice is a record of what was billed and paid,
+    // so the money on it is closed. What stays open is the clerical surface —
+    // the number, the three dates and the notes — because the alternative for
+    // a transposed number was voiding and re-raising a paid invoice. The
+    // narrow schema and the allowlisted patch are both deliberate: neither
+    // one alone would stop an amount arriving in the body.
     if (existing.status === 'collected') {
-      return fail(
-        'This invoice is collected and can no longer be edited. Void and re-raise it if a correction is needed.',
-        409,
-      );
+      const session = await requireSession();
+      const { data, error } = await parseBody(req, collectedInvoiceSchema);
+      if (error) return error;
+
+      const patch = collectedInvoicePatch(data);
+      const refusal = collectedEditError(patch);
+      if (refusal) return fail(refusal, 422);
+
+      const changes = invoiceEditDiff(existing, patch);
+      if (changes.length === 0) return ok(existing);
+
+      const updated = await db.transaction(async (tx) => {
+        const row = await tx.update(invoices).set(patch).where(eq(invoices.id, id)).returning().get();
+        // D26: append-only, one row per field, so a later question about a
+        // paid invoice's number has an answer rather than a mystery.
+        for (const change of changes) {
+          await tx
+            .insert(invoiceEdits)
+            .values({
+              invoiceId: id,
+              field: change.field,
+              valueBefore: change.before,
+              valueAfter: change.after,
+              byUserId: session.uid || null,
+            })
+            .run();
+        }
+        return row;
+      });
+
+      return ok(updated);
     }
 
     const { data, error } = await parseBody(req, invoiceSchema);
