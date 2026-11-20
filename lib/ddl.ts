@@ -717,4 +717,18 @@ CREATE TABLE IF NOT EXISTS invoice_edits (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS invedit_invoice_idx ON invoice_edits(invoice_id);
+CREATE TABLE IF NOT EXISTS campaign_imports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  row_count INTEGER NOT NULL DEFAULT 0,
+  prospects_created INTEGER NOT NULL DEFAULT 0,
+  prospects_matched INTEGER NOT NULL DEFAULT 0,
+  contacts_created INTEGER NOT NULL DEFAULT 0,
+  rows_skipped INTEGER NOT NULL DEFAULT 0,
+  rows_failed INTEGER NOT NULL DEFAULT 0,
+  by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS campaign_import_campaign_idx ON campaign_imports(campaign_id);
 `;

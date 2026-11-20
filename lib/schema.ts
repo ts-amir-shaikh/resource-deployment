@@ -996,10 +996,43 @@ export const prospectContacts = sqliteTable(
     mobile: text('mobile'),
     linkedin: text('linkedin'),
     isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * M69: remarks from an imported list, and the raw email cell when it held
+     * more than one address — 60 of the 299 reference rows did. Without
+     * somewhere to put it, the second address was simply lost.
+     */
+    notes: text('notes'),
     ...timestamps,
   },
   (t) => ({
     prospectIdx: index('pcontact_prospect_idx').on(t.prospectId),
+  }),
+);
+
+/**
+ * M69 (D24): one row per import run. Answers "where did this list come from"
+ * a year later, which is the question leadgen actually asks of a prospect
+ * nobody remembers adding.
+ */
+export const campaignImports = sqliteTable(
+  'campaign_imports',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    rowCount: integer('row_count').notNull().default(0),
+    prospectsCreated: integer('prospects_created').notNull().default(0),
+    prospectsMatched: integer('prospects_matched').notNull().default(0),
+    contactsCreated: integer('contacts_created').notNull().default(0),
+    rowsSkipped: integer('rows_skipped').notNull().default(0),
+    rowsFailed: integer('rows_failed').notNull().default(0),
+    byUserId: integer('by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    campaignIdx: index('campaign_import_campaign_idx').on(t.campaignId),
   }),
 );
 

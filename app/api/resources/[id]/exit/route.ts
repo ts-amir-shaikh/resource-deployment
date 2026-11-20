@@ -84,7 +84,10 @@ export async function POST(req: Request, { params }: Ctx) {
       if (data.endOpenDeployments && blocking.length > 0) {
         await tx
           .update(deployments)
-          .set({ endDate: data.exitDate })
+          // Both columns, as /api/deployments/[id]/end does. The allocation
+          // queries read `status`, so an end date alone would leave the
+          // leaver still holding 100% of themselves.
+          .set({ status: 'ended', endDate: data.exitDate })
           .where(
             and(
               eq(deployments.resourceId, id),

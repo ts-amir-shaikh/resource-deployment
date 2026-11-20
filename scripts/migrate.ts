@@ -478,6 +478,13 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'exit_recorded_by_user_id',
     ddl: 'ALTER TABLE resources ADD COLUMN exit_recorded_by_user_id INTEGER',
   },
+  // M69 — remarks from an imported list, and the raw email cell when it held
+  // more than one address. Null on every contact added before imports existed.
+  {
+    table: 'prospect_contacts',
+    column: 'notes',
+    ddl: 'ALTER TABLE prospect_contacts ADD COLUMN notes TEXT',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {
