@@ -1,12 +1,12 @@
 # Feature gap register
 
-`FSD-00A · GAP · Rev 1.10`
+`FSD-00A · GAP · Rev 1.11`
 
 What each department still needs before it can run its part of the journey on this platform. Each gap is marked `Must` (the operation cannot run on the platform without it) or `Good to have` (it works without it, but slower or with less insight). This list comes before any plan. Plans are cut from the Must items first.
 
 | Field | Value |
 |---|---|
-| Date | 27 Sep 2026, last revised 21 Oct 2026 |
+| Date | 27 Sep 2026, last revised 20 Nov 2026 |
 | Against | FSD-00 Rev 1.2 · code f029715 |
 | Must | 57 |
 | Good to have | 35 |
@@ -107,7 +107,7 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-LED-05 | Convert prospect → lead, then lead → one or more requirements | **Built** (FR-LED-006, 009, 010) with temperature per D12. Awaiting release | `Must` | D4 · FSD-15 |
 | G-LED-06 | Duplicate check on prospect and client names | **Built** (FR-LED-012): a warning on prospect and client names. Awaiting release | `Must` | FS-CLI-02 |
 | G-LED-07 | Campaign results: reached, responded, meetings, leads, conversion | **Built** (FR-CMP-006), awaiting release | `Good to have` | FSD-14 |
-| G-LED-08 | Import target lists from CSV | None | `Good to have` | This review |
+| G-LED-08 | Import target lists from CSV | **Built** (M69, FSD-14 v1.1): upload against a campaign, column mapping, preview, commit and an import log | `Good to have` | This review |
 | G-LED-09 | Email sequences and calendar sync for meetings | None | `Good to have` | This review |
 | **Inside sales / Sales · Sales** | | | | |
 | G-SAL-01 | Client account view for Sales: contacts, projects, people deployed, billing, all costs hidden | Clients is Admin-only | `Must` | D8 · FS-CLI-03 |
@@ -139,7 +139,7 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | G-RM-02 | Skill matrix: proficiency per skill per resource (and candidate), shared with rating criteria | **Built for resources** (FR-RMG-009, 010), awaiting release. Candidates stay with G-TA-04 | `Must` | FSD-17 |
 | G-RM-03 | Utilisation desk: bench, partial, roll-offs, deployments past end date | Admin-only view, no past-date flag | `Must` | FS-DEP-01 |
 | G-RM-10 | Timesheet dashboard: utilisation, billing coverage, shadow work and billed time with no client tasks, with an activity log and links from Resource, Deployment and Invoice pages. Admin only. Closes part of G-RM-03 | **Built** (FR-TSH-011 to 016), awaiting release | `Must` | D17 to D21 |
-| G-RM-04 | Mark a resource as having left, removing them from pickers and headcount | Not possible | `Must` | FS-RES-01 |
+| G-RM-04 | Mark a resource as having left, removing them from pickers and headcount | **Built** (M68, FSD-07 v1.5): exit date and notes, the roster filter, the deployment guard and the account access limit | `Must` | FS-RES-01 |
 | G-RM-05 | Monthly reviews: account review per client and performance review per resource, with completion tracked | **Built** (FR-RMG-001 to 006), awaiting release | `Must` | FSD-17 |
 | G-RM-09 | Client login for entering resource feedback directly, invited and expiring, on the D5 pattern. Deferred: the Account Manager records it on their behalf for now | Account Manager records it (D13) | `Good to have` | D13 |
 | G-RM-06 | Bench ageing and a capacity forecast from end dates | None | `Good to have` | FS-RES-02 |
@@ -159,7 +159,7 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | **Accounts · Accounts** | | | | |
 | G-ACC-01 | Accounts role: write Agreements and Invoices, see margin and CTC | Admin only | `Must` | D6 |
 | G-ACC-02 | Client billing details: GSTIN, billing address, payment terms, default due days | None | `Must` | FS-CLI-01 |
-| G-ACC-03 | Void and credit note for invoices already raised or collected | Not possible | `Must` | FS-INV-02 |
+| G-ACC-03 | Void and credit note for invoices already raised or collected | Part met (M70, FSD-12 v2.4): a collected invoice's number, dates and notes can be corrected with a change log. A wrong **amount** still needs a void or credit note | `Must` | FS-INV-02 |
 | G-ACC-04 | Receipts: amount received, TDS, short payment, partial collection | All-or-nothing Collected | `Must` | FS-INV-03 |
 | G-ACC-05 | PO consumption: invoiced against value, remaining, warning when running low | None | `Must` | FS-AGR-01 |
 | G-ACC-06 | Draft the month's invoices from approved timesheets and active deployments | Built by hand | `Must` | FS-INV-04 |
@@ -219,4 +219,5 @@ Two things it already gets right: it talks to `localhost`, and it only ever read
 | 1.7 | 22 Oct 2026 | **M66 Leadgen pipeline built** on `feat/m66-leadgen` (FSD-14 and FSD-15 Rev 1.0): G-LED-01 to 07 marked Built; G-SAL-02 and 03 part built (Q5). Counts are unchanged until the release. |
 | 1.8 | 23 Oct 2026 | Timesheet dashboard built (FSD-18 Rev 1.1, D17 to D21): **G-RM-10** added (Must, built, awaiting release) and **G-RES-09** added (Good to have, deferred). Counts are unchanged until it is built. |
 | 1.9 | 23 Oct 2026 | Leave built as its own module (FSD-21, D22): **G-RES-10** added (Must, built, awaiting release). G-RES-05 (balances, reminders) stays future. Counts unchanged until release. |
+| 1.11 | 20 Nov 2026 | **M68, M69 and M70 built** (FSD-07 Rev 1.2, FSD-14 Rev 1.1, FSD-12 Rev 1.4). **G-RM-04 built** — a resource can be marked as having left. **G-LED-08 built** — campaign contact import from CSV. **G-ACC-03 part met** — a collected invoice's clerical fields can be corrected with a per-field change log; a wrong amount still needs a void or credit note, so the gap stays Must. Counts are unchanged until the release, as for M60 in Rev 1.4. |
 | 1.10 | 23 Oct 2026 | **M67 Resource & account review built** on `feat/m67-resource-review` (FSD-17 Rev 1.0): G-RM-02 built for resources, G-RM-05 built, G-RM-07 part built (trends; editable templates not). The Health report from the 21 Oct description is deferred until it is defined. Counts are unchanged until the release. |

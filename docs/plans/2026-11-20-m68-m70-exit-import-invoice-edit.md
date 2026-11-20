@@ -34,13 +34,15 @@ status: approved
 
 | Module | Covers | FSD |
 |---|---|---|
-| **M68** Resource exit | Mark a resource as having left, with date and notes. Exited resources leave the pickers and the roster counts but stay in all history | FSD-02 |
+| **M68** Resource exit | Mark a resource as having left, with date and notes. Exited resources leave the pickers and the roster counts but stay in all history | FSD-07 |
 | **M69** Campaign contact import | Upload a contact list against a campaign, map its columns, preview, then commit into prospects and contacts | FSD-14 |
 | **M70** Collected-invoice edit | A collected invoice's number, dates and notes become editable. The money does not | FSD-12 |
 
 ### Actors
 
-- **Admin / Resource Manager** records an exit (M68).
+- **Admin** records an exit (M68). *Shipped as Admin only: Resource Manager
+  has no access to `/resources` at all, and opening that screen to them would
+  expose CTC — a wider decision than this module, left for the Product Owner.*
 - **Leadgen** imports a campaign's list (M69).
 - **Accounts / Admin** corrects a collected invoice (M70).
 - **Management** sees all three and writes none of them.
@@ -200,10 +202,11 @@ The campaign page lists past imports with their counts (D24).
 ### Closing
 
 #### U13. FSDs and docs
-FSD-02 (resources), FSD-12 (invoices) and FSD-14 (leadgen) get a version bump,
-a revision row, and their shipped FS items moved to FR items. FSD-00A's gap
-register is reconciled. The living plan artifact is republished from these
-files.
+FSD-07 (resources), FSD-12 (invoices) and FSD-14 (campaigns) get a version
+bump, a revision row, and their shipped FS items moved to FR items. FSD-00A's
+gap register is reconciled. FSD-14, 15, 17, 18 and 21 move from
+`docs/plans/mxxwork/` into `docs/fsd/`, where this project's own rule says
+they live. The living plan artifact is republished from these files.
 
 ---
 
@@ -215,9 +218,10 @@ files.
   tick ends them; the linked account's `access_until` matches the exit date.
 - An exited resource is absent from the deployment form's picker and from the
   roster counts, and present on the invoice that covered them.
-- Importing `Real Estate Data.csv` previews 187 rows as 143 prospects, reports
-  the `NA` cells as empty and the multi-email cells as split, and writes
-  nothing until committed.
+- Importing `Real Estate Data.csv` previews 187 rows as 142 prospects (143
+  distinct raw names, two of which normalise to one), catches the two people
+  listed twice, reports the `NA` cells as empty and the multi-email cells as
+  split, and writes nothing until committed.
 - Re-importing the same file a second time creates nothing and names every
   skip.
 - A collected invoice accepts a new number, dates and notes, refuses a changed
