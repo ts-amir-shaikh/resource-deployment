@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, Search, Users, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Users, X, LogOut, Undo2 } from 'lucide-react';
 import { api, errorMessage, isApiError } from '@/lib/client';
-import { formatMoney, formatDate, parseSkills, LIST_PAGE_SIZE } from '@/lib/utils';
+import { formatMoney, formatDate, parseSkills, today, LIST_PAGE_SIZE } from '@/lib/utils';
+import { exitState, type ExitDeployment } from '@/lib/resource-exit-rules';
 import {
   PageHeader,
   Modal,
@@ -22,6 +23,9 @@ import { resourcesList, type ResourceFilters } from '@/lib/lists/resources';
 import type { ResourceRow } from '@/lib/lists/load/resources';
 
 type Row = ResourceRow;
+
+/** M68: the exit being recorded, as typed. */
+const BLANK_EXIT = { exitDate: '', exitNotes: '', endOpenDeployments: false };
 
 const BLANK = {
   name: '',
@@ -49,6 +53,8 @@ export default function ResourcesClient({
   const [availability, setAvailability] = useState<'all' | 'available' | 'partial' | 'full'>(
     'all',
   );
+  // M68 (D18): the roster is the default view; leavers are one filter away.
+  const [roster, setRoster] = useState<'active' | 'exited' | 'all'>('active');
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -57,6 +63,12 @@ export default function ResourcesClient({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // M68: the resource whose exit is being recorded, and what blocked it.
+  const [exiting, setExiting] = useState<Row | null>(null);
+  const [exitForm, setExitForm] = useState(BLANK_EXIT);
+  const [blocking, setBlocking] = useState<ExitDeployment[]>([]);
+  const todayStr = today();
 
   const skills = useMemo(() => {
     const set = new Set<string>();
@@ -67,15 +79,15 @@ export default function ResourcesClient({
   }, [initial]);
 
   const filters: ResourceFilters = useMemo(
-    () => ({ search, skill: skillFilter, availability }),
-    [search, skillFilter, availability],
+    () => ({ search, skill: skillFilter, availability, roster }),
+    [search, skillFilter, availability, roster],
   );
   const filtered = useMemo(() => resourcesList.filterRows(initial, filters), [initial, filters]);
   const { ticks, toggle, setMany } = useTicks();
 
   // Any filter change should land the user back on page 1 rather than a now
   // out-of-range page.
-  useEffect(() => setPage(1), [search, skillFilter, availability]);
+  useEffect(() => setPage(1), [search, skillFilter, availability, roster]);
 
   const pageItems = useMemo(
     () => filtered.slice((page - 1) * LIST_PAGE_SIZE, page * LIST_PAGE_SIZE),
@@ -153,11 +165,58 @@ export default function ResourcesClient({
     }
   }
 
+  /* ── M68: exit ─────────────────────────────────────────────── */
+
+  function openExit(r: Row) {
+    setExiting(r);
+    setExitForm({ ...BLANK_EXIT, exitDate: todayStr });
+    setBlocking([]);
+    setErrors({});
+    setBanner(null);
+  }
+
+  /**
+   * A refusal comes back with the deployments that caused it (D17), so the
+   * dialog can name them and offer the tick rather than just saying no.
+   */
+  async function saveExit() {
+    if (!exiting) return;
+    setSaving(true);
+    setErrors({});
+    setBanner(null);
+    try {
+      await api(`/api/resources/${exiting.id}/exit`, { method: 'POST', json: exitForm });
+      setExiting(null);
+      router.refresh();
+    } catch (e) {
+      if (isApiError(e)) {
+        if (e.fields) setErrors(e.fields);
+        if (e.deployments) setBlocking(e.deployments);
+      }
+      setBanner(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function undoExit(r: Row) {
+    if (!confirm(`Put ${r.name} back on the roster? Deployments ended by the exit stay ended.`)) return;
+    setBusy(true);
+    try {
+      await api(`/api/resources/${r.id}/exit`, { method: 'DELETE' });
+      router.refresh();
+    } catch (e) {
+      alert(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="pb-12">
       <PageHeader
         title="Resources"
-        subtitle={`${initial.length} consultants on the bench`}
+        subtitle={`${initial.filter((r) => !r.exitDate).length} consultants on the bench`}
         action={
           <div className="flex gap-2">
             {canExport && (
@@ -196,6 +255,20 @@ export default function ResourcesClient({
               }`}
             >
               {a}
+            </button>
+          ))}
+        </div>
+        {/* M68 (D18): the roster is the default; leavers are one click away. */}
+        <div className="flex rounded-md border border-line bg-surface p-0.5">
+          {(['active', 'exited', 'all'] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => setRoster(r)}
+              className={`rounded px-2.5 py-1.5 text-xs font-medium capitalize transition-colors ${
+                roster === r ? 'bg-brand text-white' : 'text-ink2 hover:text-ink'
+              }`}
+            >
+              {r}
             </button>
           ))}
         </div>
@@ -271,6 +344,14 @@ export default function ResourcesClient({
                       <div className="text-2xs text-ink3">
                         {r.designation ?? '—'} · {r.email}
                       </div>
+                      {r.exitDate && (
+                        <div className="mt-0.5">
+                          <Badge tone={exitState(r, todayStr) === 'leaving' ? 'amber' : 'neutral'}>
+                            {exitState(r, todayStr) === 'leaving' ? 'Leaving' : 'Exited'}{' '}
+                            {formatDate(r.exitDate)}
+                          </Badge>
+                        </div>
+                      )}
                     </td>
                     <td className="td">
                       {r.primarySkill ? (
@@ -294,7 +375,9 @@ export default function ResourcesClient({
                       )}
                     </td>
                     <td className="td">
-                      {r.allocated === 0 ? (
+                      {r.exitDate && r.allocated === 0 ? (
+                        <span className="text-ink3">—</span>
+                      ) : r.allocated === 0 ? (
                         <Badge tone="neutral">Available</Badge>
                       ) : (
                         <AllocationBar billable={r.billable} shadow={r.shadow} />
@@ -309,6 +392,26 @@ export default function ResourcesClient({
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
+                        {r.exitDate ? (
+                          <button
+                            onClick={() => undoExit(r)}
+                            disabled={busy}
+                            className="rounded p-1.5 text-ink3 hover:bg-surface2 hover:text-ink"
+                            aria-label={`Undo exit for ${r.name}`}
+                            title="Put back on the roster"
+                          >
+                            <Undo2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => openExit(r)}
+                            className="rounded p-1.5 text-ink3 hover:bg-surface2 hover:text-ink"
+                            aria-label={`Mark exit for ${r.name}`}
+                            title="Mark exit"
+                          >
+                            <LogOut className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button
                           onClick={() => remove(r)}
                           className="rounded p-1.5 text-ink3 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950"
@@ -491,6 +594,80 @@ export default function ResourcesClient({
           </button>
           <button className="btn-primary" onClick={save} disabled={saving}>
             {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Resource'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* M68 — recording an exit. The date and the notes are the whole form;
+          the tick appears only once the server has named what is in the way,
+          so nobody ends a deployment without having seen which one. */}
+      <Modal
+        open={exiting !== null}
+        onClose={() => setExiting(null)}
+        title={`Mark exit · ${exiting?.name ?? ''}`}
+        description="They leave the pickers and the bench count, and stay on every record they are already part of"
+      >
+        {banner && (
+          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            {banner}
+          </div>
+        )}
+
+        <div className="grid gap-3">
+          <Field label="Last working day" required error={errors.exitDate}>
+            <input
+              className="input"
+              type="date"
+              value={exitForm.exitDate}
+              onChange={(e) => setExitForm({ ...exitForm, exitDate: e.target.value })}
+            />
+          </Field>
+          <Field label="Notes" error={errors.exitNotes} hint="Why they left, handover, anything worth keeping">
+            <textarea
+              className="input min-h-20"
+              value={exitForm.exitNotes}
+              onChange={(e) => setExitForm({ ...exitForm, exitNotes: e.target.value })}
+            />
+          </Field>
+
+          {blocking.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+              <div className="text-xs font-medium text-amber-900 dark:text-amber-200">
+                Still deployed after this date
+              </div>
+              <ul className="mt-1.5 space-y-0.5 text-xs text-amber-800 dark:text-amber-300">
+                {blocking.map((d) => (
+                  <li key={d.id}>
+                    {d.projectName} · {d.endDate ? `ends ${formatDate(d.endDate)}` : 'open-ended'}
+                  </li>
+                ))}
+              </ul>
+              <label className="mt-2.5 flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-3.5 w-3.5 rounded border-line accent-[rgb(var(--accent))]"
+                  checked={exitForm.endOpenDeployments}
+                  onChange={(e) => setExitForm({ ...exitForm, endOpenDeployments: e.target.checked })}
+                />
+                <span>
+                  End {blocking.length === 1 ? 'it' : 'them'} on {exitForm.exitDate || 'the exit date'}.
+                  Invoices already raised are untouched.
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+          <button className="btn-ghost" onClick={() => setExiting(null)}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            onClick={saveExit}
+            disabled={saving || !exitForm.exitDate || (blocking.length > 0 && !exitForm.endOpenDeployments)}
+          >
+            {saving ? 'Saving…' : 'Mark Exit'}
           </button>
         </div>
       </Modal>

@@ -460,6 +460,24 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'lead_id',
     ddl: 'ALTER TABLE opportunities ADD COLUMN lead_id INTEGER',
   },
+  // M68 — resource exit. All nullable, and null is the meaningful value:
+  // every existing resource is on the roster, which is what they are. The
+  // index lives in ddl.ts, which runs after these.
+  {
+    table: 'resources',
+    column: 'exit_date',
+    ddl: 'ALTER TABLE resources ADD COLUMN exit_date TEXT',
+  },
+  {
+    table: 'resources',
+    column: 'exit_notes',
+    ddl: 'ALTER TABLE resources ADD COLUMN exit_notes TEXT',
+  },
+  {
+    table: 'resources',
+    column: 'exit_recorded_by_user_id',
+    ddl: 'ALTER TABLE resources ADD COLUMN exit_recorded_by_user_id INTEGER',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

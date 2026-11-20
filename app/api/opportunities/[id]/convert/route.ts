@@ -163,6 +163,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           }
 
           // Respect the same 100% cap the deployments module enforces.
+          // M68 (D18): a candidate matched by email onto a resource who has
+          // since left would otherwise be deployed silently. Skipped with a
+          // reason, like an over-allocated one, so the conversion still runs
+          // and somebody decides whether this is a rehire.
+          const person = await tx
+            .select({ exitDate: resources.exitDate })
+            .from(resources)
+            .where(eq(resources.id, resourceId))
+            .get();
+          if (person?.exitDate) {
+            skipped.push({ name: c.name, reason: `Left on ${person.exitDate}` });
+            continue;
+          }
+
           // Read through `tx`: deployments inserted earlier in this same loop
           // are not yet committed, and a plain `db` read would miss them —
           // letting two joined candidates both claim the same resource.

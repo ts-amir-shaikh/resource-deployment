@@ -1157,6 +1157,10 @@ export async function skillMatrix(): Promise<SkillMatrix> {
   const people = await db
     .select({ id: resources.id, name: resources.name, designation: resources.designation, primarySkill: resources.primarySkill })
     .from(resources)
+    // M68 (D18): the matrix answers "what can this team do", so it is the
+    // roster. Review history is not affected — reviewTracker works from the
+    // deployments in the period, so a leaver's last month is still due.
+    .where(isNull(resources.exitDate))
     .orderBy(asc(resources.name))
     .all();
   const levels = await db

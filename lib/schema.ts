@@ -42,10 +42,20 @@ export const resources = sqliteTable(
     secondarySkill: text('secondary_skill'),
     /** JSON-encoded string[] */
     otherSkills: text('other_skills').default('[]').notNull(),
+    /**
+     * M68: the day they left, or leave. Null means on the roster — there is
+     * deliberately no second status column to fall out of step with it. A
+     * date in the future is somebody serving notice, who is already off the
+     * pickers for new work (D18).
+     */
+    exitDate: text('exit_date'),
+    exitNotes: text('exit_notes'),
+    exitRecordedByUserId: integer('exit_recorded_by_user_id'),
     ...timestamps,
   },
   (t) => ({
     primarySkillIdx: index('res_primary_skill_idx').on(t.primarySkill),
+    exitIdx: index('res_exit_idx').on(t.exitDate),
   }),
 );
 

@@ -106,6 +106,19 @@ export const resourceSchema = z
     path: ['revisedEffectiveFrom'],
   });
 
+/**
+ * M68: recording that a resource has left. `endOpenDeployments` is the
+ * operator's tick after seeing which deployments run past the date (D17) —
+ * without it, the route refuses rather than ending them quietly.
+ */
+export const resourceExitSchema = z.object({
+  exitDate: dateStr,
+  exitNotes: optionalStr,
+  // Not the shared `flag` helper: that is declared further down this file,
+  // and this schema is built while the module is still initialising.
+  endOpenDeployments: z.coerce.boolean().default(false),
+});
+
 /* ── Clients ───────────────────────────────────────────────── */
 
 export const clientSchema = z.object({

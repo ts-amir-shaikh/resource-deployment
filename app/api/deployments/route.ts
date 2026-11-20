@@ -70,11 +70,18 @@ export async function POST(req: Request) {
     if (error) return error;
 
     const resource = await db
-      .select({ id: resources.id })
+      .select({ id: resources.id, name: resources.name, exitDate: resources.exitDate })
       .from(resources)
       .where(eq(resources.id, data.resourceId))
       .get();
     if (!resource) return fail('Selected resource no longer exists', 422);
+    // M68 (D18): the picker already leaves them out, but the picker is not
+    // the boundary — a POST can name any id.
+    if (resource.exitDate) {
+      return fail(`${resource.name} left on ${resource.exitDate} and cannot be deployed.`, 422, {
+        fields: { resourceId: 'This resource has left' },
+      });
+    }
 
     const project = await db
       .select({ id: projects.id })

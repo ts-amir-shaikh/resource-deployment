@@ -220,8 +220,14 @@ export async function syncExpiredAgreements() {
 /* ── Dashboard aggregations ────────────────────────────────── */
 
 export async function getDashboardSummary() {
+  // M68 (D18): the roster, not everyone who ever worked here. A leaver left
+  // in the count would show as permanently available on the bench.
   const totalResources =
-    (await db.select({ c: sql<number>`count(*)` }).from(resources).get())?.c ?? 0;
+    (await db
+      .select({ c: sql<number>`count(*)` })
+      .from(resources)
+      .where(isNull(resources.exitDate))
+      .get())?.c ?? 0;
 
   const allocationRows = await db
     .select({
@@ -422,6 +428,10 @@ export async function getResourceUtilisation() {
       revisedEffectiveFrom: resources.revisedEffectiveFrom,
     })
     .from(resources)
+    // M68 (D18): this feeds the utilisation board and the deployment form's
+    // picker — both about who can take work now, so somebody who has left or
+    // is serving notice does not belong in either.
+    .where(isNull(resources.exitDate))
     .orderBy(resources.name)
     .all();
 

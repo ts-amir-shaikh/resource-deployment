@@ -10,6 +10,8 @@ export type ApiError = {
   invoiceCount?: number;
   /** M66: a 409 from a company create — near-identical names already on file. */
   duplicates?: unknown[];
+  /** M68: a 409 from a resource exit — the deployments standing in its way. */
+  deployments?: { id: number; projectName: string; startDate: string; endDate: string | null }[];
 };
 
 /** Throws ApiError on non-2xx so callers can render field-level messages. */
@@ -47,6 +49,7 @@ export async function api<T = unknown>(
       requiresAcknowledgement: payload?.requiresAcknowledgement,
       invoiceCount: payload?.invoiceCount,
       duplicates: payload?.duplicates,
+      deployments: payload?.deployments,
       status: res.status,
     };
     throw err;

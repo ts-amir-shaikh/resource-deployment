@@ -15,9 +15,13 @@ CREATE TABLE IF NOT EXISTS resources (
   primary_skill TEXT,
   secondary_skill TEXT,
   other_skills TEXT NOT NULL DEFAULT '[]',
+  exit_date TEXT,
+  exit_notes TEXT,
+  exit_recorded_by_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS res_primary_skill_idx ON resources(primary_skill);
+CREATE INDEX IF NOT EXISTS res_exit_idx ON resources(exit_date);
 
 CREATE TABLE IF NOT EXISTS clients (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
