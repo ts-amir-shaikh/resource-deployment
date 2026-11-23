@@ -23,6 +23,6 @@
 * FR-RPT-007 Renewal exposure counts agreement chain heads once; capped and uncapped fulfilment named separately.
 
 ## Open (FS)
-* FS-RPT-001 D6: confirm with Accounts how a split engagement's billing amount is entered.
+* FS-RPT-001 (closed 23 Nov 2026) D6 confirmed by the Product Owner: billing amount is per deployment, summed as entered.
 * FS-RPT-002 Production gates in the runbook: firewall rate limit and kill switch, alerting, read-only Turso token, migration, third-party processing policy.
 * FS-RPT-003 Phase 2: margin reporting, lead-generation attribution, pipeline value.

@@ -18,8 +18,9 @@ import type { BillingReport } from './types';
  * That function is the specification, not a dependency: it uses the global,
  * writable database client, so reporting owns an equivalent read-only query.
  *
- * D6 (verification pending): billing_amount is summed as entered, exactly as
- * the dashboard does. It is NOT multiplied or divided by allocation_percentage.
+ * D6 (confirmed by the Product Owner, 23 Nov 2026): billing_amount is the amount
+ * for that deployment. It is summed as entered, exactly as the dashboard does,
+ * and is NOT multiplied or divided by allocation_percentage.
  *
  * Not selected, by design: per-deployment or per-resource rows, resource
  * names, commission, overhead, GST, notes.
@@ -114,7 +115,7 @@ export const billingEndpoint: EndpointSpec<typeof billingParams, BillingReport> 
       },
       notes: [
         'Contracted monthly billing from active billable deployments, ex-GST. It is not invoiced revenue.',
-        'Each deployment billing amount is summed as entered; it is not adjusted by allocation percentage. This assumption is awaiting confirmation with Accounts.',
+        'Each deployment billing amount is the amount for that deployment and is summed as entered; it is not adjusted by allocation percentage.',
         'Amounts are per currency and are never converted. billedResources counts each person once across all clients.',
       ],
       pagination,

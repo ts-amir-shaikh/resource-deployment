@@ -23,7 +23,7 @@ reach these paths (`lib/access.ts`), and a reporting token works nowhere else.
    cannot write.
 5. `npm run db:migrate` run on the production database **before** the code deploys
    (adds `reporting_audit_log`).
-6. D6 confirmed with Accounts (how a split engagement's `billing_amount` is entered).
+6. ~~D6~~ Confirmed 23 Nov 2026: `billing_amount` is per deployment; no division or multiplication by allocation.
 7. Third-party processing policy agreed for the commercial data the client will see.
 
 ## Issue a token
