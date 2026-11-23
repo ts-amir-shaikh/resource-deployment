@@ -106,6 +106,19 @@ export const resourceSchema = z
     path: ['revisedEffectiveFrom'],
   });
 
+/**
+ * M68: recording that a resource has left. `endOpenDeployments` is the
+ * operator's tick after seeing which deployments run past the date (D17) —
+ * without it, the route refuses rather than ending them quietly.
+ */
+export const resourceExitSchema = z.object({
+  exitDate: dateStr,
+  exitNotes: optionalStr,
+  // Not the shared `flag` helper: that is declared further down this file,
+  // and this schema is built while the module is still initialising.
+  endOpenDeployments: z.coerce.boolean().default(false),
+});
+
 /* ── Clients ───────────────────────────────────────────────── */
 
 export const clientSchema = z.object({
@@ -380,6 +393,21 @@ export const invoiceSchema = z
     message: 'Due date cannot be before the invoice date',
     path: ['dueDate'],
   });
+
+/**
+ * M70: the correction a collected invoice will accept. Deliberately not a
+ * `.partial()` of invoiceSchema — that would pass the money through the
+ * moment someone posts it, and the whole point is that it cannot. The route
+ * narrows again through `collectedInvoicePatch`; this schema only settles
+ * the shape of what arrives.
+ */
+export const collectedInvoiceSchema = z.object({
+  invoiceNumber: optionalStr,
+  invoiceDate: optionalDate,
+  dueDate: optionalDate,
+  collectedDate: dateStr,
+  notes: optionalStr,
+});
 
 export const invoiceAdvanceSchema = z.object({
   /** Omit to advance exactly one step. */

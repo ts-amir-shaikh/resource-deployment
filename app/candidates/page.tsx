@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { resources, users } from '@/lib/schema';
 import { getApplicantAlert } from '@/lib/queries';
@@ -72,6 +72,9 @@ export default async function CandidatesPage({
         secondarySkill: resources.secondarySkill,
       })
       .from(resources)
+      // M68 (D18): the bench resource an in-house candidate is linked to.
+      // Somebody who has left is not on the bench.
+      .where(isNull(resources.exitDate))
       .orderBy(resources.name)
       .all(),
   ]);

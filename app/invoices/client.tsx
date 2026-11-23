@@ -109,6 +109,15 @@ const BLANK = {
   lines: [] as LineForm[],
 };
 
+/** M70: the only fields a collected invoice will accept a change to. */
+const BLANK_CORRECTION = {
+  invoiceNumber: '',
+  invoiceDate: '',
+  dueDate: '',
+  collectedDate: '',
+  notes: '',
+};
+
 function blankLine(resourceId: number, monthlyRate: number, workingDays: string): LineForm {
   return {
     resourceId,
@@ -146,6 +155,9 @@ export default function InvoicesClient({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState(BLANK);
+  /** M70: the collected invoice being corrected, and its five open fields. */
+  const [correcting, setCorrecting] = useState<Row | null>(null);
+  const [correctForm, setCorrectForm] = useState(BLANK_CORRECTION);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -391,7 +403,46 @@ export default function InvoicesClient({
     setOpen(true);
   }
 
+  /**
+   * M70: a collected invoice opens the correction form instead of the full
+   * one. Routing it here rather than disabling fields inside the big form
+   * keeps the money out of the payload entirely — there is nothing to post.
+   */
+  function openCorrect(i: Row) {
+    setCorrecting(i);
+    setCorrectForm({
+      invoiceNumber: i.invoiceNumber ?? '',
+      invoiceDate: i.invoiceDate ?? '',
+      dueDate: i.dueDate ?? '',
+      collectedDate: i.collectedDate ?? '',
+      notes: i.notes ?? '',
+    });
+    setErrors({});
+    setBanner(null);
+  }
+
+  async function saveCorrection() {
+    if (!correcting) return;
+    setSaving(true);
+    setErrors({});
+    setBanner(null);
+    try {
+      await api(`/api/invoices/${correcting.id}`, { method: 'PUT', json: correctForm });
+      setCorrecting(null);
+      router.refresh();
+    } catch (e) {
+      if (isApiError(e) && e.fields) setErrors(e.fields);
+      setBanner(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function openEdit(i: Row) {
+    if (i.status === 'collected') {
+      openCorrect(i);
+      return;
+    }
     setEditing(i);
     setForm({
       projectId: String(i.projectId),
@@ -857,11 +908,18 @@ export default function InvoicesClient({
                             <ChevronRight className="h-3.5 w-3.5" />
                           </button>
                         )}
+                        {/* M70: collected opens the correction form, not the
+                            full one — so this stays enabled while Delete,
+                            which would remove an audit record, does not. */}
                         <button
                           onClick={() => openEdit(i)}
-                          disabled={i.status === 'collected'}
                           className="rounded p-1.5 text-ink3 hover:bg-surface2 hover:text-ink disabled:opacity-30"
-                          aria-label={`Edit invoice ${i.invoiceNumber ?? i.id}`}
+                          aria-label={
+                            i.status === 'collected'
+                              ? `Correct invoice ${i.invoiceNumber ?? i.id}`
+                              : `Edit invoice ${i.invoiceNumber ?? i.id}`
+                          }
+                          title={i.status === 'collected' ? 'Correct the number, dates or notes' : undefined}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -1332,6 +1390,85 @@ export default function InvoicesClient({
           </button>
           <button className="btn-primary" onClick={save} disabled={saving}>
             {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Invoice'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* M70 — correcting a collected invoice. Five fields, and a sentence
+          saying why the rest are not here: a collected invoice records what
+          was billed and what was paid, so the money on it is closed. */}
+      <Modal
+        open={correcting !== null}
+        onClose={() => setCorrecting(null)}
+        title={`Correct ${correcting?.invoiceNumber ?? 'Invoice'}`}
+        description="This invoice has been collected — its amount, period and resources are fixed"
+      >
+        {banner && (
+          <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300">
+            {banner}
+          </div>
+        )}
+
+        {correcting && (
+          <div className="mb-4 rounded-md border border-line bg-surface2 px-3 py-2 text-xs text-ink2">
+            <span className="text-ink">{correcting.clientName}</span> · {correcting.projectName} ·{' '}
+            <span className="tnum">{formatMoney(correcting.totalAmount, correcting.currency)}</span> for{' '}
+            {formatDate(correcting.periodFrom)} → {formatDate(correcting.periodTo)}
+          </div>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Invoice number" error={errors.invoiceNumber}>
+            <input
+              className="input font-mono"
+              value={correctForm.invoiceNumber}
+              onChange={(e) => setCorrectForm({ ...correctForm, invoiceNumber: e.target.value })}
+            />
+          </Field>
+          <Field label="Collected on" required error={errors.collectedDate}>
+            <input
+              className="input"
+              type="date"
+              value={correctForm.collectedDate}
+              onChange={(e) => setCorrectForm({ ...correctForm, collectedDate: e.target.value })}
+            />
+          </Field>
+          <Field label="Invoice date" error={errors.invoiceDate}>
+            <input
+              className="input"
+              type="date"
+              value={correctForm.invoiceDate}
+              onChange={(e) => setCorrectForm({ ...correctForm, invoiceDate: e.target.value })}
+            />
+          </Field>
+          <Field label="Due date" error={errors.dueDate}>
+            <input
+              className="input"
+              type="date"
+              value={correctForm.dueDate}
+              onChange={(e) => setCorrectForm({ ...correctForm, dueDate: e.target.value })}
+            />
+          </Field>
+          <Field label="Notes" error={errors.notes} className="sm:col-span-2">
+            <input
+              className="input"
+              placeholder="Optional"
+              value={correctForm.notes}
+              onChange={(e) => setCorrectForm({ ...correctForm, notes: e.target.value })}
+            />
+          </Field>
+        </div>
+
+        <p className="mt-4 text-2xs text-ink3">
+          Every change is recorded against this invoice with who made it and when.
+        </p>
+
+        <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+          <button className="btn-ghost" onClick={() => setCorrecting(null)}>
+            Cancel
+          </button>
+          <button className="btn-primary" onClick={saveCorrection} disabled={saving}>
+            {saving ? 'Saving…' : 'Save Correction'}
           </button>
         </div>
       </Modal>

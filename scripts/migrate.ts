@@ -460,6 +460,31 @@ const COLUMN_MIGRATIONS: ColumnMigration[] = [
     column: 'lead_id',
     ddl: 'ALTER TABLE opportunities ADD COLUMN lead_id INTEGER',
   },
+  // M68 — resource exit. All nullable, and null is the meaningful value:
+  // every existing resource is on the roster, which is what they are. The
+  // index lives in ddl.ts, which runs after these.
+  {
+    table: 'resources',
+    column: 'exit_date',
+    ddl: 'ALTER TABLE resources ADD COLUMN exit_date TEXT',
+  },
+  {
+    table: 'resources',
+    column: 'exit_notes',
+    ddl: 'ALTER TABLE resources ADD COLUMN exit_notes TEXT',
+  },
+  {
+    table: 'resources',
+    column: 'exit_recorded_by_user_id',
+    ddl: 'ALTER TABLE resources ADD COLUMN exit_recorded_by_user_id INTEGER',
+  },
+  // M69 — remarks from an imported list, and the raw email cell when it held
+  // more than one address. Null on every contact added before imports existed.
+  {
+    table: 'prospect_contacts',
+    column: 'notes',
+    ddl: 'ALTER TABLE prospect_contacts ADD COLUMN notes TEXT',
+  },
 ];
 
 async function tableExists(client: Client, table: string) {

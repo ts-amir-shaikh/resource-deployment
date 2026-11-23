@@ -1,4 +1,7 @@
 import { notFound } from 'next/navigation';
+import { desc, eq } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { campaignImports, users } from '@/lib/schema';
 import { getViewer } from '@/lib/session';
 import { parseId } from '@/lib/api';
 import { getCampaignDetail, teamOptions } from '@/lib/leadgen';
@@ -15,11 +18,31 @@ export default async function CampaignPage({ params }: { params: { id: string } 
   const detail = id ? await getCampaignDetail(viewer, id) : null;
   if (!detail) notFound();
   const owners = await teamOptions('leadgen');
+  // M69 (D24): where this campaign's prospects came from.
+  const imports = await db
+    .select({
+      id: campaignImports.id,
+      fileName: campaignImports.fileName,
+      rowCount: campaignImports.rowCount,
+      prospectsCreated: campaignImports.prospectsCreated,
+      contactsCreated: campaignImports.contactsCreated,
+      rowsSkipped: campaignImports.rowsSkipped,
+      rowsFailed: campaignImports.rowsFailed,
+      byName: users.name,
+      createdAt: campaignImports.createdAt,
+    })
+    .from(campaignImports)
+    .leftJoin(users, eq(campaignImports.byUserId, users.id))
+    .where(eq(campaignImports.campaignId, id!))
+    .orderBy(desc(campaignImports.id))
+    .all();
+
   return (
     <CampaignDetailClient
       detail={detail}
       owners={owners.map((o) => ({ id: o.id, name: o.name }))}
       canSetOwner={viewer.role === 'admin' || (viewer.role === 'leadgen' && viewer.isTeamLead)}
+      imports={imports}
     />
   );
 }

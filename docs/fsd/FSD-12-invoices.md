@@ -7,8 +7,8 @@ What each client is billed for a period, line by line per resource. Each line ca
 | Field | Value |
 |---|---|
 | Module code | INV |
-| Module version | v2.2 (built; v2.1 live) |
-| Doc revision | Rev 1.3 |
+| Module version | v2.4 (built; v2.1 live) |
+| Doc revision | Rev 1.4 |
 | Status | `Live` |
 | Baseline | 5e43f82 · 27 Sep 2026 |
 | Appears as | Invoices |
@@ -47,7 +47,9 @@ An invoice belongs to a project and, optionally, to the agreement it bills under
 | **Lifecycle** | | | |
 | FR-INV-011 | Status moves forward only: **Not Raised → Raised → Pending to Collect → Collected**. An invoice can jump ahead several steps, but never back. | v1.0 | `Live` |
 | FR-INV-012 | Moving to Raised or beyond fills in today's date as the invoice date if none was entered. Moving to Collected records today as the collected date. | v1.0 | `Live` |
-| FR-INV-013 | A collected invoice can no longer be edited or deleted. | v1.0 | `Live` |
+| FR-INV-013 | A collected invoice cannot be deleted, and its money cannot be changed: amount, GST, currency, exchange rate, period, project, agreement, scope and every resource line stay as raised. | v1.0 | `Live` |
+| FR-INV-015 | **Correction.** A collected invoice's number, invoice date, due date, collected date and notes can still be corrected. The list's edit action opens a five-field form that says why the rest is fixed. | v2.4 | `Built` |
+| FR-INV-016 | Every field changed on a collected invoice is recorded with its before and after value, who changed it and when, and shown on the invoice page under **Corrections**. | v2.4 | `Built` |
 | **Detail page** | | | |
 | FR-INV-014 | The invoice page shows the amounts, **Resources Covered** with each line's rate, working days, "Nd paid" and "Nd unpaid" leave, dates, billed days and amount, the billing period and dates, the status with its dates, and the agreement. | v2.1 | `Live` |
 
@@ -116,6 +118,8 @@ Production at 27 Sep 2026: 112 line rows. Lines raised before pro-rating have no
   Searchable project, agreement and client pickers.
 - **v2.0** (major) · 25 Sep 2026 · ae67af9 · M57  
   Pro-rated lines: working days, part-month dates and leave, with billed days and amount stored per line. A line's amount is now calculated, not implied.
+- **v2.4** (minor) · 20 Nov 2026 · M70  
+  Correcting a collected invoice's clerical fields, with a per-field change log.
 - **v2.1** · 27 Sep 2026 · 5e43f82 · M59 — **current**  
   Leave split into paid (billed) and unpaid (deducted). Leave without working days is refused. **Current version.**
 
@@ -124,7 +128,7 @@ Production at 27 Sep 2026: 112 line rows. Lines raised before pro-rating have no
 | ID | Item | Source | Priority | Status |
 |---|---|---|---|---|
 | FS-INV-01 | Confirm what paid leave means against a real SOW — The default bills paid leave. If contracts mean the client pays for neither, both kinds should deduct. That is a one-line change, and it should be settled before the first invoice with leave is raised. | Plan M59 | High | `Proposed` |
-| FS-INV-02 | Void and credit notes — A collected invoice cannot be edited or deleted, and the message tells the user to "void and re-raise it", but there is no void action. A void status, or a credit note linked to the original, would give corrections a proper home. | This review | High | `Proposed` |
+| FS-INV-02 | Void and credit notes — M70 opened the clerical fields, so a transposed number no longer needs a void. A wrong *amount* still does: there is no void status and no credit note linked to the original. | This review | High | `Proposed` |
 | FS-INV-03 | Record what was actually received — Collection is all or nothing. Tax deducted at source and short payments cannot be recorded, so Collected overstates cash received. | This review | Medium | `Proposed` |
 | FS-INV-04 | Draft the month's invoices from active deployments — One draft per project, with lines from active billable deployments at their rates, for the biller to adjust for leave and part months. | This review | Medium | `Proposed` |
 | FS-INV-05 | Produce the invoice document — A PDF with the client's billing details and GST breakdown. Needs client billing details first (FS-CLI-01). | This review | Medium | `Proposed` |
@@ -134,7 +138,7 @@ Production at 27 Sep 2026: 112 line rows. Lines raised before pro-rating have no
 
 ## 9. Known limitations
 
-- **Collected invoices cannot be corrected.** See FS-INV-02.
+- **A collected invoice's money still cannot be corrected.** Only its number, dates and notes are open (FR-INV-015). A wrong amount needs the void and credit note of FS-INV-02.
 - **The pre-GST amount can differ from the lines.** It is editable by design, and the form says when it has been overridden.
 - **Paid-leave meaning is a default.** See BR-INV-02 and FS-INV-01.
 
@@ -146,3 +150,4 @@ Production at 27 Sep 2026: 112 line rows. Lines raised before pro-rating have no
 | 1.1 | 21 Oct 2026 | v2.2 (built) | M65: FR-INV-006a — a line's paid and unpaid leave come from approved timesheets when every working day of the period is approved, and are locked on the form and enforced on save. See FSD-18 FR-TSH-010. |
 | 1.2 | 23 Oct 2026 | v2.3 (built) | M65 addendum: FR-INV-006b coverage and link. See FSD-18 FR-TSH-016. |
 | 1.3 | 23 Oct 2026 | v2.3 (built) | FR-INV-006a: leave now also comes from approved leave requests (FSD-21), by the same rule as approved timesheet days. |
+| 1.4 | 20 Nov 2026 | v2.4 (built) | M70: FR-INV-015 and 016, correcting a collected invoice's clerical fields with a change log. FR-INV-013 narrowed to the money. |

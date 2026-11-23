@@ -42,10 +42,20 @@ export const resources = sqliteTable(
     secondarySkill: text('secondary_skill'),
     /** JSON-encoded string[] */
     otherSkills: text('other_skills').default('[]').notNull(),
+    /**
+     * M68: the day they left, or leave. Null means on the roster — there is
+     * deliberately no second status column to fall out of step with it. A
+     * date in the future is somebody serving notice, who is already off the
+     * pickers for new work (D18).
+     */
+    exitDate: text('exit_date'),
+    exitNotes: text('exit_notes'),
+    exitRecordedByUserId: integer('exit_recorded_by_user_id'),
     ...timestamps,
   },
   (t) => ({
     primarySkillIdx: index('res_primary_skill_idx').on(t.primarySkill),
+    exitIdx: index('res_exit_idx').on(t.exitDate),
   }),
 );
 
@@ -368,6 +378,32 @@ export const invoiceResources = sqliteTable(
   },
   (t) => ({
     invoiceIdx: index('invres_invoice_idx').on(t.invoiceId),
+  }),
+);
+
+/**
+ * M70 (D26): one row per field changed on an invoice that had already been
+ * collected. Collected invoices used to be frozen outright; now their
+ * clerical fields can be corrected, and this is what keeps that from being a
+ * silent rewrite of a financial record. Append-only — nothing updates or
+ * deletes these rows.
+ */
+export const invoiceEdits = sqliteTable(
+  'invoice_edits',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    invoiceId: integer('invoice_id')
+      .notNull()
+      .references(() => invoices.id),
+    /** One of COLLECTED_EDITABLE_FIELDS, stored as its camelCase name. */
+    field: text('field').notNull(),
+    valueBefore: text('value_before'),
+    valueAfter: text('value_after'),
+    byUserId: integer('by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    invoiceIdx: index('invedit_invoice_idx').on(t.invoiceId),
   }),
 );
 
@@ -960,10 +996,43 @@ export const prospectContacts = sqliteTable(
     mobile: text('mobile'),
     linkedin: text('linkedin'),
     isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * M69: remarks from an imported list, and the raw email cell when it held
+     * more than one address — 60 of the 299 reference rows did. Without
+     * somewhere to put it, the second address was simply lost.
+     */
+    notes: text('notes'),
     ...timestamps,
   },
   (t) => ({
     prospectIdx: index('pcontact_prospect_idx').on(t.prospectId),
+  }),
+);
+
+/**
+ * M69 (D24): one row per import run. Answers "where did this list come from"
+ * a year later, which is the question leadgen actually asks of a prospect
+ * nobody remembers adding.
+ */
+export const campaignImports = sqliteTable(
+  'campaign_imports',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    campaignId: integer('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    rowCount: integer('row_count').notNull().default(0),
+    prospectsCreated: integer('prospects_created').notNull().default(0),
+    prospectsMatched: integer('prospects_matched').notNull().default(0),
+    contactsCreated: integer('contacts_created').notNull().default(0),
+    rowsSkipped: integer('rows_skipped').notNull().default(0),
+    rowsFailed: integer('rows_failed').notNull().default(0),
+    byUserId: integer('by_user_id'),
+    ...timestamps,
+  },
+  (t) => ({
+    campaignIdx: index('campaign_import_campaign_idx').on(t.campaignId),
   }),
 );
 

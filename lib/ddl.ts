@@ -15,9 +15,13 @@ CREATE TABLE IF NOT EXISTS resources (
   primary_skill TEXT,
   secondary_skill TEXT,
   other_skills TEXT NOT NULL DEFAULT '[]',
+  exit_date TEXT,
+  exit_notes TEXT,
+  exit_recorded_by_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS res_primary_skill_idx ON resources(primary_skill);
+CREATE INDEX IF NOT EXISTS res_exit_idx ON resources(exit_date);
 
 CREATE TABLE IF NOT EXISTS clients (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -703,4 +707,28 @@ CREATE TABLE IF NOT EXISTS leave_requests (
 );
 CREATE INDEX IF NOT EXISTS leave_resource_idx ON leave_requests(resource_id, start_date);
 CREATE INDEX IF NOT EXISTS leave_status_idx ON leave_requests(status);
+CREATE TABLE IF NOT EXISTS invoice_edits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id),
+  field TEXT NOT NULL,
+  value_before TEXT,
+  value_after TEXT,
+  by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS invedit_invoice_idx ON invoice_edits(invoice_id);
+CREATE TABLE IF NOT EXISTS campaign_imports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL,
+  row_count INTEGER NOT NULL DEFAULT 0,
+  prospects_created INTEGER NOT NULL DEFAULT 0,
+  prospects_matched INTEGER NOT NULL DEFAULT 0,
+  contacts_created INTEGER NOT NULL DEFAULT 0,
+  rows_skipped INTEGER NOT NULL DEFAULT 0,
+  rows_failed INTEGER NOT NULL DEFAULT 0,
+  by_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS campaign_import_campaign_idx ON campaign_imports(campaign_id);
 `;

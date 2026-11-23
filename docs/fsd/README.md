@@ -19,7 +19,7 @@ Each document below describes one module of the Resource Deployment Management S
 
 ## 1. Document register
 
-Documents are issued in order. FSD-00 checks the whole set against the platform aim. FSD-01 to FSD-13 describe what is live. FSD-14 to FSD-20 are `Proposed`: they have a number and an outline in FSD-00, and become full documents once approved.
+Documents are issued in order. FSD-00 checks the whole set against the platform aim. FSD-01 to FSD-13 describe what is live. FSD-14, 15, 17, 18 and 21 are written and their modules are built. FSD-16, 19 and 20 are `Proposed`: they have a number and an outline in FSD-00, and become full documents once approved.
 
 | No. | Module | Code | Module ver. | Doc rev. | Status | Plan modules |
 |---|---|---|---|---|---|---|
@@ -31,21 +31,21 @@ Documents are issued in order. FSD-00 checks the whole set against the platform 
 | FSD-04 | [Job Board & Referrals](FSD-04-job-board-referrals.md) | JOB | v3.0 | Rev 1.0 | `Issued` | M13 M16 M23 M24 |
 | FSD-05 | [Role Workspaces](FSD-05-role-workspaces.md) | WRK | v2.2 (built; v2.1 live) | Rev 1.1 | `Issued` | M25 M27 M30 M38 M43–M45 M66 |
 | FSD-06 | [AI Agents](FSD-06-ai-agents.md) | AGT | v3.1 | Rev 1.0 | `Issued` | M19 M20 M28 |
-| FSD-07 | [Resources](FSD-07-resources.md) | RES | v1.3 | Rev 1.0 | `Issued` | M1 M15 M39 |
+| FSD-07 | [Resources](FSD-07-resources.md) | RES | v1.5 (built; v1.3 live) | Rev 1.2 | `Issued` | M1 M15 M39 M65 M68 |
 | FSD-08 | [Clients](FSD-08-clients.md) | CLI | v1.4 (built; v1.3 live) | Rev 1.1 | `Issued` | M2 M14 M15 M46 M66 |
 | FSD-09 | [Projects](FSD-09-projects.md) | PRJ | v1.4 (built; v1.3 live) | Rev 1.1 | `Issued` | M3 M14 M15 M47 M65 |
 | FSD-10 | [Deployments](FSD-10-deployments.md) | DEP | v2.3 (built; v2.2 live) | Rev 1.1 | `Issued` | M4 M14 M15 M40 M58 M65 |
 | FSD-11 | [Agreements & POs](FSD-11-agreements-pos.md) | AGR | v1.5 | Rev 1.0 | `Issued` | M6 M11 M14 M15 |
-| FSD-12 | [Invoices](FSD-12-invoices.md) | INV | v2.2 (built; v2.1 live) | Rev 1.1 | `Issued` | M7 M14 M15 M57 M59 M65 |
+| FSD-12 | [Invoices](FSD-12-invoices.md) | INV | v2.4 (built; v2.1 live) | Rev 1.4 | `Issued` | M7 M14 M15 M57 M59 M65 M70 |
 | FSD-13 | [Dashboard & KPIs](FSD-13-dashboard-kpis.md) | DSH | v2.1 | Rev 1.0 | `Issued` | M5 M18 M30 M40 M55 |
-| FSD-14 | [Campaigns & Outreach](../plans/mxxwork/m66work/FSD-14-campaigns-outreach.md) | CMP | v1.0 (built, not released) | Rev 1.0 | `Built` | M66 |
-| FSD-15 | [Prospects, Meetings & Leads](../plans/mxxwork/m66work/FSD-15-prospects-meetings-leads.md) | LED | v1.0 (built, not released) | Rev 1.0 | `Built` | M66 |
+| FSD-14 | [Campaigns & Outreach](FSD-14-campaigns-outreach.md) | CMP | v1.1 (built; v1.0 live) | Rev 1.1 | `Issued` | M66 M69 |
+| FSD-15 | [Prospects, Meetings & Leads](FSD-15-prospects-meetings-leads.md) | LED | v1.0 | Rev 1.0 | `Issued` | M66 |
 | FSD-16 | Interviewer Portal | INT | — | — | `Proposed` | M31 · see FSD-00 |
-| FSD-17 | [Resource Management](../plans/mxxwork/m67work/FSD-17-resource-management.md) | RMG | v1.2 (built, not released) | Rev 1.2 | `Built` | M67 |
-| FSD-18 | [Timesheets & Self-Service](../plans/mxxwork/m65work/FSD-18-timesheets.md) | TSH | v1.2 (built, not released) | Rev 1.2 | `Built` | M65 |
+| FSD-17 | [Resource Management](FSD-17-resource-management.md) | RMG | v1.2 (built, not released) | Rev 1.2 | `Built` | M67 |
+| FSD-18 | [Timesheets & Self-Service](FSD-18-timesheets.md) | TSH | v1.2 (built, not released) | Rev 1.2 | `Built` | M65 |
 | FSD-19 | Reports | RPT | — | — | `Proposed` | see FSD-00 |
 | FSD-20 | Accounting Sync (Tally) | TLY | — | — | `Proposed` | D6 · see FSD-00 |
-| FSD-21 | [Leave](../plans/mxxwork/m65work/FSD-21-leaves.md) | LVE | v1.0 (built, not released) | Rev 1.0 | `Built` | M65 |
+| FSD-21 | [Leave](FSD-21-leaves.md) | LVE | v1.0 (built, not released) | Rev 1.0 | `Built` | M65 |
 
 ## 2. Versioning
 

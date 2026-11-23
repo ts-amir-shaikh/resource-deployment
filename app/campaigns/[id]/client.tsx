@@ -9,7 +9,20 @@ import type { getCampaignDetail } from '@/lib/leadgen';
 import { Badge, KpiCard, PageHeader, TableShell } from '@/components/ui';
 import { StageBadge, TemperatureBadge } from '@/components/leadgen-ui';
 import CampaignModal, { type CampaignValues } from '@/components/campaign-form';
+import CampaignImport from './import';
 import { STATUS_TONE, pct } from '../client';
+
+export type ImportRow = {
+  id: number;
+  fileName: string;
+  rowCount: number;
+  prospectsCreated: number;
+  contactsCreated: number;
+  rowsSkipped: number;
+  rowsFailed: number;
+  byName: string | null;
+  createdAt: string;
+};
 
 type Detail = NonNullable<Awaited<ReturnType<typeof getCampaignDetail>>>;
 
@@ -17,10 +30,12 @@ export default function CampaignDetailClient({
   detail,
   owners,
   canSetOwner,
+  imports,
 }: {
   detail: Detail;
   owners: { id: number; name: string }[];
   canSetOwner: boolean;
+  imports: ImportRow[];
 }) {
   const { campaign: c, results: r, prospects, access } = detail;
   const [open, setOpen] = useState(false);
@@ -49,6 +64,7 @@ export default function CampaignDetailClient({
             <Link href="/campaigns" className="btn-ghost">
               <ArrowLeft className="h-4 w-4" /> Campaigns
             </Link>
+            {access.edit && <CampaignImport campaignId={c.id} owners={owners} />}
             {access.edit && (
               <button className="btn-ghost" onClick={() => setOpen(true)}>
                 <Pencil className="h-4 w-4" /> Edit
@@ -112,6 +128,32 @@ export default function CampaignDetailClient({
           )}
         </div>
       </div>
+      {/* M69 (D24): answers "where did this list come from" later on. */}
+      {imports.length > 0 && (
+        <div className="px-6 pb-4">
+          <div className="card overflow-hidden">
+            <div className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">Imports</div>
+            <ul className="divide-y divide-line">
+              {imports.map((im) => (
+                <li key={im.id} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3 text-sm">
+                  <div>
+                    <span className="font-medium text-ink">{im.fileName}</span>
+                    <div className="text-2xs text-ink3">
+                      {im.byName ?? 'Unknown'} · {formatDate(im.createdAt.slice(0, 10))}
+                    </div>
+                  </div>
+                  <div className="tnum text-xs text-ink2">
+                    {im.rowCount} rows → {im.prospectsCreated} prospects, {im.contactsCreated} contacts
+                    {im.rowsSkipped > 0 && ` · ${im.rowsSkipped} skipped`}
+                    {im.rowsFailed > 0 && ` · ${im.rowsFailed} failed`}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       <CampaignModal open={open} onClose={() => setOpen(false)} initial={initial} owners={owners} canSetOwner={canSetOwner} />
     </div>
   );

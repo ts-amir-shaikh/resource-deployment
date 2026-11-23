@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { resources, deployments, projects, clients, agreements } from '@/lib/schema';
+import { resources, deployments, projects, clients, agreements, users } from '@/lib/schema';
 import { getResourceAllocation } from '@/lib/queries';
 import { formatMoney, formatDate, parseSkills, GST_RATE } from '@/lib/utils';
 import { Badge, AllocationBar, TableShell } from '@/components/ui';
@@ -14,6 +14,7 @@ import {
   AnnualWithMonthly,
 } from '@/components/detail';
 import { requireCurrentAccount } from '@/lib/session';
+import { exitState } from '@/lib/resource-exit-rules';
 import { resourceMonth } from '@/lib/timesheet-dashboard';
 import { today } from '@/lib/utils';
 
@@ -59,6 +60,15 @@ export default async function ResourceDetailPage({ params }: { params: { id: str
   const skills = parseSkills(row.otherSkills);
   const active = engagements.filter((e) => e.status === 'active');
 
+  // M68: only looked up when there is an exit to attribute.
+  const exitRecordedBy = row.exitRecordedByUserId
+    ? await db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, row.exitRecordedByUserId))
+        .get()
+    : null;
+
   return (
     <div className="pb-12">
       <DetailHeader
@@ -68,17 +78,43 @@ export default async function ResourceDetailPage({ params }: { params: { id: str
         subtitle={row.designation ?? 'No designation recorded'}
         badges={
           <>
-            {allocation.total >= 100 && <Badge tone="green">Fully deployed</Badge>}
-            {allocation.total > 0 && allocation.total < 100 && (
+            {/* M68: the exit leads, because everything else on this page
+                reads differently once somebody has left. */}
+            {row.exitDate && (
+              <Badge tone={exitState(row, today()) === 'leaving' ? 'amber' : 'neutral'}>
+                {exitState(row, today()) === 'leaving' ? 'Leaving' : 'Exited'} {formatDate(row.exitDate)}
+              </Badge>
+            )}
+            {!row.exitDate && allocation.total >= 100 && <Badge tone="green">Fully deployed</Badge>}
+            {!row.exitDate && allocation.total > 0 && allocation.total < 100 && (
               <Badge tone="amber">{allocation.free}% free</Badge>
             )}
-            {allocation.total === 0 && <Badge tone="neutral">On bench</Badge>}
+            {!row.exitDate && allocation.total === 0 && <Badge tone="neutral">On bench</Badge>}
           </>
         }
       />
 
       <div className="grid gap-6 px-6 py-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {row.exitDate && (
+            <DetailSection title="Exit">
+              <DetailFacts
+                facts={[
+                  ['Last working day', formatDate(row.exitDate)],
+                  ['Recorded by', exitRecordedBy?.name ?? null],
+                ]}
+              />
+              {row.exitNotes && (
+                <div className="border-t border-line px-4 py-3">
+                  <div className="text-2xs font-medium uppercase tracking-wider text-ink3">Notes</div>
+                  <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-ink2">
+                    {row.exitNotes}
+                  </p>
+                </div>
+              )}
+            </DetailSection>
+          )}
+
           <DetailSection title="Profile">
             <DetailFacts
               facts={[
