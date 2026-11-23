@@ -731,4 +731,21 @@ CREATE TABLE IF NOT EXISTS campaign_imports (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS campaign_import_campaign_idx ON campaign_imports(campaign_id);
+
+-- Reporting API audit trail. Append-only; see lib/reporting/audit.ts.
+CREATE TABLE IF NOT EXISTS reporting_audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id TEXT NOT NULL,
+  token_id TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  status INTEGER NOT NULL,
+  result_code TEXT NOT NULL,
+  row_count INTEGER NOT NULL DEFAULT 0,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  cache_hit INTEGER NOT NULL DEFAULT 0,
+  params_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS reporting_audit_created_idx ON reporting_audit_log(created_at);
+CREATE INDEX IF NOT EXISTS reporting_audit_token_idx ON reporting_audit_log(token_id, created_at);
 `;

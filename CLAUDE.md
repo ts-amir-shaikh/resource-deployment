@@ -125,6 +125,16 @@ from the request body — invoice `billed_days` and per-line `amount` especially
 **Invoice status is forward-only**; pipeline stages are bidirectional. Both are
 in `README.md` under Business rules, with the pro-rating formula.
 
+**The reporting API (`/api/reporting/v1`) is a separate authentication boundary.**
+Bearer tokens only (`REPORTING_TOKENS`, hashes), verified in the middleware gate
+(`lib/reporting/gate.ts`) and again in `reportingHandle` (`lib/reporting/handler.ts`).
+It is not in `PUBLIC_*`, and `lib/access.ts` denies it to every session role. Reporting
+code owns its read-only queries (`lib/reporting/readonly-db.ts`), never imports
+`lib/queries.ts`, `lib/db.ts` (except `audit.ts`) or the session, and never writes
+apart from one audit INSERT. The existing KPI functions are its test oracle
+(`tests/reporting-parity.test.ts`). Audit failure fails closed. Runbook:
+`docs/reporting-api/runbook.md`.
+
 **Zod unions must put `z.literal('')` first.** `z.coerce.number()` happily
 matches an empty string as `0`, which silently wrote zeros.
 

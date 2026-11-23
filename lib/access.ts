@@ -1,4 +1,5 @@
 import { PENDING_ROLES, type Role } from './auth';
+import { isReportingPath } from './reporting/paths';
 
 /**
  * The single source of truth for who can see and change what.
@@ -235,6 +236,11 @@ export function isAdminOnlyPath(pathname: string): boolean {
 
 /** Can this role reach this path at all? Applies to pages and API alike. */
 export function canAccess(role: Role, pathname: string): boolean {
+  // The reporting API is for bearer tokens only (lib/reporting). No signed-in
+  // role, Admin and Management included, may reach it through a session. The
+  // middleware hands these paths to the reporting gate before this function is
+  // ever called; this is the second lock if that branch were ever removed.
+  if (isReportingPath(pathname)) return false;
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
   if (isExportPath(pathname)) return canExport(role);
   if (isAdminOnlyPath(pathname)) return role === 'admin';
@@ -351,6 +357,7 @@ const RESOURCE_MANAGER_WRITE_RULES: WriteRule[] = [
 
 /** Can this role mutate at this path? (POST / PUT / PATCH / DELETE) */
 export function canWrite(role: Role, pathname: string): boolean {
+  if (isReportingPath(pathname)) return false;
   if (matchesPrefix(pathname, COMMON_PREFIXES)) return true;
   // Admin signs reviews off, it does not write them: saving and submitting a
   // review is the Resource Manager's, including on a draft Admin reopened.

@@ -58,7 +58,10 @@ describe('every signed-in API route checks the account (R16)', () => {
     .map((f) => ({ f, route: routeOf(f) }))
     // The auth routes act on the session itself: sign-in, sign-out and the
     // refresh route, whose job is to handle a session handle() would refuse.
-    .filter(({ route }) => !isPublic(route) && !route.startsWith('/api/auth/'));
+    // The reporting API is a separate boundary (bearer tokens, no session); it
+    // has its own rule below. This is not an exemption: it is checked, by a
+    // stricter rule, in the next block.
+    .filter(({ route }) => !isPublic(route) && !route.startsWith('/api/auth/') && !route.startsWith('/api/reporting/'));
 
   it('finds the routes it is guarding', () => {
     expect(routes.length).toBeGreaterThan(40);
@@ -67,6 +70,23 @@ describe('every signed-in API route checks the account (R16)', () => {
   for (const { f, route } of routes) {
     it(route, () => {
       expect(ROUTE_CHECK.test(readFileSync(f, 'utf8')), `${route} must go through handle()`).toBe(true);
+    });
+  }
+});
+
+describe('every reporting API route verifies a bearer token (not a session)', () => {
+  const reportingRoutes = walk(path.join(APP, 'api', 'reporting'), 'route.ts').map((f) => ({ f, route: routeOf(f) }));
+
+  it('finds the five reporting routes, none of them public', () => {
+    expect(reportingRoutes.length).toBe(5);
+    for (const { route } of reportingRoutes) expect(isPublic(route), route).toBe(false);
+  });
+
+  for (const { f, route } of reportingRoutes) {
+    it(route, () => {
+      const src = readFileSync(f, 'utf8');
+      expect(/\breportingHandle\s*\(/.test(src), `${route} must go through reportingHandle()`).toBe(true);
+      expect(/\b(handle|getSession|getSessionState|requireCurrentAccount|getViewer)\s*\(/.test(src), `${route} must not use the session`).toBe(false);
     });
   }
 });
