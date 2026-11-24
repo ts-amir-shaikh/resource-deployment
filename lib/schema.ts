@@ -1251,6 +1251,37 @@ export const accountEvents = sqliteTable(
   }),
 );
 
+/* ── Reporting API audit (append-only) ──────────────────────── */
+
+/**
+ * One row per authenticated request that reached a /api/reporting/v1 handler.
+ * Append-only: no code updates or deletes it (retention is an operator-run
+ * SQL statement). Holds ids, the endpoint, the outcome, counts and the
+ * validated query parameters — never a token, a body or an address. Denials
+ * made at the Edge gate are not here; see lib/reporting/audit.ts.
+ */
+export const reportingAuditLog = sqliteTable(
+  'reporting_audit_log',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    requestId: text('request_id').notNull(),
+    /** The operator-chosen token label, never the token. */
+    tokenId: text('token_id').notNull(),
+    endpoint: text('endpoint').notNull(),
+    status: integer('status').notNull(),
+    resultCode: text('result_code').notNull(),
+    rowCount: integer('row_count').notNull().default(0),
+    durationMs: integer('duration_ms').notNull().default(0),
+    cacheHit: integer('cache_hit').notNull().default(0),
+    paramsJson: text('params_json').notNull().default('{}'),
+    ...timestamps,
+  },
+  (t) => ({
+    createdIdx: index('reporting_audit_created_idx').on(t.createdAt),
+    tokenIdx: index('reporting_audit_token_idx').on(t.tokenId, t.createdAt),
+  }),
+);
+
 /* ── CSV export log ─────────────────────────────────────────── */
 
 export const EXPORT_MODES = ['filtered', 'ticked'] as const;

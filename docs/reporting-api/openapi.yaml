@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: TechStalwarts Staffing — Reporting API
+  version: v1
+  description: >
+    Read-only aggregate reporting. Bearer token, one scope per dataset. Money is per currency and
+    never converted. Dates are Asia/Kolkata. billing is contracted billing, not invoiced revenue.
+servers:
+  - url: https://REPLACE-WITH-PRODUCTION-HOST/api/reporting/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, description: "Token starting rpt_. Scopes: billing, invoices, capacity, pipeline, renewals." }
+  parameters:
+    limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+    offset: { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    clientId: { name: client_id, in: query, schema: { type: integer, minimum: 1 } }
+    currency: { name: currency, in: query, schema: { type: string, enum: [INR, AED, USD] } }
+  schemas:
+    Money: { type: array, items: { type: object, properties: { currency: { type: string, enum: [INR, AED, USD] }, amount: { type: number } } } }
+    Error:
+      type: object
+      properties:
+        error: { type: object, properties: { code: { type: string }, message: { type: string }, details: { type: object, additionalProperties: { type: string } } } }
+    Meta:
+      type: object
+      properties:
+        version: { const: v1 }
+        generatedAt: { type: string, format: date-time }
+        asOf: { type: string, format: date }
+        timezone: { const: Asia/Kolkata }
+        scope: { type: string }
+        currencyPolicy: { type: string }
+        params: { type: object }
+        pagination: { type: object, properties: { limit: { type: integer }, offset: { type: integer }, total: { type: integer }, truncated: { type: boolean } } }
+        notes: { type: array, items: { type: string } }
+    Envelope:
+      type: object
+      properties: { meta: { $ref: '#/components/schemas/Meta' }, data: { type: object } }
+  responses:
+    Ok: { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+    Err: { description: Error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+paths:
+  /billing:
+    get:
+      operationId: getBilling
+      summary: Contracted monthly billing by client and currency (not invoiced revenue)
+      parameters: [ { $ref: '#/components/parameters/currency' }, { $ref: '#/components/parameters/clientId' }, { $ref: '#/components/parameters/limit' }, { $ref: '#/components/parameters/offset' } ]
+      responses: { '200': { $ref: '#/components/responses/Ok' }, default: { $ref: '#/components/responses/Err' } }
+  /invoices:
+    get:
+      operationId: getInvoices
+      summary: Invoiced, outstanding, overdue and aging, by client and currency
+      parameters:
+        - { name: as_of, in: query, schema: { type: string, format: date }, description: Not in the future. Default today (Asia/Kolkata). }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date }, description: At most 24 months after from. }
+        - { $ref: '#/components/parameters/clientId' }
+        - { $ref: '#/components/parameters/currency' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/offset' }
+      responses: { '200': { $ref: '#/components/responses/Ok' }, default: { $ref: '#/components/responses/Err' } }
+  /capacity:
+    get:
+      operationId: getCapacity
+      summary: Allocation-based utilisation and bench aggregates (no individuals)
+      parameters:
+        - { name: min_free, in: query, schema: { type: integer, minimum: 0, maximum: 100, default: 1 } }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/offset' }
+      responses: { '200': { $ref: '#/components/responses/Ok' }, default: { $ref: '#/components/responses/Err' } }
+  /pipeline:
+    get:
+      operationId: getPipeline
+      summary: Requirements by stage, positions, mapping and fulfilment (counts only)
+      parameters:
+        - { $ref: '#/components/parameters/clientId' }
+        - { name: stage, in: query, schema: { type: string, enum: [open, requirement, qualification, budgeting, candidate_mapping, interview, agreement, won, lost, hold] } }
+        - { name: include_terminal, in: query, schema: { type: boolean, default: false } }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/offset' }
+      responses: { '200': { $ref: '#/components/responses/Ok' }, default: { $ref: '#/components/responses/Err' } }
+  /renewals:
+    get:
+      operationId: getRenewals
+      summary: Agreement expiry, deployment end dates and renewal exposure (chain heads only)
+      parameters:
+        - { name: window_days, in: query, schema: { type: integer, minimum: 1, maximum: 365, default: 90 } }
+        - { name: lapsed_within_days, in: query, schema: { type: integer, minimum: 0, maximum: 365, default: 90 } }
+        - { $ref: '#/components/parameters/clientId' }
+        - { $ref: '#/components/parameters/limit' }
+        - { $ref: '#/components/parameters/offset' }
+      responses: { '200': { $ref: '#/components/responses/Ok' }, default: { $ref: '#/components/responses/Err' } }

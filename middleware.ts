@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { PATH_HEADER, SESSION_COOKIE, SIGNED_IN_HEADER, verifySession } from '@/lib/auth';
 import { WRITE_METHODS, canAccess, canWrite, landingPath } from '@/lib/access';
+import { isReportingPath, reportingGate } from '@/lib/reporting/gate';
 
 /**
  * Gates the whole app behind a session cookie, then applies the role policy
@@ -39,6 +40,13 @@ export const PUBLIC_EXACT = [
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // The reporting API has its own authentication boundary (bearer tokens, no
+  // database) and is deliberately NOT one of the public paths above: it is
+  // handled here first and returns before any session code runs, so a browser
+  // session of any role neither grants nor blocks access. See lib/reporting.
+  if (isReportingPath(pathname)) return reportingGate(req);
+
   const isApi = pathname.startsWith('/api/');
 
   // Never trust these from outside: server code reads them as "this request
